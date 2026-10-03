@@ -38,7 +38,7 @@ from torchvision.transforms import v2 as T
 SIZE = 448
 STAMP_FRAC = 0.04  # burned-in date and time along the top edge
 FLOODED_CM = 2.0  # the road heights are read off frames by eye; below this is "wet", not "flooded"
-CLOCK_WINDOW = np.timedelta64(20, "m")
+CLOCK_MINUTES = 20
 dev = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 
 _to_tensor = T.Compose([T.ToImage(), T.ToDtype(torch.float32, scale=True),
@@ -156,18 +156,29 @@ def held_out_folds(groups: pd.Series, k: int):
     return [(np.flatnonzero(fold != i), np.flatnonzero(fold == i)) for i in range(k)]
 
 
-def tide_clock(tr: pd.DataFrame, te: pd.DataFrame):
-    """Guess from the clock alone: what the training cameras showed within 20 minutes of each test frame."""
-    tr = tr.sort_values("time_utc")
-    t = tr["time_utc"].to_numpy()
-    depth = tr["depth_cm"].to_numpy()
-    p, d = [], []
-    for when in te["time_utc"].to_numpy():
-        lo, hi = np.searchsorted(t, [when - CLOCK_WINDOW, when + CLOCK_WINDOW])
-        near = depth[lo:hi] if hi > lo else depth
-        p.append(float((near >= FLOODED_CM).mean()))
-        d.append(float(near.mean()))
-    return np.array(p), np.array(d)
+def tide_clock(tr: pd.DataFrame, te: pd.DataFrame, by_day: bool):
+    """Guess from the clock alone, never the image.
+
+    Camera split: what the other cameras showed within 20 minutes of the test frame.
+    Day split: what the same camera showed at that time of day on the other days.
+    """
+    def minutes(df):
+        t = df["time_utc"]
+        return (t.dt.hour * 60 + t.dt.minute).to_numpy() if by_day else t.to_numpy().astype("datetime64[m]").astype(np.int64)
+
+    when = minutes(te)
+    station = te["station"].to_numpy()
+    p, d = np.zeros(len(te)), np.zeros(len(te))
+    for s in np.unique(station) if by_day else [None]:
+        pool = tr[tr["station"] == s] if by_day else tr
+        pool = pool if len(pool) else tr
+        order = np.argsort(minutes(pool), kind="stable")
+        t, depth = minutes(pool)[order], pool["depth_cm"].to_numpy()[order]
+        for i in np.flatnonzero(station == s) if by_day else range(len(te)):
+            lo, hi = np.searchsorted(t, [when[i] - CLOCK_MINUTES, when[i] + CLOCK_MINUTES + 1])
+            near = depth[lo:hi] if hi > lo else depth
+            p[i], d[i] = (near >= FLOODED_CM).mean(), near.mean()
+    return p, d
 
 
 def score(depth_true, p_flooded, depth_pred) -> dict:
@@ -245,7 +256,7 @@ def main() -> None:
             p[te], d[te] = fit_frozen(emb[tr], cv["depth_cm"].to_numpy()[tr], emb[te])
         else:
             p[te], d[te] = predict(fit_finetune(cv.iloc[tr], args.data, args.epochs), cv.iloc[te], args.data)
-        pc[te], dc[te] = tide_clock(cv.iloc[tr], cv.iloc[te])
+        pc[te], dc[te] = tide_clock(cv.iloc[tr], cv.iloc[te], by_day=args.split == "day")
 
     truth = cv["depth_cm"].to_numpy()
     metrics = {
