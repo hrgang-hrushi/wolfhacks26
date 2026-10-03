@@ -118,8 +118,9 @@ def assemble(manifest, triage, damage, repeat_key=None, repeat_damage=None, grad
     return out[GRADE_COLS]
 
 
-def validate_grades(grades, cameras, base):
-    """Raise on anything a check could silently miscount."""
+def validate_grades(grades, cameras, base, files=True):
+    """Raise on anything a check could silently miscount. files=False skips the look for each still on
+    disk, for a machine that has the grades but not the images."""
     if list(grades.columns) != GRADE_COLS:
         raise ValueError(f"grades columns must be {GRADE_COLS}, got {list(grades.columns)}")
     g = grades.assign(damage=grades.damage.fillna(""))
@@ -131,7 +132,7 @@ def validate_grades(grades, cameras, base):
             | g.duplicated(["camera_id", "file", "pass"], keep=False)]
     if len(bad):
         raise ValueError(f"{len(bad)} bad grade rows, first: {bad.iloc[0].to_dict()}")
-    gone = [f for f in g.file.unique() if not (Path(base) / f).exists()]
+    gone = [f for f in g.file.unique() if not (Path(base) / f).exists()] if files else []
     if gone:
         raise ValueError(f"{len(gone)} graded stills are not on disk, first: {gone[0]}")
     return True

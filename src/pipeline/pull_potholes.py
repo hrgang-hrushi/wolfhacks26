@@ -2,7 +2,9 @@
 
 Usage:  uv run python -m src.pipeline.pull_potholes
 Writes: data/raw/pothole_reports.parquet     one row per report: source, report_id, request_type,
-                                             received_date (UTC), point geometry (EPSG:4326)
+                                             received_date (the server's timestamp read as UTC; Charlotte's
+                                             look like local time, so they can be up to five hours off),
+                                             point geometry (EPSG:4326)
         data/raw/city_limits.parquet         one polygon per city (US Census incorporated places)
         data/raw/pothole_reports.meta.json   written last: pull time, counts kept and dropped, and
                                              the sha256 of the two files above
@@ -78,7 +80,7 @@ def clean(rows, source, now):
         if r.get(cfg["date"]) is None:
             drop["undated"] += 1
             continue
-        when = pd.Timestamp(r[cfg["date"]], unit="ms")  # the servers send epoch milliseconds, UTC
+        when = pd.Timestamp(r[cfg["date"]], unit="ms")  # epoch milliseconds, read as UTC
         if when > now:
             drop["future"] += 1
             continue

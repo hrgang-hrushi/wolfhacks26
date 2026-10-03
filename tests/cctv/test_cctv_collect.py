@@ -209,3 +209,19 @@ def test_K18_interrupted_round_still_logs_what_it_saved(fake, tmp_path, clock):
     log = pd.read_parquet(tmp_path / "stills.parquet")
     assert log.camera_id.tolist() == [1, 2] and log.status.tolist() == ["ok", "ok"]
     assert jpgs(tmp_path) == sorted(log.file)
+
+
+def test_K19_still_saved_by_a_round_whose_log_failed_is_adopted(fake, tmp_path, clock, monkeypatch):
+    each = lambda u, p: fake.image_resp(fake.jpeg(int(u.split("chan-")[1].split("_")[0])))
+
+    def no_log(path, write):
+        raise OSError("Operation timed out")
+    monkeypatch.setattr(cctv, "write_atomic", no_log)
+    with pytest.raises(OSError):
+        run(fake, fake.cameras(3), tmp_path, each, clock, round_id="r1")
+    monkeypatch.undo()
+    assert len(jpgs(tmp_path)) == 3 and not (tmp_path / "stills.parquet").exists()     # stills on disk, no log
+    new, _ = run(fake, fake.cameras(3), tmp_path, each, clock, round_id="r2")
+    assert new.status.tolist() == ["ok"] * 3 and jpgs(tmp_path) == sorted(new.file)     # the same bytes: adopted, not rewritten
+    new, _ = run(fake, fake.cameras(3), tmp_path, each, clock, round_id="r3")
+    assert new.status.tolist() == ["duplicate"] * 3 and len(jpgs(tmp_path)) == 3

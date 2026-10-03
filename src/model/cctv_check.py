@@ -36,7 +36,7 @@ def load(cctv=CCTV, p=P):
     cctv, p = Path(cctv), Path(p)
     grades = pd.read_csv(cctv / "grades.csv", keep_default_na=False)
     cams = pd.read_parquet(cctv / "cameras.parquet", columns=["camera_id", "seg_id"])
-    validate_grades(grades, cams, cctv)
+    validate_grades(grades, cams, cctv, files=False)      # the stills themselves are not needed here
     seg = pd.read_parquet(p / "segments_targets.parquet", columns=["seg_id", "pv_RTG_NBR", "pv_NC_SYSTEM_CODE"]).merge(
         pd.read_parquet(p / "predictions.parquet", columns=["seg_id"] + PRED_COLS), on="seg_id", validate="one_to_one")
     seg = add_scores(seg)

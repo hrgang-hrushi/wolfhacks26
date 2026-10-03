@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from sklearn.metrics import average_precision_score
+
 from src.model import common
 from src.model import pothole_head as ph
 
@@ -103,6 +105,11 @@ def test_H6_one_class_fold_is_skipped_and_few_positives_are_flagged(fake, table,
     res, pred = ph.run(p)
     assert "fold 0 skipped: one class in the training rows" in capsys.readouterr().out
     assert res["status"] == "ok" and res["too_few"] is True and res["raleigh_transfer"]["n_pos"] <= 5
+    gap = res["charlotte_heldout"]["head_minus_traffic"]            # the held-out rows are one class: no gap, and no crash
+    assert gap == {"gap": None, "range": None, "n_valid_draws": 0} and res["distinguishable_from_traffic"] is None
+    assert "could not be computed (no range)" in ph.render(res)
+    ph.main(p)
+    assert json.loads((p / "results" / "pothole_head.json").read_text())["status"] == "ok"
     train = ph.labelled(ph.load_table(p), "charlotte")
     skipped = (train & (d.fold == 0)).values
     assert skipped.any() and pred.pred_pothole[skipped].notna().all()       # they still get the full model's value
@@ -222,5 +229,10 @@ def test_H16_gap_to_the_traffic_only_model_comes_with_a_range(fake, table, tmp_p
     assert abs(g["gap"]) < 0.05 and g["range"][0] < 0 < g["range"][1]
     assert ph.gap_range(d, y, a, a, mask, n=50) == {"gap": 0.0, "range": [0.0, 0.0], "n_valid_draws": 50}
     assert ph.gap_range(d, y, a, a, mask & False) == {"gap": None, "range": None, "n_valid_draws": 0}
-    w = (d.split_block[mask] == d.split_block[mask].iloc[0]).values      # whole blocks: weights are constant inside a block
-    assert w.any() and not w.all()
+    # whole blocks are resampled: one draw equals weighting every row by how often its block was drawn
+    ok = mask.values
+    block, names = pd.factorize(d.split_block[mask])
+    w = np.bincount(np.random.default_rng(0).integers(0, len(names), len(names)), minlength=len(names))[block]
+    want = (average_precision_score(y[ok], a[ok], sample_weight=w) - average_precision_score(y[ok], b[ok], sample_weight=w))
+    assert ph.gap_range(d, y, a, b, mask, n=1)["range"] == pytest.approx([want, want])
+    assert len(names) > 5 and len(set(w)) > 1

@@ -168,6 +168,7 @@ def collect_round(cams, out_dir, round_id, *, session=None, pacer=None, now=None
 
     log = read_log(out_dir)
     last = log[log.status == "ok"].drop_duplicates("camera_id", keep="last").set_index("camera_id").sha1.to_dict()
+    logged = set(log.file.dropna())
     todo = cams[(cams.image_status == "Recent") & cams.image_url.fillna("").str.startswith("http")].copy()
     todo["host"] = todo.image_url.map(lambda u: urlparse(u).netloc)
     todo = todo.iloc[np.argsort(todo.groupby("host").cumcount().values, kind="stable")]  # take turns between servers
@@ -204,9 +205,9 @@ def collect_round(cams, out_dir, round_id, *, session=None, pacer=None, now=None
                     except OSError:
                         row["status"] = "save_error"
                     else:
-                        if wrote:
+                        if wrote or file not in logged:  # on disk but in no log row: a round whose log write failed
                             row.update(status="ok", dark=bool(luma < DARK_LUMA), file=file)
-                        else:  # these bytes are already on disk from an earlier round: a repeat, not ours to delete
+                        else:  # an earlier round saved and logged these bytes: a repeat, not ours to delete
                             row["status"] = "duplicate"
             rows.append(row)
             failed += row["status"] in ("http_error", "not_image", "save_error")
@@ -232,7 +233,7 @@ def _log_round(out_dir, log, rows):
     image = new.status.isin(["ok", "duplicate"])
     shared = new[image].groupby("sha1").camera_id.nunique()
     card = image & new.sha1.isin(shared[shared >= PLACEHOLDER_CAMERAS].index)
-    for f in new.loc[card & new.status.eq("ok"), "file"]:  # an "ok" row is always a file this round wrote
+    for f in new.loc[card & new.status.eq("ok"), "file"]:  # an "ok" row is a file no earlier log row points at
         (Path(out_dir) / f).unlink(missing_ok=True)
     new.loc[card, ["status", "file"]] = ["placeholder", None]
     full = new if log.empty else pd.concat([log, new], ignore_index=True)

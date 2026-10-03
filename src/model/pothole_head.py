@@ -22,7 +22,7 @@ from sklearn.metrics import average_precision_score
 
 from src.model.common import (PV, SEED, TR, fit_all_predict, merge_one_to_one, oof, precision_at_k, prep, score,
                               terrain_columns, write_atomic)
-from src.model.pothole_check import N_DRAWS, commit, fingerprint, write_results
+from src.model.pothole_check import MIN_VALID_DRAWS, N_DRAWS, commit, fingerprint, write_results
 
 P = Path("data/processed")
 TRAIN_CITY, TEST_CITY = "charlotte", "raleigh"
@@ -83,13 +83,15 @@ def gap_range(d, y, a, b, mask, n=None, seed=SEED):
     if len(yy) == 0 or len(set(yy)) < 2:
         return {"gap": None, "range": None, "n_valid_draws": 0}
     block, names = pd.factorize(d.split_block[ok])
+    n = GAP_DRAWS if n is None else n
     rng, gaps = np.random.default_rng(seed), []
-    for _ in range(GAP_DRAWS if n is None else n):
+    for _ in range(n):
         w = np.bincount(rng.integers(0, len(names), len(names)), minlength=len(names))[block]
         if (w * yy).sum() == 0 or (w * (1 - yy)).sum() == 0:
             continue
         gaps.append(average_precision_score(yy, aa, sample_weight=w) - average_precision_score(yy, bb, sample_weight=w))
-    rng95 = [float(np.percentile(gaps, 2.5)), float(np.percentile(gaps, 97.5))] if gaps else None
+    enough = len(gaps) >= n * MIN_VALID_DRAWS / N_DRAWS      # the same share of valid draws the report check asks for
+    rng95 = [float(np.percentile(gaps, 2.5)), float(np.percentile(gaps, 97.5))] if enough else None
     return {"gap": float(average_precision_score(yy, aa) - average_precision_score(yy, bb)), "range": rng95,
             "n_valid_draws": len(gaps)}
 
@@ -130,7 +132,8 @@ def run(p=P, seed=SEED):
     gap = gap_range(d, y, held["head"], held["traffic_only"], train, seed=seed)
     res["charlotte_heldout"]["head_minus_traffic"] = gap
     res.update(status="ok", reason=None, beats_traffic=None if h is None or t is None else bool(h > t),
-               distinguishable_from_traffic=None if gap["range"] is None else bool(gap["range"][0] > 0),
+               distinguishable_from_traffic=(None if gap["range"] is None  # the range excludes zero, on either side
+                                             else bool(gap["range"][0] > 0 or gap["range"][1] < 0)),
                too_few=bool(res["raleigh_transfer"]["n_pos"] < MIN_POS))
 
     # out-of-fold value where one exists, otherwise the Charlotte-fit model's value
@@ -154,8 +157,9 @@ def render(res):
         out.append(f"| {name} | base rate | {e['n']:,} | {e['base_rate']:.3f} | "
                    f"{'' if e['base_rate_common'] is None else format(e['base_rate_common'], '.3f')} | |")
     g = res["charlotte_heldout"]["head_minus_traffic"]
+    gap = "could not be computed" if g["gap"] is None else f"{g['gap']:+.3f}"
     rng = "no range" if g["range"] is None else f"95% range {g['range'][0]:+.3f} to {g['range'][1]:+.3f}"
-    out.append(f"\nHead minus traffic-only on held-out Charlotte: {g['gap']:+.3f} ({rng}); "
+    out.append(f"\nHead minus traffic-only on held-out Charlotte: {gap} ({rng}); "
                f"distinguishable from the traffic-only model: {res['distinguishable_from_traffic']}. "
                f"Raleigh positives: {res['raleigh_transfer']['n_pos']}"
                f"{' (too few to trust)' if res['too_few'] else ''}.\n")
@@ -168,9 +172,10 @@ def main(p=P):
     res.update(generated=pd.Timestamp.now("UTC").isoformat(), commit=commit(),
                inputs={f: fingerprint(p / f) for f in ("pothole_labels.parquet", "predictions.parquet",
                                                        "segments_targets.parquet")})
+    text = render(res)                                   # before any write, so a report that cannot be built changes nothing
     write_atomic(p / "pothole_predictions.parquet", pred.to_parquet)
-    write_results(p / "results" / "pothole_head.json", res, render(res))
-    print(render(res))
+    write_results(p / "results" / "pothole_head.json", res, text)
+    print(text)
     print("saved", p / "pothole_predictions.parquet", "and", p / "results" / "pothole_head.json")
 
 
