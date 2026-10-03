@@ -3,8 +3,9 @@ data/raw/*
 !data/raw/.gitkeep
 data/chips/*
 !data/chips/.gitkeep
-# statewide rasters are >100 MB each, over GitHub's file limit
+# large and regenerable: statewide rasters (>100 MB each) and the 79 MB joined segments table
 data/processed/dem/
+data/processed/segments.parquet
 
 # python
 .venv/

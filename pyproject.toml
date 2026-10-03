@@ -17,6 +17,7 @@ dependencies = [
     "planetary-computer",
     "requests",
     "tqdm",
+    "numpy<2.4",  # pysheds 0.5 calls np.in1d, removed in numpy 2.4
 ]
 
 [build-system]
