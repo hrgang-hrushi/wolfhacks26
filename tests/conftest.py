@@ -18,7 +18,7 @@ def make_table(n_blocks=40, per_block=50, seed=0):
     by = 40 + (np.arange(n) // per_block) // 8
     lanes = rng.choice([2, 4, 6], n)
     aadt = rng.lognormal(8, 1, n)
-    rehab = rng.integers(1995, 2024, n).astype(float)
+    rehab = rng.integers(1995, 2026, n).astype(float)   # some resurfaced after their survey
     srvy = rng.choice([2023, 2024, 2025], n)
     age = srvy - rehab
     true_rate = 0.5 + 0.3 * lanes + 0.4 * np.log10(aadt) + rng.normal(0, 0.3, n)
@@ -70,11 +70,16 @@ def table():
     return make_table()
 
 
-def write_fixture_dir(path, d=None):
-    """Write segments.parquet and segments_geom.parquet the way src.pipeline.features does."""
+def write_fixture_dir(path, d=None, terrain=True):
+    """Write segments.parquet and segments_geom.parquet the way src.pipeline.features does,
+    plus a terrain.parquet like src.pipeline.terrain_simple's unless terrain=False."""
     d = make_table() if d is None else d
     path.mkdir(parents=True, exist_ok=True)
     d.to_parquet(path / "segments.parquet")
+    if terrain:
+        rng = np.random.default_rng(1)
+        pd.DataFrame({"seg_id": d.seg_id, "tn_elev": rng.uniform(0, 900, len(d)),
+                      "tn_slope": rng.uniform(0, 0.3, len(d))}).to_parquet(path / "terrain.parquet")
     lon, lat = -84 + d.mid_x / 1e6, 34 + d.mid_y / 1e6
     geom = [LineString([(x, y), (x + 0.001, y + 0.001)]) for x, y in zip(lon, lat)]
     gpd.GeoDataFrame({"seg_id": d.seg_id}, geometry=geom, crs="EPSG:4326").to_parquet(path / "segments_geom.parquet")

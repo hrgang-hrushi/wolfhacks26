@@ -16,7 +16,7 @@ Cracking target is moderate plus high alligator cracking above 10% (prevalence 1
 
 **Imagery subset (8,534 segments with chips and a rate label; compare only within this block)**
 
-Measured on 2026-10-03 before the label fix, when age was counted to 2025 and cracking meant any moderate or high cracking (41% prevalence). These rows are not comparable with the table above. Rerunning them needs `data/processed/vit_frozen.parquet`, which is not in the repo.
+Measured on 2026-10-03 before the label fix, when age was counted to 2025 and cracking meant any moderate or high cracking (41% prevalence overall, 34% on this subset). These rows are not comparable with the table above. Rerunning them needs `data/processed/vit_frozen.parquet`, which is not in the repo; the original rows are in `docs/ablation_final.csv` at commit `5c07f7c`.
 
 | Model | Rate MAE | Rate Spearman | Cracking AUC-PR | Flood P@50 / AUC-PR |
 |---|---|---|---|---|
@@ -36,7 +36,7 @@ uv run python -m src.model.final_ablation       # ablation_final.csv, prediction
 uv run pytest -q                                # real-data tests are skipped where the data is absent
 ```
 
-Targets, folds, feature lists and the out-of-fold loop live in `src/model/common.py`; the scripts import them. Model inputs are checked against a banned list (the rating and everything else measured in the same survey), so a leaking column cannot be added by accident.
+Targets, folds, feature lists and the out-of-fold loop live in `src/model/common.py`; the scripts import them. Model inputs are checked against a banned list (the rating, the other condition measurements and distress codes from the same survey, the recommended treatment, and anything that is a label or a prediction), so a leaking column cannot be added by accident.
 
 ## Limitations
 
@@ -46,4 +46,5 @@ Targets, folds, feature lists and the out-of-fold loop live in `src/model/common
 - **`train_vit.py` is not seeded.** Flips draw from the global NumPy generator inside DataLoader workers and no seed is set, so a fine-tuning run cannot be reproduced exactly. Its out-of-fold scores (`im_vit_*`) are banned as tabular inputs until they are generated per outer fold.
 - **Map predictions are held-out where a label exists.** In `handoff/predictions_geo.parquet`, a segment the model was trained on carries its out-of-fold prediction; `rate_heldout`, `crack_heldout` and `flood_heldout` say which values those are. Every other segment gets the model fitted on all labelled segments. Flood scores are meaningful only where `in_helene_zone == 1`.
 - **Rate predictions without a resurfacing year are extrapolations.** 22,948 segments have no `YEAR_LAST_REHAB`, so they have no age and no rate label; the model never trained on a segment like them.
+- **No years-to-Poor where the rating is out of date.** 1,640 segments were resurfaced after their survey, so their rating describes the old surface. `pred_years_to_poor` is blank for them and for the 3 segments with a rating of 0.
 - **Segment geometry in the map file is simplified to 3 m** to keep the tracked file near 19 MB.

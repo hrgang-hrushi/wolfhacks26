@@ -39,6 +39,11 @@ def test_X5_terrain_merge_keeps_both_copies_of_a_clashing_column(table, tmp_path
     assert (out.tn_elev == 9.0).all() and (out.tn_elev_d8 == 1.0).all()
     assert out.seg_id.tolist() == d.seg_id.tolist()
     assert attach_terrain(d, tmp_path / "nowhere") is d   # no terrain file: table unchanged
+    with pytest.raises(ValueError, match="tn_elev_d8"):   # never rename onto a column that exists
+        attach_terrain(d.assign(tn_elev_d8=5.0), tmp_path)
+    pd.DataFrame({"seg_id": d.seg_id, "mid_x": 0.0}).to_parquet(tmp_path / "terrain.parquet")
+    with pytest.raises(ValueError, match="mid_x"):        # a non-terrain clash is an error, not a rename
+        attach_terrain(d, tmp_path)
 
 
 def test_X6_merge_rejects_null_or_duplicate_ids_and_keeps_order(table):
@@ -53,3 +58,7 @@ def test_X6_merge_rejects_null_or_duplicate_ids_and_keeps_order(table):
         merge_one_to_one(pd.concat([table, table.head(1)]), other, "other")
     with pytest.raises(ValueError, match="other"):
         merge_one_to_one(table, other.assign(seg_id=other.seg_id.where(other.v > 0)), "other")
+    with pytest.raises(ValueError, match="table"):
+        merge_one_to_one(table.assign(seg_id=table.seg_id.where(table.index > 0)), other, "other")
+    with pytest.raises(ValueError, match="pv_SURFACE"):   # a shared column would be renamed _x/_y and lost
+        merge_one_to_one(table, other.assign(pv_SURFACE="x"), "other")

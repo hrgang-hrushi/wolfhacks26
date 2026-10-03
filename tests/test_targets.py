@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
+import pytest
 
-from src.model.common import add_targets
+from src.model.common import RATE_FLOOR, YEARS_CAP, add_targets, years_to_poor
 
 
 def rows(**cols):
@@ -44,8 +45,18 @@ def test_T6_years_to_poor_floor_cap_and_already_poor():
     d = add_targets(rows(pv_RTG_NBR=[85.0, 59.0, 100.0, 60.5]))
     assert round(d.y_years_to_poor[0], 3) == 13.333   # (85 - 60) / 1.875
     assert d.y_years_to_poor[1] == 0                  # already below 60
-    assert d.y_years_to_poor[2] == 50                 # rate 0 uses the 0.1 floor (400 years), capped at 50
+    assert d.y_years_to_poor[2] == 50                 # rate 0: capped at 50
     assert d.y_years_to_poor[3] == 0.5 / (39.5 / 8)
+
+
+def test_T6b_rate_floor_and_cap_in_years_to_poor():
+    assert (RATE_FLOOR, YEARS_CAP) == (0.1, 50)
+    got = years_to_poor(pd.Series([62.0, 62.0, 100.0, 59.9, np.nan]), pd.Series([0.01, 0.5, 0.2, 5.0, 1.0]))
+    assert got[0] == pytest.approx(20)     # 2 points at the 0.1 floor, not 200 years at 0.01
+    assert got[1] == pytest.approx(4)      # above the floor the rate is used as is
+    assert got[2] == 50                    # 40 / 0.2 = 200, capped
+    assert got[3] == 0                     # already below 60
+    assert np.isnan(got[4])                # no rating, no forecast
 
 
 def test_T7_cracking_is_strictly_above_10_percent():

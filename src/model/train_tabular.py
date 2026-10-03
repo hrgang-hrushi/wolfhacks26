@@ -48,6 +48,7 @@ def main(p: Path = Path("data/processed")):
             n_rate=int(m1.sum()),
             rate_mae_naive=naive_mae(d, d.y_rate, m1),
             crack_prevalence=d.y_crack[m2].mean(),
+            n_scored=s1["n_scored"],
         ))
         print(rows[-1], flush=True)
 

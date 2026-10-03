@@ -55,6 +55,11 @@ check_features(PV + TR)
 
 
 # ---- targets ----
+def years_to_poor(rtg, rate):
+    """Years until the rating reaches POOR at this rate: 0 if already below, rate floored, result capped."""
+    return np.where(rtg < POOR, 0, ((rtg - POOR) / rate.clip(lower=RATE_FLOOR)).clip(upper=YEARS_CAP)).astype(float)
+
+
 def add_targets(d):
     """Add pv_age_at_survey, y_rate, y_years_to_poor, y_crack. Rows are never dropped or reordered."""
     d = d.copy()
@@ -64,8 +69,7 @@ def add_targets(d):
     d["pv_age_at_survey"] = age.where(age >= 0)
     ok = (age >= MIN_AGE) & (age <= MAX_AGE) & rtg.notna()
     d["y_rate"] = ((100 - rtg) / age.where(ok)).clip(lower=0)
-    rate = d.y_rate.clip(lower=RATE_FLOOR)
-    d["y_years_to_poor"] = np.where(rtg < POOR, 0, ((rtg - POOR) / rate).clip(upper=YEARS_CAP)).astype(float)
+    d["y_years_to_poor"] = years_to_poor(rtg, d.y_rate)
     d.loc[~ok, "y_years_to_poor"] = np.nan
     alg = d.pv_asph_ALGTR_MDRT_PCT.fillna(0) + d.pv_asph_ALGTR_HGH_PCT.fillna(0)
     d["y_crack"] = (alg > CRACK_PCT).astype(float).where(d.pv_asph_ALGTR_HGH_PCT.notna())
@@ -107,6 +111,9 @@ def merge_one_to_one(d, other, name):
     for side, f in (("table", d), (name, other)):
         if f.seg_id.isna().any() or f.seg_id.duplicated().any():
             raise ValueError(f"{side}: seg_id has nulls or duplicates")
+    clash = sorted(set(d.columns) & set(other.columns) - {"seg_id"})
+    if clash:  # pandas would rename both to _x/_y and the feature lists would silently lose them
+        raise ValueError(f"{name}: columns already in the table: {clash}")
     out = d.merge(other, on="seg_id", how="left", validate="one_to_one")
     assert len(out) == len(d) and (out.seg_id.values == d.seg_id.values).all()
     out.index = d.index
@@ -119,7 +126,10 @@ def attach_terrain(d, p):
     if not f.exists():
         return d
     t = pd.read_parquet(f)
-    clash = [c for c in t.columns if c != "seg_id" and c in d.columns]
+    clash = [c for c in t.columns if c.startswith("tn_") and c in d.columns]
+    taken = [f"{c}_d8" for c in clash if f"{c}_d8" in d.columns]
+    if taken:
+        raise ValueError(f"terrain.parquet: cannot rename onto existing columns {taken}")
     return merge_one_to_one(d.rename(columns={c: f"{c}_d8" for c in clash}), t, "terrain.parquet")
 
 
@@ -179,7 +189,7 @@ def fit_all_predict(X, y, kind, mask, seed=SEED):
 def heldout_then_model(oof_pred, full_pred):
     """Out-of-fold value where one exists, otherwise the full-model value. Returns (pred, is_heldout)."""
     is_heldout = oof_pred.notna()
-    return oof_pred.where(is_heldout, pd.Series(full_pred, index=oof_pred.index)), is_heldout
+    return oof_pred.where(is_heldout, pd.Series(np.asarray(full_pred), index=oof_pred.index)), is_heldout
 
 
 # ---- scoring ----

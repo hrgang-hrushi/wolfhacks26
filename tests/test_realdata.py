@@ -49,3 +49,33 @@ def test_R4_baseline_features_and_raw_target_inputs_exist(d):
     after_targets = raw | {"pv_age_at_survey"}
     assert [c for c in PV + TR if c not in after_targets] == []
     assert "pv_age_at_survey" in d.columns
+
+
+OUT = Path("data/processed")
+
+
+def test_R5_map_predictions_are_out_of_fold_exactly_where_a_label_exists():
+    """AC5 on the real outputs, when they have been generated on this machine."""
+    if not (OUT / "predictions.parquet").exists() or not (OUT / "segments_targets.parquet").exists():
+        pytest.skip("predictions.parquet / segments_targets.parquet not generated here")
+    t = pd.read_parquet(OUT / "segments_targets.parquet", columns=["seg_id", "y_rate", "y_crack", "in_helene_zone",
+                                                                    "y_helene_failed"])
+    out = pd.read_parquet(OUT / "predictions.parquet")
+    assert out.seg_id.tolist() == t.seg_id.tolist()
+    assert out.rate_heldout.equals(t.y_rate.notna())
+    assert out.crack_heldout.equals(t.y_crack.notna())
+    assert out.flood_heldout.equals((t.in_helene_zone == 1) & t.y_helene_failed.notna())
+    assert out[["pred_rate", "pred_crack", "pred_flood"]].notna().all().all()
+
+
+def test_R6_every_ablation_row_beats_the_do_nothing_reference():
+    """AC3 on the real ablation table, when it has been generated on this machine."""
+    if not (OUT / "ablation.csv").exists():
+        pytest.skip("ablation.csv not generated here")
+    a = pd.read_csv(OUT / "ablation.csv")
+    if "rate_mae_naive" not in a.columns:
+        pytest.skip("ablation.csv predates the do-nothing reference")
+    assert len(a) >= 1 and a.model[0] == "baseline: pavement + traffic"
+    assert (a.rate_mae < a.rate_mae_naive).all()
+    assert (a.crack_aucpr > a.crack_prevalence).all()
+    assert (a.rate_spearman < 0.95).all()

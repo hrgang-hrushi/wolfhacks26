@@ -44,6 +44,8 @@ def test_F5_split_file_round_trips(table, tmp_path):
     assert not (tmp_path / "split.parquet.tmp").exists()
 
 
-def test_F6_no_script_rebuilds_folds_with_groupkfold():
+def test_F6_no_leftover_groupkfold_2025_age_or_any_cracking_rule():
     for f in Path("src/model").glob("*.py"):
-        assert "GroupKFold" not in f.read_text(), f
+        text = f.read_text()
+        for leftover in ("GroupKFold", "pv_PVMNT_AGE", "alg > 0"):
+            assert leftover not in text, (f, leftover)

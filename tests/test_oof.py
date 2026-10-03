@@ -69,12 +69,12 @@ def test_O5_rating_plus_age_reproduces_the_target_and_prep_refuses_them(d):
 
 
 def test_O6_naive_mae_uses_the_other_folds_median_only():
-    t = pd.DataFrame({"fold": [0, 0, 1, 1, 2, 3, 4]})
-    y = pd.Series([10.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    t = pd.DataFrame({"fold": [0, 0, 0, 1, 2, 3, 4]})
+    y = pd.Series([10.0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.0])
     mask = pd.Series(True, index=t.index)
-    # fold 0 is predicted with the median of the rest (0): error 10 each. The other folds are
-    # predicted with a median that includes the two 10s, which is still 0: error 0.
-    assert naive_mae(t, y, mask) == pytest.approx(20 / 7)
+    # fold 0 is predicted with the median of the rest (0): error 10 x 3. Each other row is predicted
+    # with the median of [10, 10, 10, 0, 0, 0] = 5: error 5 x 4. The global median (0) would give 30/7.
+    assert naive_mae(t, y, mask) == pytest.approx(50 / 7)
 
 
 def test_O7_tripwire():
