@@ -8,7 +8,6 @@ import warnings
 import zlib
 from pathlib import Path
 
-import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
@@ -149,6 +148,10 @@ def prep(d, cols):
 
 
 def _fit(X, y, kind, seed):
+    # imported here, not at the top: on macOS LightGBM and PyTorch each load their own OpenMP runtime
+    # and the process crashes if LightGBM is loaded before PyTorch runs. train_vit.py imports this
+    # module for the folds and must not pull LightGBM in.
+    import lightgbm as lgb
     prm = dict(n_estimators=N_ESTIMATORS, learning_rate=0.05, num_leaves=63, min_child_samples=40,
                subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1, random_state=seed)
     m = lgb.LGBMRegressor(objective="l1", **prm) if kind == "l1" else lgb.LGBMClassifier(**prm)
