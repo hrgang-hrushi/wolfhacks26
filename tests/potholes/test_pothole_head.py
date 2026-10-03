@@ -236,3 +236,16 @@ def test_H16_gap_to_the_traffic_only_model_comes_with_a_range(fake, table, tmp_p
     want = (average_precision_score(y[ok], a[ok], sample_weight=w) - average_precision_score(y[ok], b[ok], sample_weight=w))
     assert ph.gap_range(d, y, a, b, mask, n=1)["range"] == pytest.approx([want, want])
     assert len(names) > 5 and len(set(w)) > 1
+
+
+def test_H17_no_usable_raleigh_rows_still_gives_a_report(fake, table, tmp_path):
+    p = fake.processed_dir(tmp_path / "p", table)
+    edit_labels(p, lambda lab: lab.__setitem__("y_pothole_any", lab.y_pothole_any.where(lab.pothole_city != "raleigh")))
+    ph.main(p)                                           # the report is built and written, with blanks where nothing can be scored
+    out = json.loads((p / "results" / "pothole_head.json").read_text())
+    e = out["raleigh_transfer"]
+    assert out["status"] == "ok" and (e["n"], e["n_pos"], e["base_rate"], e["base_rate_common"]) == (0, 0, None, None)
+    assert all(e[m]["aucpr"] is None and e[m]["n_scored"] == 0 for m in ph.METHODS) and out["too_few"] is True
+    assert out["charlotte_heldout"]["head"]["aucpr"] is not None
+    text = (p / "results" / "pothole_head.md").read_text()
+    assert "| Raleigh, never seen | base rate | 0 |  |  | |" in text and "too few to trust" in text

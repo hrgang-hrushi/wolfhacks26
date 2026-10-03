@@ -206,9 +206,12 @@ def test_K18_interrupted_round_still_logs_what_it_saved(fake, tmp_path, clock):
         return fake.image_resp(fake.jpeg(int(u.split("chan-")[1].split("_")[0])))
     with pytest.raises(KeyboardInterrupt):
         run(fake, fake.cameras(5), tmp_path, handler, clock)
-    log = pd.read_parquet(tmp_path / "stills.parquet")
-    assert log.camera_id.tolist() == [1, 2] and log.status.tolist() == ["ok", "ok"]
-    assert jpgs(tmp_path) == sorted(log.file)
+    log = pd.read_parquet(tmp_path / "stills.parquet")           # the request that was cut short is an attempt too
+    assert log.camera_id.tolist() == [1, 2, 3] and log.status.tolist() == ["ok", "ok", "interrupted"]
+    assert jpgs(tmp_path) == sorted(log.file.dropna()) and log.fetched.notna().all()
+    new, _ = run(fake, fake.cameras(5), tmp_path, lambda u, p: fake.image_resp(fake.jpeg(int(u.split("chan-")[1].split("_")[0]))),
+                 clock, round_id="r2")                           # the next round carries on normally
+    assert new.status.tolist() == ["duplicate", "duplicate", "ok", "ok", "ok"]
 
 
 def test_K19_still_saved_by_a_round_whose_log_failed_is_adopted(fake, tmp_path, clock, monkeypatch):

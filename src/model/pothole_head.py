@@ -154,8 +154,8 @@ def render(res):
             r = e[m]
             cells = ["" if v is None else f"{v:.3f}" for v in (r["aucpr"], r["aucpr_common"], r["p_at_50_common"])]
             out.append(f"| {name} | {m} | {r['n_scored']:,} | {cells[0]} | {cells[1]} | {cells[2]} |")
-        out.append(f"| {name} | base rate | {e['n']:,} | {e['base_rate']:.3f} | "
-                   f"{'' if e['base_rate_common'] is None else format(e['base_rate_common'], '.3f')} | |")
+        base, shared = ("" if v is None else f"{v:.3f}" for v in (e["base_rate"], e["base_rate_common"]))
+        out.append(f"| {name} | base rate | {e['n']:,} | {base} | {shared} | |")   # blank when the city has no usable rows
     g = res["charlotte_heldout"]["head_minus_traffic"]
     gap = "could not be computed" if g["gap"] is None else f"{g['gap']:+.3f}"
     rng = "no range" if g["range"] is None else f"95% range {g['range'][0]:+.3f} to {g['range'][1]:+.3f}"

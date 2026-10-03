@@ -177,39 +177,41 @@ def collect_round(cams, out_dir, round_id, *, session=None, pacer=None, now=None
     try:
         for c in todo.itertuples():
             row = dict.fromkeys(LOG_COLS)
-            row.update(camera_id=c.camera_id, round=round_id, dark=False, no_image_time=False)
-            pacer.wait(c.host)
-            row["fetched"] = now()
+            row.update(camera_id=c.camera_id, round=round_id, dark=False, no_image_time=False, status="interrupted")
             try:
-                r = session.get(c.image_url, headers=UA, timeout=20)
-                body = r.content if r.status_code == 200 else None
-            except requests.RequestException:
-                body = None
-            if body is None:
-                row["status"] = "http_error"
-            else:
-                ok, w, h, luma = check_image(body)
-                when, no_time = image_time(r.headers, row["fetched"])
-                sha1 = hashlib.sha1(body).hexdigest()
-                row.update(bytes=len(body), sha1=sha1, width=w, height=h, mean_luma=luma, image_time=when,
-                           no_image_time=no_time)
-                if not ok:
-                    row["status"] = "not_image"
-                elif (row["fetched"] - when).total_seconds() > STALE_S:
-                    row["status"] = "stale"
-                elif last.get(c.camera_id) == sha1:
-                    row["status"] = "duplicate"
+                pacer.wait(c.host)
+                row["fetched"] = now()
+                try:
+                    r = session.get(c.image_url, headers=UA, timeout=20)
+                    body = r.content if r.status_code == 200 else None
+                except requests.RequestException:
+                    body = None
+                if body is None:
+                    row["status"] = "http_error"
                 else:
-                    try:
-                        file, wrote = _save(out_dir, c.camera_id, when, body, sha1)
-                    except OSError:
-                        row["status"] = "save_error"
+                    ok, w, h, luma = check_image(body)
+                    when, no_time = image_time(r.headers, row["fetched"])
+                    sha1 = hashlib.sha1(body).hexdigest()
+                    row.update(bytes=len(body), sha1=sha1, width=w, height=h, mean_luma=luma, image_time=when,
+                               no_image_time=no_time)
+                    if not ok:
+                        row["status"] = "not_image"
+                    elif (row["fetched"] - when).total_seconds() > STALE_S:
+                        row["status"] = "stale"
+                    elif last.get(c.camera_id) == sha1:
+                        row["status"] = "duplicate"
                     else:
-                        if wrote or file not in logged:  # on disk but in no log row: a round whose log write failed
-                            row.update(status="ok", dark=bool(luma < DARK_LUMA), file=file)
-                        else:  # an earlier round saved and logged these bytes: a repeat, not ours to delete
-                            row["status"] = "duplicate"
-            rows.append(row)
+                        try:
+                            file, wrote = _save(out_dir, c.camera_id, when, body, sha1)
+                        except OSError:
+                            row["status"] = "save_error"
+                        else:
+                            if wrote or file not in logged:  # on disk but in no log row: a round whose log write failed
+                                row.update(status="ok", dark=bool(luma < DARK_LUMA), file=file)
+                            else:  # an earlier round saved and logged these bytes: a repeat, not ours to delete
+                                row["status"] = "duplicate"
+            finally:  # an attempt cut short part way is still an attempt: it stays "interrupted"
+                rows.append(row)
             failed += row["status"] in ("http_error", "not_image", "save_error")
             if len(rows) >= BREAKER_MIN and failed / len(rows) > BREAKER_SHARE:
                 stopped = True
