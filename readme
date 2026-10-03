@@ -1,1 +1,29 @@
 
+
+## Measured results
+
+5-fold spatial block CV on a 5 km grid. Flood is scored only inside `in_helene_zone` (P@50 / AUC-PR).
+Cracking target is moderate-or-high alligator cracking (prevalence 41% of labelled segments, so chance AUC-PR is about 0.41).
+
+**All labelled segments (81,191 with a rate label)**
+
+| Model | Rate MAE | Rate Spearman | Cracking AUC-PR | Flood P@50 / AUC-PR |
+|---|---|---|---|---|
+| LightGBM, pavement + traffic (baseline) | 0.781 | 0.503 | 0.706 | 0.26 / 0.111 |
+| + terrain | 0.765 | 0.533 | 0.731 | 0.36 / 0.206 |
+
+**Imagery subset (8,534 segments with chips and a rate label; compare only within this block)**
+
+| Model | Rate MAE | Rate Spearman | Cracking AUC-PR | Flood P@50 / AUC-PR |
+|---|---|---|---|---|
+| baseline | 0.732 | 0.584 | 0.650 | n/a (14 segments) |
+| + terrain | 0.736 | 0.585 | 0.643 | n/a (14 segments) |
+| + frozen DINOv2 embedding (PCA 16) | 0.746 | 0.587 | 0.663 | n/a (14 segments) |
+
+Not run in the time available: weather features, spatial lags, fine-tuned ViT-S. The frozen embedding showed no reliable lift on the subset.
+
+
+- **AADT coverage is partial.** Only about 48% of segments have a real traffic count. NCDOT survey values of exactly 550 and 5500 look like placeholder defaults and were removed.
+- **Terrain is a proxy.** `tn_hand_proxy` is height above the local minimum within about 500 m, not true HAND or flow accumulation. pysheds failed on this environment (numba error), so slope and relief come from numpy on the 30 m DEM.
+- **Imagery was evaluated on a random sample.** Only about 11.5k chips were cut (stopped early for time). Just 14 chipped segments fall in the Helene zone, so imagery was not tested for flood.
+- **Predictions are in-sample for labelled segments.** The honest accuracy numbers are the cross-validated ones above. Flood scores are meaningful only where `in_helene_zone == 1`.
