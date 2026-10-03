@@ -3,7 +3,7 @@ data/raw/*
 !data/raw/.gitkeep
 data/chips/*
 !data/chips/.gitkeep
-# large and regenerable: statewide rasters (>100 MB each) and the 79 MB joined segments table
+# too big for GitHub: statewide rasters (>100 MB each) and the statewide feature table
 data/processed/dem/
 data/processed/segments.parquet
 

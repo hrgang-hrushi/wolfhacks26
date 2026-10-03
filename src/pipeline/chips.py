@@ -1,11 +1,12 @@
 """Cut one 128x128 4-band NAIP 2022 chip per segment midpoint from Planetary Computer.
 
-    uv run python src/pipeline/chips.py --limit 50   # smoke test on a random 50 segments
-    uv run python src/pipeline/chips.py              # every segment (resumes; skips existing chips)
+    uv run python -m src.pipeline.chips --limit 50   # smoke test on a random 50 segments
+    uv run python -m src.pipeline.chips              # every segment (resumes; skips existing chips)
 
-Each chip is data/chips/{seg_id}.npy: uint8, shape (4, 128, 128), bands R, G, B, NIR at the
-native 0.6 m (about 77 m on a side), centred on the segment midpoint. Chips are read with
-windowed COG range requests; segments are grouped by NAIP tile so each COG is opened once.
+Each chip is data/chips/{seg_id}.npy with ':' in the seg_id written as '_' (ncdot_{ROUTEID}_{BEG_MP}.npy,
+see chip_path): uint8, shape (4, 128, 128), bands R, G, B, NIR at the native 0.6 m (about 77 m on a
+side), centred on the segment midpoint. Chips are read with windowed COG range requests; segments
+are grouped by NAIP tile so each COG is opened once.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from rasterio.windows import Window
 from shapely.geometry import shape
 
 ROOT = Path(__file__).resolve().parents[2]
-SEGMENTS = ROOT / "data" / "processed" / "segments.parquet"
+SEGMENTS = ROOT / "data" / "raw" / "ncdot_joined.parquet"
 CHIPS = ROOT / "data" / "chips"
 INDEX = ROOT / "data" / "raw" / "naip_2022_index.parquet"
 
@@ -44,6 +45,11 @@ NC_BBOX = [-84.35, 33.80, -75.40, 36.62]
 YEAR = 2022
 SIZE = 128
 LOG_EVERY_S = 5.0
+
+
+def chip_path(seg_id: str) -> Path:
+    """Chip file for a segment. ':' is not a legal filename character on Windows."""
+    return CHIPS / f"{seg_id.replace(':', '_')}.npy"
 
 
 def naip_index(refresh: bool = False) -> gpd.GeoDataFrame:
@@ -80,7 +86,7 @@ def plan(segments: Path, limit: int | None, seed: int, overwrite: bool) -> gpd.G
     mid = shapely.line_interpolate_point(seg.geometry.values, 0.5, normalized=True)
     pts = gpd.GeoDataFrame(seg[["seg_id"]], geometry=mid, crs=seg.crs)
     if not overwrite:
-        pts = pts[[not (CHIPS / f"{s}.npy").exists() for s in pts["seg_id"]]]
+        pts = pts[[not chip_path(s).exists() for s in pts["seg_id"]]]
     joined = pts.sjoin(naip_index(), predicate="within", how="left")
     # tiles overlap at their edges; any one covering tile will do
     joined = joined[~joined.index.duplicated()].drop(columns="index_right")
@@ -102,10 +108,11 @@ def cut_tile(href: str, crs: str, chips: list[tuple[str, float, float]]) -> list
                     chip = ds.read(window=win, boundless=True, fill_value=0)
                     if chip.shape != (4, SIZE, SIZE):
                         raise ValueError(f"unexpected chip shape {chip.shape}")
-                    tmp = CHIPS / f"{seg_id}.npy.tmp"
+                    out = chip_path(seg_id)
+                    tmp = out.with_suffix(".npy.tmp")
                     with open(tmp, "wb") as f:
                         np.save(f, chip)
-                    tmp.replace(CHIPS / f"{seg_id}.npy")
+                    tmp.replace(out)
                     results.append((seg_id, None))
                 except Exception as e:  # keep going; one bad window should not sink the tile
                     results.append((seg_id, f"{type(e).__name__}: {e}"))

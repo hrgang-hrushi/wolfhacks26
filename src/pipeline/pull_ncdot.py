@@ -1,13 +1,14 @@
 """Pull NCDOT pavement condition layers statewide and join them.
 
-    uv run python src/pipeline/pull_ncdot.py              # county check, pull both layers, join
-    uv run python src/pipeline/pull_ncdot.py --force      # re-pull even if the parquet exists
-    uv run python src/pipeline/pull_ncdot.py --join-only  # redo the join from cached parquet
+    uv run python -m src.pipeline.pull_ncdot              # county check, pull both layers, join
+    uv run python -m src.pipeline.pull_ncdot --force      # re-pull even if the parquet exists
+    uv run python -m src.pipeline.pull_ncdot --join-only  # redo the join from cached parquet
 
 Outputs
     data/raw/ncdot_master.parquet     NCDOT_PMS_Network_Master_PCS layer 0
     data/raw/ncdot_asphalt.parquet    NCDOT_Asphalt_PCS layer 0
-    data/processed/segments.parquet   master segments + matched asphalt columns (asph_*)
+    data/raw/ncdot_joined.parquet     every master segment + matched asphalt columns (asph_*),
+                                      keyed by seg_id = ncdot:{ROUTEID}:{BEG_MP}
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw"
-PROCESSED = ROOT / "data" / "processed"
 
 BASE = "https://gis11.services.ncdot.gov/arcgis/rest/services"
 LAYERS = {
@@ -144,10 +144,9 @@ def join_layers(master: gpd.GeoDataFrame, asphalt: gpd.GeoDataFrame) -> gpd.GeoD
     seg = seg.merge(
         a.drop(columns="route_key").add_prefix("asph_"), left_on="OBJECTID_a", right_on="asph_OBJECTID", how="left"
     ).drop(columns="OBJECTID_a")
-    mp = lambda s: (s * 1000).round().astype(int).astype(str).str.zfill(6)  # noqa: E731
-    seg.insert(0, "seg_id", seg["ROUTEID"] + "_" + mp(seg["BEG_MP"]) + "_" + mp(seg["END_MP"]))
+    seg.insert(0, "seg_id", "ncdot:" + seg["ROUTEID"] + ":" + seg["BEG_MP"].map("{:.3f}".format))
     if not seg["seg_id"].is_unique:
-        raise RuntimeError("seg_id (ROUTEID_BEG_END) is not unique in the master layer")
+        raise RuntimeError("seg_id (ncdot:ROUTEID:BEG_MP) is not unique in the master layer")
 
     n = len(pairs)
     yr = master["PCS_SRVY_YR"].eq(asphalt["SRVY_YR"].max())
@@ -180,10 +179,9 @@ def main() -> None:
             print(f"{name}: {len(layers[name]):,} rows -> {out.relative_to(ROOT)} in {time.perf_counter() - t0:.0f}s")
 
     seg = join_layers(layers["master"], layers["asphalt"])
-    out = PROCESSED / "segments.parquet"
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out = RAW / "ncdot_joined.parquet"
     seg.to_parquet(out)
-    print(f"segments: {len(seg):,} rows -> {out.relative_to(ROOT)}")
+    print(f"joined: {len(seg):,} rows -> {out.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":

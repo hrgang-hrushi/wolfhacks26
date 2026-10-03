@@ -1,8 +1,8 @@
 """Fetch 3DEP 30 m elevation for the NC bbox and derive slope + flow accumulation.
 
-    uv run python src/pipeline/dem.py              # fetch (skipped if dem.tif exists), then terrain
-    uv run python src/pipeline/dem.py --force      # refetch the DEM
-    uv run python src/pipeline/dem.py --workers 1  # lower peak memory (~3 GB per worker)
+    uv run python -m src.pipeline.dem              # fetch (skipped if dem.tif exists), then terrain
+    uv run python -m src.pipeline.dem --force      # refetch the DEM
+    uv run python -m src.pipeline.dem --workers 1  # lower peak memory (~3 GB per worker)
 
 Outputs in data/processed/dem/, all EPSG:32119 (NC State Plane, metres), 30 m, float32
     dem.tif       elevation, m (3DEP 1 arc-second seamless, bilinear-resampled)
