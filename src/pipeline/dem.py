@@ -69,15 +69,17 @@ def fetch_dem(out: Path) -> dict[str, float]:
               resampling=Resampling.bilinear, num_threads=os.cpu_count())  # fmt: skip
     del src
     out.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(out, "w", height=height, width=width, crs=DST_CRS, transform=transform, **TIF) as dst_ds:
+    partial = out.with_suffix(".partial.tif")
+    with rasterio.open(partial, "w", height=height, width=width, crs=DST_CRS, transform=transform, **TIF) as dst_ds:
         dst_ds.write(dst, 1)
+    partial.replace(out)
     t_write = time.perf_counter() - t0
     print(f"resampled to {width:,} x {height:,} px @ {RES:.0f} m and wrote {out.name} in {t_write:.0f}s", flush=True)
     return {"fetch_s": t_fetch, "resample_write_s": t_write}
 
 
-def _terrain_tile(job: tuple[str, int, int, int, int]) -> tuple[int, int, np.ndarray, np.ndarray]:
-    """Run pysheds on one core window plus halo; return slope and accumulation for the core."""
+def _terrain_tile(job: tuple[str, int, int, int, int]) -> tuple[int, int, np.ndarray, np.ndarray, int]:
+    """Run pysheds on one core window plus halo; return slope, accumulation and sink count for the core."""
     from pysheds.grid import Grid
     from pysheds.view import Raster, ViewFinder
 
@@ -93,18 +95,28 @@ def _terrain_tile(job: tuple[str, int, int, int, int]) -> tuple[int, int, np.nda
     valid = np.isfinite(dem)
     if not valid[core].any():
         nan = np.full((h, w), np.nan, dtype=np.float32)
-        return row, col, nan, nan
+        return row, col, nan, nan, 0
 
+    # resolve_flats lifts flat cells by eps per step, up to 3 * max_iter (3000) steps. If the total
+    # lift can exceed a real elevation difference, flats rise above their neighbours and new sinks
+    # appear; float32 resampling noise on lake and river surfaces (differences of ~1e-5 m) does
+    # exactly that at the default eps and cuts the flow network. Snap to 1 cm and keep the total
+    # lift under 1 cm so it cannot happen.
+    dem = np.round(dem, 2)
     vf = ViewFinder(affine=transform, shape=dem.shape, crs=crs.to_wkt(), nodata=np.nan)
     grid = Grid(viewfinder=vf)
     flooded = grid.fill_depressions(grid.fill_pits(Raster(dem, vf)))
-    fdir = grid.flowdir(grid.resolve_flats(flooded))
+    fdir = grid.flowdir(grid.resolve_flats(flooded, eps=1e-6))
+    # cells left without a flow direction, away from the window edge where flow simply exits
+    sinks = (np.asarray(fdir) < 0) & valid
+    sinks[[0, -1], :] = sinks[:, [0, -1]] = False
+    n_sinks = int(sinks[core].sum())
     acc = np.asarray(grid.accumulation(fdir), dtype=np.float32)[core]
     # flats resolved by resolve_flats can come out a hair negative on the filled surface
     slope = np.maximum(np.asarray(grid.cell_slopes(flooded, fdir), dtype=np.float32)[core], 0)
     acc[~valid[core]] = np.nan
     slope[~valid[core]] = np.nan
-    return row, col, slope, acc
+    return row, col, slope, acc, n_sinks
 
 
 def terrain(dem_path: Path, workers: int) -> float:
@@ -117,17 +129,24 @@ def terrain(dem_path: Path, workers: int) -> float:
             for row in range(0, src.height, CORE)
             for col in range(0, src.width, CORE)
         ]
+    # write beside the final names and swap in at the end: a failed run leaves the previous rasters
+    # intact, and nothing rewrites a large file in place (in-place rewrites time out in iCloud-synced folders)
+    tmp = {name: OUT / f"{name}.partial.tif" for name in ("slope", "flowacc")}
     with (
-        rasterio.open(OUT / "slope.tif", "w", **profile) as slope_ds,
-        rasterio.open(OUT / "flowacc.tif", "w", **profile) as acc_ds,
+        rasterio.open(tmp["slope"], "w", **profile) as slope_ds,
+        rasterio.open(tmp["flowacc"], "w", **profile) as acc_ds,
         ProcessPoolExecutor(workers) as pool,
     ):
-        for row, col, slope, acc in tqdm(pool.map(_terrain_tile, jobs), total=len(jobs), desc="terrain tiles"):
+        n_sinks = 0
+        for row, col, slope, acc, sinks in tqdm(pool.map(_terrain_tile, jobs), total=len(jobs), desc="terrain tiles"):
             win = Window(col, row, slope.shape[1], slope.shape[0])
             slope_ds.write(slope, 1, window=win)
             acc_ds.write(acc, 1, window=win)
+            n_sinks += sinks
+    for name, path in tmp.items():
+        path.replace(OUT / f"{name}.tif")
     elapsed = time.perf_counter() - t0
-    print(f"slope.tif + flowacc.tif from {len(jobs)} tiles in {elapsed:.0f}s", flush=True)
+    print(f"slope.tif + flowacc.tif from {len(jobs)} tiles in {elapsed:.0f}s; {n_sinks:,} interior sink cells", flush=True)
     return elapsed
 
 
