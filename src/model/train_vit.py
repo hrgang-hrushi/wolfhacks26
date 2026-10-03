@@ -14,8 +14,8 @@ import timm
 import torch
 import torch.nn as nn
 from sklearn.decomposition import PCA
-from sklearn.model_selection import GroupKFold
 
+from src.model.common import add_folds
 from src.pipeline.chips import chip_path
 
 P = Path("data/processed")
@@ -75,10 +75,8 @@ def main():
     a = ap.parse_args()
 
     d = pd.read_parquet(P / "segments_targets.parquet")
-    block = (d.mid_x // 5000).astype(int).astype(str) + "_" + (d.mid_y // 5000).astype(int).astype(str)
-    d["fold"] = -1
-    for k, (_, te) in enumerate(GroupKFold(5).split(d, groups=block)):
-        d.iloc[te, d.columns.get_loc("fold")] = k
+    if "fold" not in d.columns:
+        d = add_folds(d)
     d = d[[chip_path(s).exists() for s in d.seg_id]].reset_index(drop=True)
     if a.smoke:
         d = d.sample(min(2000, len(d)), random_state=0).reset_index(drop=True)
