@@ -58,6 +58,8 @@ def test_R5_map_predictions_are_out_of_fold_exactly_where_a_label_exists():
     """AC5 on the real outputs, when they have been generated on this machine."""
     if not (OUT / "predictions.parquet").exists() or not (OUT / "segments_targets.parquet").exists():
         pytest.skip("predictions.parquet / segments_targets.parquet not generated here")
+    if (OUT / "predictions.parquet").stat().st_mtime < (OUT / "segments_targets.parquet").stat().st_mtime:
+        pytest.skip("predictions.parquet is older than segments_targets.parquet: rerun final_ablation")
     t = pd.read_parquet(OUT / "segments_targets.parquet", columns=["seg_id", "y_rate", "y_crack", "in_helene_zone",
                                                                     "y_helene_failed"])
     out = pd.read_parquet(OUT / "predictions.parquet")

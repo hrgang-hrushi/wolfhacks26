@@ -57,6 +57,7 @@ def test_T6b_rate_floor_and_cap_in_years_to_poor():
     assert got[2] == 50                    # 40 / 0.2 = 200, capped
     assert got[3] == 0                     # already below 60
     assert np.isnan(got[4])                # no rating, no forecast
+    assert years_to_poor(np.array([62.0]), np.array([0.01]))[0] == pytest.approx(20)   # plain arrays work too
 
 
 def test_T7_cracking_is_strictly_above_10_percent():

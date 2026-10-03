@@ -57,7 +57,8 @@ check_features(PV + TR)
 # ---- targets ----
 def years_to_poor(rtg, rate):
     """Years until the rating reaches POOR at this rate: 0 if already below, rate floored, result capped."""
-    return np.where(rtg < POOR, 0, ((rtg - POOR) / rate.clip(lower=RATE_FLOOR)).clip(upper=YEARS_CAP)).astype(float)
+    rtg, rate = np.asarray(rtg, float), np.clip(np.asarray(rate, float), RATE_FLOOR, None)
+    return np.where(rtg < POOR, 0.0, np.minimum((rtg - POOR) / rate, YEARS_CAP))
 
 
 def add_targets(d):

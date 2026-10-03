@@ -138,7 +138,7 @@ The imagery-subset rows were not rerun: `vit_frozen.parquet` is not on this mach
 5. **README.** Besides the planned updates it gained a short Reproducing section and three limitation bullets (unseeded `train_vit.py`, extrapolated rate predictions for the 22,948 segments without a resurfacing year, simplified geometry).
 6. **`PLAN.md`** was not edited. It is untracked and the user has not confirmed changes to it.
 7. **Terrain in `final_ablation.py`.** It does not call `attach_terrain`; it uses the terrain columns `train_tabular.py` wrote into `segments_targets.parquet` (plan Step 4.2). If `terrain.parquet` changes, rerun `train_tabular` first.
-8. **Out-of-date ratings (D8b).** Not in the plan; added after the critique. 1,643 segments now have a blank `pred_years_to_poor` (1,640 resurfaced after their survey, 3 with a rating of 0). 112 of them had been shown as 0 years to Poor.
+8. **Out-of-date ratings (D8b).** Not in the plan; added after the critique. 1,640 segments resurfaced after their survey are newly blank in `pred_years_to_poor`; 112 of them had been shown as 0 years to Poor. (The 3 segments with a rating of 0 were already blank, so 1,643 are blank in total.) The 4,856 segments surveyed in the year they were resurfaced keep a forecast, since the order of survey and work within that year is unknown; the README says so.
 9. **Worktree.** After the first commit the work moved to a git worktree at `.claude/worktrees/model-hardening`, with `data/raw`, `data/chips` and `data/processed` symlinked to the main checkout, per the same instruction as deviation 1.
 
 ## Found during execution, not fixed here
@@ -170,3 +170,14 @@ Sixteen findings, all fixed in the next commit:
 14. This spec's status still said planned. Fixed.
 15. `final_ablation` not calling `attach_terrain` was an unlisted deviation. Listed (deviation 7).
 16. `heldout_then_model` would have misaligned a Series with a different index. It now takes positional values (P4).
+
+### Claude critique, round 2 (commit 1255b87): Overall Acceptable
+
+All 16 round-1 findings confirmed fixed. The reviewer mutated a scratch copy (removed the stale-rating mask, disabled the shared-column check, built the map model on the wrong features, set the rate floor to 0) and each mutation made a test fail. Plan adherence, Scope discipline, Test coverage, Review compliance and Documentation Acceptable; Regression check Excellent; Freeze integrity n/a.
+
+Four new non-blocking findings, addressed in the following commit:
+
+- N1 same-year resurfacings (4,856 segments) keep a forecast that may rest on a pre-work rating. Left as is, because the order within the year is unknown, and stated in the README and in deviation 8.
+- N2 wording: only the 1,640 stale segments are newly blank. Corrected in the README and this spec.
+- N3 `years_to_poor` only accepted pandas Series. It now takes arrays as well (T6b).
+- N4 R5 could judge stale shared outputs. It now skips when `predictions.parquet` is older than `segments_targets.parquet`.
