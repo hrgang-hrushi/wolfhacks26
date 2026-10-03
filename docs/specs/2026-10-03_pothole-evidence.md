@@ -110,13 +110,13 @@ Historical bug classes pinned: id format mismatch (L6), wrong-road match (L2, M3
 
 ## Results (2026-10-03)
 
-Commits on `cctv-potholes`: `a04a18b` (camera list, match, collector), `04f7326` (reports, labels, check, head), `a55033e` (review and camera check), `48568da` (docs), `7f9289b` (fixes after the critique). Every result file below was produced by `7f9289b` and carries that stamp.
+Commits on `cctv-potholes`: `a04a18b` (camera list, match, collector), `04f7326` (reports, labels, check, head), `a55033e` (review and camera check), `48568da` (docs), `7f9289b` and `e9094a5` (fixes after the two critique rounds). Every result file below was produced by `e9094a5` and carries that stamp; the numbers are identical to the `7f9289b` run.
 
 ### Tests and acceptance
 
 | Criterion | Result |
 |---|---|
-| AC1 fast suite | 195 passed, 0 failed: the 83 that were on the branch and 112 new cases |
+| AC1 fast suite | 196 passed, 0 failed: the 83 that were on the branch and 113 new cases |
 | Real-data pins (`-m realdata`) | 11 passed (5 new, 6 existing) |
 | Live-server pins (`-m network`) | 3 passed |
 | AC2 report pull | Charlotte 24,824 rows and Raleigh 351 rows received. `fetch_all` refuses a pull whose rows differ from the server's count (test P1), so the recorded count is the server's by construction. Drops are in the manifest |
@@ -138,7 +138,7 @@ ea67bdcbc2fd4ab4c686a98d3ee9dc4380218872de58f74cf64d644cbbcd2680  data/raw/ncdot
 d34316ebef771c6742af6dcb84173b2e505df3299258af80a081657106c01e93  data/raw/ncdot_asphalt.parquet
 ```
 
-Tests added after the critique: K17 (a later placeholder round never deletes an earlier still), K18 (an interrupted round logs what it saved), X6 (road class is not mistaken for ranking skill), H16 (the gap to the traffic-only model has a range). Tightened: K5, K8, K16, M2, L3, L8, L9, L13, C8, C10, H3, H7, H14, G1, R1, R3, N1.
+Tests added after the critique: K17 (a later placeholder round never deletes an earlier still), K18 (an interrupted round logs what it saved), K19 (a still saved by a round whose log write failed is adopted), X6 (road class is not mistaken for ranking skill), H16 (the gap to the traffic-only model has a range, drawn over whole blocks). Tightened: K5, K8, K16, M2, L3, L8, L9, L13, C8, C10, H3, H7, H14, G1, R1, R3, N1.
 
 ### Reports and labels
 
@@ -146,7 +146,7 @@ Tests added after the critique: K17 (a later placeholder round never deletes an 
 - Raleigh: 351 pothole records, 349 located. The first is dated 2025-06-18.
 - Matched to a state road: 3,610 of 17,790 (20.3%). By type, matched / unmatched: Charlotte city-street repairs 2,935 / 13,604; Charlotte state-road requests 580 / 322; Raleigh 95 / 254. Unmatched reports are on city streets that are not in the segment table, or further from a state road than the match distance.
 - Charlotte: 1,324 state segments inside the city, 372 with at least one counted report (28.1%), 1,651 reports counted. Of those 1,651, 1,461 (88%) are city-street repairs that sit within 60 m of a state road and 190 are state-road requests.
-- Raleigh: 953 segments, 59 with a report (6.2%); 95 reports matched, 84 counted (the rest predate the segment's last resurfacing).
+- Raleigh: 953 segments, 59 with a report (6.2%); 95 reports matched, 84 counted. Of the other 11, 7 are on segments whose midpoint is outside the city and 4 predate the segment's last resurfacing.
 
 ### The check
 
@@ -167,7 +167,7 @@ Lift = reports per mile per year on the worst-ranked fifth of segments divided b
 Reading it:
 
 - The state-road-only rows are the cleaner test, because those requests were filed against state roads; they rest on 190 reports, so their ranges are wide. The "all" rows have tighter ranges but 88% of their reports are city-street repairs that merely sit beside a state road. The two sets agree in direction and rough size.
-- In Charlotte the lower end of every range is above 1: roads NCDOT rates worst, and roads the model's held-out predictions rank worst, draw more reports per mile than the best-ranked roads with similar traffic. The model's predictions never see the rating.
+- In Charlotte the lower end of every range is above 1: roads NCDOT rates worst, and roads the model's held-out predictions rank worst, draw more reports per mile than the best-ranked roads with similar traffic. The rating is never an input to the model, and each prediction is for a block the model did not train on; its wear and cracking targets do come from the same NCDOT survey.
 - Raleigh has 84 counted reports. Rating and cracking show lift with wide ranges. The wear prediction does not: its estimate is below 1 (0.42) and its range (0.17 to 1.42) includes 1.
 - In Charlotte the busiest third of roads has the fewest reports (137 of 1,651).
 - The move from 30 m to 60 m for Charlotte (Deviations 1) does not create the result. Recomputed in memory at 30 m, the "all" rows are: rating 10.22 (5.94 to 20.55), wear 2.98 (1.15 to 6.94), cracking 3.20 (1.48 to 7.22), on 641 or fewer reports.
@@ -189,7 +189,7 @@ Trained on 1,092 Charlotte segments (324 with a report); 26 inputs (the main mod
 
 Head minus traffic-only on held-out Charlotte: +0.030, 95% range -0.020 to +0.069 (1,000 block resamples).
 
-Reading it: the head is about twice the base rate on Charlotte blocks it did not train on, and so is the traffic-only model. The gap between them is inside the noise, so the head is **not distinguishable from the traffic-only model** (`distinguishable_from_traffic: false`; the point-estimate flag `beats_traffic` is true and should not be quoted on its own). Carried to Raleigh, the head is above the base rate and below the traffic-only model, on 55 positives. With these inputs a pothole head adds nothing measurable beyond traffic and segment length. `pothole_predictions.parquet` covers all 112,443 segments, with `pothole_tested_area` true for the 2,277 inside the two cities; everywhere else the prediction is untested.
+Reading it: the head is about twice the base rate on Charlotte blocks it did not train on, and so is the traffic-only model. The gap between them is inside the noise, so the head is **not distinguishable from the traffic-only model** (`distinguishable_from_traffic: false`, which is true only when the range excludes zero on either side; the point-estimate flag `beats_traffic` is true and should not be quoted on its own). Carried to Raleigh, the head is above the base rate and below the traffic-only model, on 55 positives. With these inputs a pothole head adds nothing measurable beyond traffic and segment length. `pothole_predictions.parquet` covers all 112,443 segments, with `pothole_tested_area` true for the 2,277 inside the two cities; everywhere else the prediction is untested.
 
 ### Cameras
 
@@ -214,19 +214,19 @@ Reading it: the head is about twice the base rate on Charlotte blocks it did not
 | other | held-out cracking prediction | 59 | 36% | 55% | 16% | 3.48 |
 | other | pothole head | 63 | 33% | 29% | 24% | 1.20 |
 
-Reading it: the ratios over all cameras mostly restate road class. Interstates are rated best and almost never show damage (3 of 71 cameras); other roads show it in 21 of 63. Inside the other roads, with about 20 cameras per third and no range computed, the rating (11 against 5 damaged cameras) and the cracking prediction (11 against 3) still separate worst from best; the wear prediction (6 against 6) and the pothole head (6 against 5) do not. Inside interstates there is too little damage to say anything. The cameras are weak support for the rating and the cracking prediction and no support for the wear prediction or the head. No still showed an open pothole.
+Reading it: the ratios over all cameras mostly restate road class. Interstates are rated best and almost never show damage (3 of 71 cameras); other roads show it in 21 of 63. Inside the other roads, with about 20 cameras per third and no range computed, the rating (11 against 5 damaged cameras) and the cracking prediction (11 against 3) lean the right way, the cracking prediction more clearly; the wear prediction (6 against 6) and the pothole head (6 against 5) show nothing. Inside interstates there is too little damage to say anything. The cameras are weak support for the rating and the cracking prediction and no support for the wear prediction or the head. No still showed an open pothole.
 
 ### Deviations from the plan
 
 1. **Charlotte match distance 60 m, not 30 m** (D6, L1). The first live pull showed Charlotte's points are address locations: its state-road requests sit a median 44 m from the centreline and 30 m kept 173 of 902 (60 m keeps 580). Raleigh stays at 30 m. The Charlotte results at 30 m are given under "The check".
-2. **Raleigh's window starts 2025-06-18, not 2025-05-01** (D8). The first Raleigh pothole report in the layer has that date; starting earlier counted about seven weeks in which nothing was being collected.
+2. **Raleigh's window starts 2025-06-18, not 2025-05-01** (D8). Changed after the first critique, not at execution: the first Raleigh pothole report in the layer has that date, and starting earlier counted about seven weeks in which nothing was being collected.
 3. **A failed still write is logged as `save_error` and the round continues**; it counts toward the stop rule (tested in K8).
 4. **A cut-off download is caught by its missing end marker.** A truncated file that happened to end with the JPEG end marker would decode and be kept; K2 uses a real cut-off.
 5. **H13's second case allows the head up to 0.05 above the traffic-only model**, where the plan said 0.02. The real gap of 0.030 is inside that tolerance, which is the same point the gap range makes.
 6. **R3 compares against the merge base with `main`**, not the fixed commit `64609f1`, so it stays meaningful after `main` moves. It is empty by construction once the branch is merged, cannot see untracked files, and skips when there is no `main`.
 7. **N1, N3 and N5 each have a `realdata` and a `network` form.** N1's bookkeeping check (kept plus dropped equals rows received) is a consistency check on the manifest; equality with the server's count is enforced in `fetch_all` and tested by P1.
 8. **Grading used helper agents as planned.** Their part files (`triage_part*.csv`, `damage_part*.csv`, `damage_list_part*.txt`) stay in the review folder beside the merged answers. All 141 clear views were graded, below the cap of 160.
-9. **Added after the critique, not in the plan:** the head's gap range and `distinguishable_from_traffic` flag; top-50 hits on the shared rows; a refusal when the targets table's folds differ from `split.parquet`; interstate and other-road rows in the camera check; grade validation and full input fingerprints in the camera check; `pothole_labels.meta.json`; a `-dirty` suffix on the code stamp when `src/` has uncommitted changes; skipping cameras with an empty link; logging an interrupted round; leaving identical bytes alone and never deleting a still saved by an earlier round.
+9. **Added after the critique, not in the plan:** a label run now stops on a segment with no geometry (frozen L9 said "blank rate"; zero length still gives a blank rate, and the real table has no such segment); the review step's manifest, repeat key and grades file are swapped in whole; a still left on disk by a round whose log write failed is adopted by the next round; the camera check validates grades without needing the stills; the head's gap range (which needs at least half its draws to be valid) and `distinguishable_from_traffic` flag; top-50 hits on the shared rows; a refusal when the targets table's folds differ from `split.parquet`; interstate and other-road rows in the camera check; grade validation and full input fingerprints in the camera check; `pothole_labels.meta.json`; a `-dirty` suffix on the code stamp when `src/` has uncommitted changes; skipping cameras with an empty link; logging an interrupted round; leaving identical bytes alone and never deleting a still saved by an earlier round.
 10. **Charlotte's timestamps look like local time stored as UTC** (reports peak between 08 and 16). D4 calls them UTC. The shift is at most five hours and moves no report across a window boundary in this data.
 11. **An unavailable head result carries `charlotte_heldout: null` and `raleigh_transfer: null`** (after the critique; the first version omitted the keys).
 12. **The first result files were stamped `64609f1`**, the commit before the code existed in git, because they were generated before the code was committed. They were regenerated at `7f9289b`.
@@ -234,6 +234,8 @@ Reading it: the ratios over all cameras mostly restate road class. Interstates a
 ### Critique and audit record
 
 - Claude critique, round 1 (after `48568da`): Needs-work. No blocking findings; 6 should-fix and 12 minor. The should-fix items: the camera ratio was mostly road class; "beats traffic" was inside the noise; the result files carried the wrong code stamp; placeholder clean-up could delete an earlier round's still; the `save_error` path was untested; the headline Charlotte lift rested on the mixed report set. All 18 were addressed in `7f9289b` and in this section.
+- Claude critique, round 2 (after `a05ee30`): 17 of the 18 resolved and one (the UTC label) left as a recorded limitation; every Results number matched the files except one clause. Overall Needs-work for one new should-fix: the head's report crashed when the gap was undefined. That and the seven minor notes (a wrong reason for the 11 uncounted Raleigh reports, an unlogged still never adopted, an incomplete deviations list, a test that did not pin whole-block resampling, no minimum draw count and a one-sided flag, the camera check needing the stills on disk, two wording points) were addressed in `e9094a5` and in this section. The critic did not run the three live-server pins; they were run by the implementer.
+- Not verifiable from files: the 30 m figures under "The check" were recomputed in memory by the implementer and by the critic and agree, but are not stored.
 
 ### Limits to state with any of these numbers
 
