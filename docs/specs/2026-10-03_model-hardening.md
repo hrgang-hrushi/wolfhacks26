@@ -68,7 +68,7 @@ The landed model code gets the main things right: survey measurements are kept o
 
 **Out-of-fold** (`tests/test_oof.py`)
 - O1 only masked rows are trained on or predicted. O2 each masked row is predicted once and never by a model that trained on its fold. O3 same seed gives identical predictions.
-- O4 an empty fold is skipped without error. O5 cheat demonstration: a direct estimator given rating plus age drives MAE to near 0 on a synthetic table, and `prep` rejects those columns. O6 the naive MAE uses training-fold medians only. O7 the tripwire raises above 0.95.
+- O4 an empty fold is skipped without error. O5 cheat demonstration: a direct estimator given rating plus age drives MAE to near 0 on a synthetic table (below 0.1 and below a fifth of the do-nothing error), and `prep` rejects those columns. O6 the naive MAE uses training-fold medians only. O7 the tripwire raises above 0.95.
 - O8 labels confined to one fold give NaN out-of-fold values and NaN metrics, not an error. O9 a fold whose training labels have one class is skipped for a binary target.
 
 **Predictions** (`tests/test_predictions.py`)
@@ -80,6 +80,7 @@ The landed model code gets the main things right: survey measurements are kept o
 - S1 `train_tabular.main` on a fixture directory writes `segments_targets.parquet` (with `split_block`, `fold`), `split.parquet` and `ablation.csv` with the expected columns. S2 running it twice gives identical CSVs.
 - S3 `final_ablation.main` without `vit_frozen.parquet` skips the imagery rows and writes predictions; every row has `rate_mae_naive` and `n_scored`. S4 with a fixture `vit_frozen.parquet` it runs them.
 - S5 the exported map file is written only inside the supplied handoff directory, is GeoParquet in the geometry's CRS, covers every segment once and carries the three flags. S6 an embeddings file matching no segment gives zero-count rows with NaN metrics.
+- S9 the map export raises when the geometry file and the predictions cover different segments.
 - S7 without terrain columns neither script writes a terrain row and the map model is the baseline. S8 both scripts raise when the leak threshold is lowered, which proves the tripwire is wired in. The script fixture carries a `terrain.parquet`, so S1 and S3 exercise the terrain rows.
 
 **Repo guards** (`tests/test_repo_guards.py`)
@@ -181,3 +182,15 @@ Four new non-blocking findings, addressed in the following commit:
 - N2 wording: only the 1,640 stale segments are newly blank. Corrected in the README and this spec.
 - N3 `years_to_poor` only accepted pandas Series. It now takes arrays as well (T6b).
 - N4 R5 could judge stale shared outputs. It now skips when `predictions.parquet` is older than `segments_targets.parquet`.
+
+### Codex audit (commit 565d582): Overall Acceptable
+
+Report: `docs/specs/2026-10-03_model-hardening-audit.md`. Plan adherence Acceptable, Scope discipline Excellent, Test coverage Acceptable, Review compliance Acceptable, Freeze integrity skipped, Regression check Acceptable, Documentation Excellent.
+
+Three findings, none blocking:
+
+1. `export_geo` did not check that the geometry file and the predictions cover the same segments, so a mismatch would drop or blank segments silently. Fixed in the following commit: it now raises, with test S9. The tracked map was unaffected (all 112,443 segments match).
+2. O5 only compared the cheating error with the honest error. An absolute bound was added.
+3. A verification limit, not a defect: the audit's sandbox is read-only, so it reran 69 of the 82 fast tests and all 6 real-data tests, and could not rerun the model or the join command. Those were run in this session (88 passed; results above).
+
+The audit was not rerun after these two fixes: both are small and covered by new tests, and the user asked for each review stage to run once unless it found something serious.

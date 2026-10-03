@@ -17,6 +17,10 @@ def export_geo(pred, p, handoff_dir):
     """Join the predictions to the segment geometry and write the file the map reads."""
     import geopandas as gpd
     geom = gpd.read_parquet(p / "segments_geom.parquet")[["seg_id", "geometry"]]
+    if set(geom.seg_id) != set(pred.seg_id):   # a left merge would drop or blank segments without a word
+        raise ValueError(f"segments_geom.parquet and the predictions cover different segments: "
+                         f"{len(set(pred.seg_id) - set(geom.seg_id))} without geometry, "
+                         f"{len(set(geom.seg_id) - set(pred.seg_id))} without predictions")
     geo = merge_one_to_one(geom, pred.drop(columns=["mid_x", "mid_y"]), "predictions")
     geo["geometry"] = geo.geometry.to_crs("EPSG:32119").simplify(SIMPLIFY_M).to_crs(geom.crs)
     handoff_dir.mkdir(parents=True, exist_ok=True)

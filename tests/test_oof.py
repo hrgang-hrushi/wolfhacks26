@@ -63,7 +63,9 @@ def test_O5_rating_plus_age_reproduces_the_target_and_prep_refuses_them(d):
     cheat_mae = mean_absolute_error(d.y_rate[te], model.predict(d.loc[te, cheat]))
     honest = oof(d, prep(d, PV + TR), d.y_rate, "l1", m)
     honest_mae = mean_absolute_error(d.y_rate[te], honest[te])
-    assert cheat_mae < honest_mae / 2          # the leak is real ...
+    naive = (d.y_rate[te] - d.y_rate[tr].median()).abs().mean()
+    assert cheat_mae < 0.1 and cheat_mae < naive / 5   # near zero: under a tenth of a point a year ...
+    assert cheat_mae < honest_mae / 2                   # ... and far better than the honest clues manage
     with pytest.raises(ValueError, match="pv_RTG_NBR"):
         prep(d, cheat)                         # ... and the production path cannot take it
 

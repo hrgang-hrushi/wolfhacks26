@@ -95,6 +95,19 @@ def test_S8_both_scripts_call_the_leak_tripwire(write_dir, tmp_path, monkeypatch
         final_ablation.main(p, handoff_dir=tmp_path / "handoff")
 
 
+def test_S9_map_export_refuses_geometry_that_covers_different_segments(scripts_run, tmp_path):
+    p = scripts_run["p"]
+    pred = pd.read_parquet(p / "predictions.parquet")
+    geom = gpd.read_parquet(p / "segments_geom.parquet")
+    for bad in (geom.iloc[:-5], pd.concat([geom, geom.tail(1).assign(seg_id="ncdot:extra:0.000")])):
+        q = tmp_path / f"geom{len(bad)}"
+        q.mkdir()
+        bad.to_parquet(q / "segments_geom.parquet")
+        with pytest.raises(ValueError, match="different segments"):
+            final_ablation.export_geo(pred, q, tmp_path / "handoff")
+    assert not (tmp_path / "handoff" / "predictions_geo.parquet").exists()
+
+
 def test_final_ablation_refuses_targets_without_folds(write_dir, tmp_path):
     p = write_dir(tmp_path / "processed")
     pd.read_parquet(p / "segments.parquet").to_parquet(p / "segments_targets.parquet")
