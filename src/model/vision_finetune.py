@@ -61,6 +61,27 @@ def arm_config(arm: str, seed: int, epochs: int = EPOCHS, batch_size: int = BATC
             "lr_backbone": LR_BACKBONE, "lr_head": LR_HEAD, "weight_decay": WEIGHT_DECAY, "shuffle_labels": False}
 
 
+def grad_scaler(dev):
+    """A gradient scaler that is active only on CUDA (where the forward pass runs in half precision)."""
+    enabled = dev.type == "cuda"
+    try:
+        return torch.amp.GradScaler(dev.type, enabled=enabled)
+    except (AttributeError, TypeError):  # older PyTorch
+        return torch.cuda.amp.GradScaler(enabled=enabled)
+
+
+@torch.no_grad()
+def backbone_change(net, start_params) -> float:
+    """How far the backbone moved in training: the size of the change relative to the size of the start.
+
+    0 means the backbone did not learn at all (frozen by accident, or its gradients were lost), which
+    would make every arm of the comparison the same model with a different head.
+    """
+    num = sum(float(((p.detach() - s) ** 2).sum()) for p, s in zip(net.b.parameters(), start_params))
+    den = sum(float((s ** 2).sum()) for s in start_params)
+    return (num / den) ** 0.5 if den else float("nan")
+
+
 def pretrained_hash(net_factory) -> str:
     """Fingerprint of the backbone the factory hands out (the downloaded weights), taken at a fixed seed.
 
@@ -112,8 +133,12 @@ def train_fold(d: pd.DataFrame, chips, k: int, cfg: dict, net_factory=None, usab
     net = (net_factory or default_net)()
     start_weights = V.weights_hash(net)
     dev = next(net.parameters()).device
+    backbone_start = [p.detach().clone() for p in net.b.parameters()]
     opt = torch.optim.AdamW([{"params": net.b.parameters(), "lr": cfg["lr_backbone"]},
                              {"params": net.h.parameters(), "lr": cfg["lr_head"]}], weight_decay=cfg["weight_decay"])
+    # Half precision on a GPU needs gradient scaling, or small backbone gradients round to zero and the
+    # backbone silently stops learning (train_vit.py has none). On CPU the scaler is off and does nothing.
+    scaler = grad_scaler(dev)
     ds = V.ViewDataset(chips, d.y_rate.values, d.y_crack.values, preset=augment.PRESETS[cfg["preset"]],
                        seed=cfg["seed"], train=True, rows=train_rows)
     timing = {"startup_s": time.perf_counter() - t0, "train_epoch_s": 0.0, "score_epoch_s": 0.0}
@@ -134,8 +159,9 @@ def train_fold(d: pd.DataFrame, chips, k: int, cfg: dict, net_factory=None, usab
             if not torch.isfinite(loss):
                 raise RuntimeError(f"fold {k} epoch {epoch}: the loss is {loss.item()}; stopping before anything is saved")
             opt.zero_grad()
-            loss.backward()
-            opt.step()
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
             n_steps += 1
             n_ops += int(ops.sum())
         if n_steps == 0:
@@ -152,7 +178,8 @@ def train_fold(d: pd.DataFrame, chips, k: int, cfg: dict, net_factory=None, usab
     pred_8 = predict_views(net, chips, held_rows, tuple(range(augment.N_VIEWS)))
     timing["tta_s"] = time.perf_counter() - t3
     return {"rows": held_rows, "pred": pred_1, "pred_8v": pred_8, "ops_applied": ops_applied, "steps": steps,
-            "history": history, "timing": timing, "n_train": int(len(train_rows)), "start_weights": start_weights}
+            "history": history, "timing": timing, "n_train": int(len(train_rows)), "start_weights": start_weights,
+            "backbone_change": backbone_change(net, backbone_start)}
 
 
 # ---------------------------------------------------------------- jobs on disk
@@ -233,7 +260,8 @@ def run_job(d, chips, usable, arm, seed, fold, ctx, epochs=EPOCHS, batch_size=BA
     yc = table.y_crack.values[rows]
     scores = {"1view": epoch_scores(table, rows, res["pred"]), "8view": epoch_scores(table, rows, res["pred_8v"])}
     record = {**expected, "files": {parquet.name: {"size": parquet.stat().st_size, "sha256": V.file_sha256(parquet)}},
-              "start_weights": res["start_weights"], "ops_applied": res["ops_applied"], "steps": res["steps"],
+              "start_weights": res["start_weights"], "backbone_change": res["backbone_change"],
+              "ops_applied": res["ops_applied"], "steps": res["steps"],
               "history": res["history"], "timing": res["timing"], "n_train": res["n_train"],
               "n_scored": int(len(rows)), "scores": scores,
               "crack_prevalence": float(np.nanmean(yc)) if (~np.isnan(yc)).any() else float("nan")}
@@ -381,6 +409,10 @@ def report(d, usable, ctx, epochs=EPOCHS, batch_size=BATCH, n_boot=1000, workers
     for arm in ARMS:
         recs = [validated(ctx, arm, 0, f, epochs, batch_size) for f in range(N_FOLDS)]
         counts[f"changes_applied_{arm}"] = int(sum(sum(r["ops_applied"]) for r in recs))
+        counts[f"backbone_change_{arm}"] = float(np.mean([r["backbone_change"] for r in recs]))
+        if not counts[f"backbone_change_{arm}"] > 0:
+            raise ValueError(f"arm {arm}: the backbone did not change in training, so this was not a fine-tune; "
+                             "the comparison is void")
         for e in range(len(recs[0]["history"])):
             epoch_rows.append([arm, e] + [float(np.nanmean([r["history"][e][m] for r in recs])) for m in METRICS])
     if counts["changes_applied_none"] != 0:
@@ -462,7 +494,7 @@ def time_one_job(d, chips, usable, ctx, batch_size, workers, load_s, log=print) 
     V.file_sha256(path)
     timing = {**res["timing"], "write_s": time.perf_counter() - t1, "load_s": load_s,
               "wall_s": time.perf_counter() - t0, "n_train": res["n_train"], "n_scored": int(len(rows)),
-              "batch_size": batch_size}
+              "batch_size": batch_size, "backbone_change": res["backbone_change"]}
     V.atomic_write(Path(ctx["out_root"]) / "finetune" / "timing.json",
                    lambda tmp: Path(tmp).write_text(json.dumps(timing, indent=1)), ctx["out_root"])
     log(json.dumps(timing))

@@ -617,7 +617,10 @@ def sync_billing(now=None):
         except BoxError:
             return state  # cannot tell; leave the books as they are
         if inst is not None and inst.get("actual_status") != "running":
-            switch_rate(state, state["storage_rate"], max(last["start"], min(now, state["deadline_epoch"])))
+            # the watcher stops the box at the deadline; after a start past the deadline, GRACE_MIN minutes later
+            deadline = state["deadline_epoch"]
+            ran_until = last["start"] + GRACE_MIN * 60 if last["start"] >= deadline else deadline
+            switch_rate(state, state["storage_rate"], max(last["start"], min(now, ran_until)))
             state["watchdog_armed"] = False
             save_state(state)
     return state

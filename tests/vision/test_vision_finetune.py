@@ -215,13 +215,48 @@ def test_f7_a_nan_loss_raises_and_writes_nothing(data, tmp_path):
 
 def test_f8_one_epoch_changes_both_the_backbone_and_the_head(data):
     cap = Capture()
-    fit(data, "none", epochs=1, factory=cap)
+    res = fit(data, "none", epochs=1, factory=cap)
     end = cap.net.state_dict()
     backbone = [k for k in end if k.startswith("b.")]
     head = [k for k in end if k.startswith("h.")]
     assert backbone and head
     assert any(not torch.equal(end[k], cap.start[k]) for k in backbone), "the backbone is frozen"
     assert all(not torch.equal(end[k], cap.start[k]) for k in head)
+    # the run measures the same thing itself, so a report can prove the backbone trained
+    num = sum(float(((end[k] - cap.start[k]) ** 2).sum()) for k in backbone)
+    den = sum(float((cap.start[k] ** 2).sum()) for k in backbone)
+    assert res["backbone_change"] == pytest.approx((num / den) ** 0.5, rel=1e-4) and res["backbone_change"] > 0
+
+
+def frozen_backbone_factory():
+    net = tiny_net_factory()
+    for p in net.b.parameters():
+        p.requires_grad_(False)  # what lost gradients look like: the head learns, the backbone never moves
+    return net
+
+
+def test_f8b_a_backbone_that_does_not_move_is_measured_as_zero_and_voids_the_report(data, tmp_path):
+    res = fit(data, "full", epochs=1, factory=frozen_backbone_factory)
+    assert res["backbone_change"] == 0.0
+    d, processed, cdir, out, base = build_inputs(tmp_path, seed=11)
+    jobs = write_jobs(tmp_path / "jobs.json", [(a, 0, f) for a in Ft.ARMS for f in range(5)])
+    with pytest.raises(ValueError, match="the backbone did not change in training"):
+        Ft.main(base + ["--jobs", jobs, "--shuffled-control", "--report"], net_factory=frozen_backbone_factory, log=QUIET)
+    assert not (out / "finetune" / "report.md").exists()
+
+
+def test_the_gradient_scaler_is_off_on_cpu_and_on_for_cuda():
+    cpu = Ft.grad_scaler(torch.device("cpu"))
+    assert cpu.is_enabled() is False
+    w = torch.nn.Parameter(torch.tensor([1.0]))
+    opt = torch.optim.SGD([w], lr=0.5)
+    loss = (w * 3).sum()
+    cpu.scale(loss).backward()  # with the scaler off these three calls are a plain backward and step
+    cpu.step(opt)
+    cpu.update()
+    assert w.item() == pytest.approx(1.0 - 0.5 * 3)
+    if torch.cuda.is_available():
+        assert Ft.grad_scaler(torch.device("cuda")).is_enabled() is True
 
 
 def train_loss(net, d, chips, rows):
@@ -382,6 +417,7 @@ def test_f12_outputs_columns_one_row_per_road_and_fingerprints(grid):
     assert set(rec["timing"]) == set(Ft.TIMING_PARTS) - {"load_s"} and all(v >= 0 for v in rec["timing"].values())
     assert rec["hashes"]["code"] == V.code_hash() and rec["n_scored"] > 0 and rec["steps"][0] > 0
     assert len(rec["start_weights"]) == 64 and rec["start_weights"] != rec["hashes"]["weights"]
+    assert rec["backbone_change"] > 0  # recorded per job: the backbone really was trained
     other_seed = json.loads((out / "finetune" / "full" / "seed1" / "fold0.done.json").read_text())
     same_seed = json.loads((out / "finetune" / "none" / "seed0" / "fold2.done.json").read_text())
     assert rec["start_weights"] == same_seed["start_weights"] != other_seed["start_weights"]  # arms start identical
@@ -665,6 +701,8 @@ def test_f15_the_real_model_learns_32_real_chips_and_reports_its_timing():
     cap = Capture(Ft.default_net)
     res = Ft.train_fold(d, chips, 0, Ft.arm_config("none", 0, epochs=30, batch_size=8), cap, workers=0, log=QUIET)
     assert res["steps"] == [4] * 30 and next(cap.net.parameters()).device.type == "cuda"
+    # under half precision the backbone only learns if its gradients survive: this is the check that they do
+    assert res["backbone_change"] > 1e-4, f"the backbone barely moved on the GPU: {res['backbone_change']}"
     start = Ft.default_net()
     start.load_state_dict(cap.start)
     rows = np.arange(32)

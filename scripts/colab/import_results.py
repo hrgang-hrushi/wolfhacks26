@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 OUT_ROOT = ROOT / "data" / "processed" / "vision"
 ALLOWED_TOP = {"frozen", "finetune", "ndvi_stats.parquet", "vit_frozen_statewide.parquet",
-               "vit_frozen_statewide_8view.parquet", "chip_index.parquet"}
+               "vit_frozen_statewide_8view.parquet", "chip_index.parquet", "colab_tests.txt", "colab_run.json"}
 
 
 def import_results(zip_path, out_root=OUT_ROOT) -> list:
