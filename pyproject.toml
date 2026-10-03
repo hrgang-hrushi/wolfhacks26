@@ -1,0 +1,27 @@
+[project]
+name = "hack-ncsu"
+version = "0.1.0"
+description = "NC pavement condition pipeline: NCDOT PCS + 3DEP terrain + NAIP chips"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "geopandas",
+    "pyarrow",
+    "rasterio",
+    "shapely",
+    "pyproj",
+    "lightgbm",
+    "scikit-learn",
+    "py3dep",
+    "pysheds",
+    "pystac-client",
+    "planetary-computer",
+    "requests",
+    "tqdm",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pipeline", "src/model"]

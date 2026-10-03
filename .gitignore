@@ -1,0 +1,14 @@
+# data (raw pulls and image chips stay local)
+data/raw/*
+!data/raw/.gitkeep
+data/chips/*
+!data/chips/.gitkeep
+# statewide rasters are >100 MB each, over GitHub's file limit
+data/processed/dem/
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.DS_Store
