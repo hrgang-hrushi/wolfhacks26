@@ -1,9 +1,19 @@
-"""Cloud box driver (scripts/cloud/box.py). vast.ai and ssh are replaced by a small fake; nothing is rented."""
+"""Cloud box driver (scripts/cloud/box.py). vast.ai and ssh are replaced by a small fake; nothing is rented.
 
+The fake keeps a list of instances (the vast.ai side) and a temporary folder standing in for the
+project directory on the box, so pushing, pulling, the photo checks and the teardown gate run for real
+against files on disk. Ids C1 to C25 follow the run spec.
+"""
+
+import io
 import json
 import re
+import subprocess
+import sys
+import tarfile
 import types
 
+import numpy as np
 import pytest
 
 from vision_helpers import good_offer
@@ -16,18 +26,27 @@ def reply(rc=0, out="", err=""):
 
 
 class Fake:
-    """Stands in for box._sh: a tiny vast.ai backend plus canned ssh answers."""
+    """Stands in for box._sh: a tiny vast.ai backend plus a box whose project folder is a local directory."""
 
-    def __init__(self):
+    def __init__(self, box, remote):
+        self.box, self.remote = box, remote
         self.calls, self.instances, self.next_id = [], {}, 5000
         self.create_status = "running"
         self.destroy_works = self.has_key = self.selfstop_works = self.start_works = True
-        self.watchdog = self.launch_ok = True
-        self.ssh_fail_times = 0
-        self.rc = {}
-        self.offers = []
+        self.watchdog = self.launch_ok = self.gpu_ok = self.install_ok = self.mem_ok = True
+        self.destroy_errors = self.poll_errors = self.ssh_fail_times = 0
+        self.create_prefix = ""            # text the CLI prints before its JSON
+        self.create_garbled = False        # the CLI prints no usable JSON at all
+        self.gone_offers = set()           # offers that someone else took
+        self.instance_dph = None           # billed price shown on the instance record
+        self.raise_on_poll = None          # an exception raised by the first status poll after create
+        self.rc, self.logs, self.offers = {}, {}, []
+        self.box_chips = {}                # photos the box "fetches": file name -> array
+        self.trial_rates = {32: 40.0, 64: 80.0, 128: 60.0}
+        self.corrupt_pull = False
         self.on_call = None
 
+    # ------------------------------------------------------------ dispatch
     def __call__(self, args, timeout=600, input=None, stdin=None, stdout=None):
         self.calls.append(list(args))
         if self.on_call:
@@ -35,18 +54,42 @@ class Fake:
         if args[0] == "vastai":
             return self.vast(args[1:])
         if args[0] == "ssh":
-            return self.ssh(args[-1])
+            return self.ssh(args[-1], input, stdin, stdout)
         raise AssertionError(f"unexpected command {args}")
 
+    def created(self):
+        return [c for c in self.calls if c[:3] == ["vastai", "create", "instance"]]
+
+    # ------------------------------------------------------------ vast.ai
     def vast(self, a):
         if a[:2] == ["show", "instances-v1"]:
+            if self.raise_on_poll and self.instances:
+                exc, self.raise_on_poll = self.raise_on_poll, None
+                raise exc
+            if self.poll_errors > 0 and self.instances:
+                self.poll_errors -= 1
+                return reply(rc=1, err="502 Bad Gateway")
             return reply(out=json.dumps({"instances": list(self.instances.values())}))
         if a[:2] == ["create", "instance"]:
+            if int(a[2]) in self.gone_offers:
+                return reply(rc=1, err="error 404: no_such_ask")
             self.next_id += 1
+            label = a[a.index("--label") + 1] if "--label" in a else None
             self.instances[self.next_id] = {"id": self.next_id, "actual_status": self.create_status,
-                                            "ssh_host": "ssh.example", "ssh_port": 2222}
-            return reply(out=json.dumps({"new_contract": self.next_id}))
+                                            "ssh_host": "ssh.example", "ssh_port": 2222, "label": label,
+                                            "onstart": a[a.index("--onstart-cmd") + 1] if "--onstart-cmd" in a else "",
+                                            "disk": a[a.index("--disk") + 1], "dph_total": self.instance_dph}
+            if self.create_garbled:
+                return reply(out="Started. (output format changed)")
+            return reply(out=self.create_prefix + json.dumps({"success": True, "new_contract": self.next_id}))
         if a[:2] == ["destroy", "instance"]:
+            if self.destroy_errors > 0:
+                self.destroy_errors -= 1
+                if int(a[2]) not in self.instances:
+                    return reply(rc=1, err="error 404: instance not found")
+                return reply(rc=1, err="503")
+            if int(a[2]) not in self.instances:
+                return reply(rc=1, err="error 404: instance not found")
             if self.destroy_works:
                 self.instances.pop(int(a[2]), None)
             return reply()
@@ -59,12 +102,10 @@ class Fake:
             return reply()
         if a[:2] == ["search", "offers"]:
             return reply(out=json.dumps(self.offers))
-        if a[:2] == ["label", "instance"]:
-            self.instances[int(a[2])]["label"] = a[3]
-            return reply()
         raise AssertionError(f"unexpected vastai call {a}")
 
-    def ssh(self, cmd):
+    # ------------------------------------------------------------ the box
+    def ssh(self, cmd, input, stdin, stdout):
         if self.ssh_fail_times > 0:
             self.ssh_fail_times -= 1
             return reply(rc=255, err="Connection refused")
@@ -83,22 +124,89 @@ class Fake:
             job = re.search(r"logs/([\w\-]+)\.rc", cmd).group(1)
             code = self.rc.get(job)
             return reply(out=f"RC={'' if code is None else code}\nlast log line\n")
+        if "tar xf - -C" in cmd:  # push
+            with tarfile.open(fileobj=stdin, mode="r|") as tar:
+                tar.extractall(self.remote, filter="data")
+            return reply()
+        if cmd.startswith("echo ") and "CODE_HASH" in cmd:
+            (self.remote / "CODE_HASH").write_text(cmd.split()[1] + "\n")
+            return reply()
+        if "python3 - " in cmd and input == self.box.MANIFEST_PY:
+            target = self.remote / cmd.rsplit("python3 - ", 1)[1].strip("'\"")
+            r = subprocess.run([sys.executable, "-c", input, str(target)], capture_output=True, text=True)
+            return reply(out=r.stdout)
+        if cmd.startswith("tar cf - -C"):  # pull
+            target = self.remote / cmd.split(" -C ", 1)[1].rsplit(" .", 1)[0].strip("'\"").replace("/root/hack/", "")
+            with tarfile.open(fileobj=stdout, mode="w") as tar:
+                for f in sorted(p for p in target.rglob("*") if p.is_file()):
+                    data = f.read_bytes()
+                    if self.corrupt_pull and f.suffix == ".json":
+                        data = data[:-1] + b"X"
+                    info = tarfile.TarInfo(f.relative_to(target).as_posix())
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+            return types.SimpleNamespace(returncode=0, stdout=None, stderr=b"")
+        if "src.pipeline.chips --limit 50 --seed 0" in cmd:
+            (self.remote / "data" / "chips").mkdir(parents=True, exist_ok=True)
+            for name, arr in self.box_chips.items():
+                np.save(self.remote / "data" / "chips" / name, arr)
+            return reply(out="50 chips to cut from 44 NAIP tiles with 16 workers\n"
+                             "[chips] 50/50 (100.0%)  9.0 chips/s  0 failed  done in 5.5s\n")
+        if "src.pipeline.chips --limit 500" in cmd:
+            workers = int(re.search(r"--workers (\d+)", cmd).group(1))
+            secs = 500 / self.trial_rates[workers]
+            return reply(out=f"500 chips to cut from 380 NAIP tiles with {workers} workers\n"
+                             f"[chips] 500/500 (100.0%)  {self.trial_rates[workers]:.1f} chips/s  0 failed  done in {secs:.1f}s\n")
+        if "uv run python - data/chips" in cmd and input == self.box.DIGEST_PY:
+            r = subprocess.run([sys.executable, "-c", input, str(self.remote / "data" / "chips")],
+                               capture_output=True, text=True)
+            return reply(out=r.stdout)
+        if cmd.startswith("cat /root/hack/logs/") and cmd.endswith(".log"):
+            return reply(out=self.logs.get(cmd.split("/")[-1][:-4], ""))
+        if "grep -c" in cmd:
+            cdir = self.remote / "data" / "chips"
+            return reply(out=f"{len(list(cdir.glob('*.npy'))) if cdir.exists() else 0}\n")
+        if "uv sync --frozen" in cmd:
+            return reply() if self.install_ok else reply(rc=1)
+        if "tail -n 15" in cmd:
+            return reply(out="error: failed to build `pysheds`\n")
+        if "torch.cuda.is_available()" in cmd:
+            return reply(out="GPU NVIDIA GeForce RTX 5090\n") if self.gpu_ok else reply(rc=1, err="AssertionError")
+        if "logs/memcheck.py" in cmd and "uv run" in cmd:
+            return reply(out="MEMCHECK_OK peak_gb=6.10\n") if self.mem_ok else reply(rc=1, err="CUDA out of memory")
+        if input == self.box.COUNTY_PY:
+            src, dst = self.remote / "data" / "chips", self.remote / "data" / "chips_counties"
+            dst.mkdir(parents=True, exist_ok=True)
+            for f in sorted(src.glob("*.npy"))[:3]:
+                (dst / f.name).write_bytes(f.read_bytes())
+            return reply(out="COUNTY_CHIPS 3\n")
         return reply()
 
 
 @pytest.fixture
-def fake(box, monkeypatch):
-    f = Fake()
+def fake(box, monkeypatch, tmp_path):
+    remote = tmp_path / "remote"
+    remote.mkdir()
+    f = Fake(box, remote)
     f.now = 1000.0
     monkeypatch.setattr(box, "_sh", f)
-    monkeypatch.setattr(box, "_now", lambda: f.now)  # the driver's clock
+    monkeypatch.setattr(box, "_now", lambda: f.now)                 # the driver's clock
     monkeypatch.setattr(box, "high_ports_reachable", lambda: True)  # no real network in tests
+    monkeypatch.setattr(box, "ROOT", tmp_path / "project")          # so pull and teardown use temporary folders
+    (tmp_path / "project").mkdir()
     return f
 
 
 def rented(box, fake, now=1000.0, **offer_changes):
     fake.now = now
     return box.rent(good_offer(**offer_changes), sleep=NOSLEEP)
+
+
+def put(root, rel, data):
+    p = root / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(data if isinstance(data, bytes) else data.encode())
+    return p
 
 
 # ---------------------------------------------------------------- offer filter (C1 to C4, C22)
@@ -114,6 +222,8 @@ def test_c1_paid_bandwidth_offers_are_rejected(box, offers):
     assert not {o["id"] for o in paid} & {o["id"] for o in picked}
     with pytest.raises(ValueError):
         box.filter_offers([good_offer(inet_up_cost=0.01)])
+    with pytest.raises(ValueError):
+        box.filter_offers([good_offer(inet_down_cost=0.01)])
 
 
 def test_c2_offers_above_the_price_ceiling_are_rejected(box):
@@ -153,9 +263,12 @@ def test_c22_an_offer_without_one_allowed_gpu_of_24gb_is_rejected(box, change, o
                                           min_reliability=0, min_cuda=0, n=50))
 
 
-def test_c22b_the_4090_fallback_is_used_only_when_no_5090_matches(box, fake):
+def test_c22b_the_4090_fallback_and_the_storage_priced_search(box, fake):
     fake.offers = [good_offer(id=9, gpu_name="RTX 4090", gpu_ram=24564)]
     assert [o["id"] for o in box.pick_offers()] == [9]
+    searches = [c for c in fake.calls if c[1:3] == ["search", "offers"]]
+    assert len(searches) == 2  # RTX 5090 first, then the fallback
+    assert all(c[c.index("--storage") + 1] == "100" for c in searches)  # priced with the disk actually rented
     fake.offers = []
     with pytest.raises(ValueError):
         box.pick_offers()
@@ -187,7 +300,7 @@ def test_c5_renting_is_refused_when_the_money_left_does_not_cover_an_hour(box, f
     box._save(box.HISTORY, [spent])
     with pytest.raises(box.BoxError, match="does not cover an hour"):
         rented(box, fake, now=60000.0, dph_total=0.9)
-    assert not fake.instances and not any(c[1:3] == ["create", "instance"] for c in fake.calls)
+    assert not fake.instances and not fake.created()
     assert not box.budget_ok(2.0, 1.5) and box.budget_ok(1.0, 1.0)
 
 
@@ -205,19 +318,41 @@ def test_c18_spend_is_cumulative_across_boxes_and_stopped_time(box, fake):
     assert box.spent_total(now + 3600.0) == pytest.approx(5.0)
 
 
-# ---------------------------------------------------------------- renting and failure exits (C7, C8, C19)
+def test_c18b_the_billed_price_is_used_when_it_is_higher_than_the_offer(box, fake):
+    fake.instance_dph = 0.95
+    state = rented(box, fake, now=0.0, dph_total=0.90)
+    assert state["dph"] == 0.95 and box.rental_cost(box.load_state(), 3600.0) == pytest.approx(0.95)
+
+
+def test_c18c_state_lives_outside_the_repository(box):
+    real = __import__("vision_helpers").load_box()
+    assert real.ROOT not in real.STATE.parents and real.ROOT not in real.HISTORY.parents
+    assert real.STATE.parent == real.HISTORY.parent == real.STATE_DIR
+
+
+# ---------------------------------------------------------------- renting and failure exits (C7, C8, C19, C24, C25)
 
 def test_c7_the_instance_id_is_saved_before_setup_starts(box, fake):
     seen = []
 
     def spy(args):
-        if args[:3] == ["vastai", "show", "instances-v1"] or args[0] == "ssh":
+        if fake.created() and args[:3] != ["vastai", "create", "instance"]:
             seen.append(box.STATE.exists() and box.load_state()["instance_id"])
 
     fake.on_call = spy
     state = rented(box, fake)
     assert seen and all(s == state["instance_id"] for s in seen)
     assert state["ssh_host"] == "ssh.example" and state["ssh_port"] == 2222
+
+
+def test_c7b_the_watcher_is_installed_by_the_boxes_own_start_up_script(box, fake):
+    state = rented(box, fake, now=5000.0, dph_total=1.0)
+    inst = fake.instances[state["instance_id"]]
+    assert inst["disk"] == "100"
+    onstart = inst["onstart"]
+    assert f"-lt {int(state['deadline_epoch'])} ]" in onstart  # the deadline is fixed before the box exists
+    assert "cat > /root/watchdog.sh" in onstart and "setsid nohup sh /root/watchdog.sh" in onstart
+    assert state["deadline_epoch"] == 5000.0 + 8 * 3600
 
 
 def test_c19_a_box_that_never_runs_is_destroyed_and_its_cost_recorded(box, fake):
@@ -232,9 +367,6 @@ def test_c19_a_box_that_never_runs_is_destroyed_and_its_cost_recorded(box, fake)
 
 def test_c19b_an_unreachable_box_is_destroyed(box, fake):
     fake.ssh_fail_times = 99
-    monkey_sleep = NOSLEEP
-    orig = box.ssh
-    box.ssh = lambda cmd, **kw: orig(cmd, **{**kw, "sleep": monkey_sleep})
     with pytest.raises(box.BoxError, match="ssh failed"):
         rented(box, fake)
     assert not fake.instances and box.load_history()[0]["closed_reason"] == "ssh unreachable"
@@ -246,52 +378,49 @@ def test_c19c_a_third_replacement_is_refused(box, fake):
         with pytest.raises(box.BoxError, match="never reached running"):
             rented(box, fake)
     fake.create_status = "running"
-    n_created = sum(c[1:3] == ["create", "instance"] for c in fake.calls)
     with pytest.raises(box.BoxError, match="no further replacement"):
         rented(box, fake)
-    assert sum(c[1:3] == ["create", "instance"] for c in fake.calls) == n_created == 3
+    assert len(fake.created()) == 3
 
 
 def test_c19d_gpu_or_memory_check_failure_destroys_the_box(box, fake):
     rented(box, fake)
+    fake.gpu_ok = False
     with pytest.raises(box.BoxError, match="GPU is not usable"):
-        box.setup()  # the fake prints no GPU line
+        box.setup()
     assert not fake.instances and box.load_history()[-1]["closed_reason"] == "gpu check"
     rented(box, fake, now=2000.0)
+    fake.mem_ok = False
     with pytest.raises(box.BoxError, match="does not fit"):
         box.memcheck()
     assert not fake.instances and box.load_history()[-1]["closed_reason"] == "memory check"
 
 
-def test_c8_teardown_raises_if_the_instance_is_still_listed(box, fake):
-    rented(box, fake)
-    fake.destroy_works = False
-    with pytest.raises(box.BoxError, match="still listed"):
-        box.teardown(force_discard=True, sleep=NOSLEEP)
-    assert box.load_state() is not None  # not booked as gone
-
-
-def test_c9_teardown_refuses_unverified_results_unless_forced(box, fake):
+def test_c19e_a_failed_install_is_reported_as_such_and_keeps_the_box(box, fake):
     state = rented(box, fake)
-    state["last_run_at"], state["last_verified_pull_at"] = 2000.0, 1500.0
-    box.save_state(state)
-    with pytest.raises(box.BoxError, match="pull first"):
-        box.teardown(sleep=NOSLEEP)
-    assert fake.instances
-    state["last_verified_pull_at"] = 2500.0
-    box.save_state(state)
-    box.teardown(now=3000.0, sleep=NOSLEEP)
-    assert not fake.instances and box.load_state() is None
-    assert box.load_history()[-1]["closed_reason"] == "done"
-    assert box.abandoned_count() == 0
+    fake.install_ok = False
+    with pytest.raises(box.BoxError, match="install failed") as e:
+        box.setup()
+    assert "pysheds" in str(e.value)  # the log tail, not a misleading GPU message
+    assert state["instance_id"] in fake.instances and box.load_history() == []
+    fake.install_ok = True
+    assert box.setup() == "GPU NVIDIA GeForce RTX 5090" and box.memcheck() == "MEMCHECK_OK peak_gb=6.10"
 
 
-def test_c9b_forced_teardown_discards(box, fake):
+def test_c19f_any_failure_after_the_box_exists_destroys_it(box, fake):
+    fake.raise_on_poll = KeyboardInterrupt()  # the user interrupts while the box is booting
+    with pytest.raises(KeyboardInterrupt):
+        rented(box, fake)
+    assert not fake.instances and box.load_state() is None and len(box.load_history()) == 1
+    fake.raise_on_poll = subprocess.TimeoutExpired("vastai", 120)  # a hung API call is a BoxError, ridden out
+    state = rented(box, fake, now=3000.0)
+    assert state["instance_id"] in fake.instances
+
+
+def test_c19g_a_dropped_status_poll_is_ridden_out(box, fake):
+    fake.poll_errors = 2
     state = rented(box, fake)
-    state["last_run_at"] = 2000.0
-    box.save_state(state)
-    box.teardown(force_discard=True, now=3000.0, sleep=NOSLEEP)
-    assert not fake.instances
+    assert state["instance_id"] in fake.instances and box.load_history() == []
 
 
 def test_c24_renting_is_refused_on_a_network_that_blocks_high_ports(box, fake, monkeypatch):
@@ -299,7 +428,7 @@ def test_c24_renting_is_refused_on_a_network_that_blocks_high_ports(box, fake, m
     with pytest.raises(box.BoxError, match="blocks outgoing connections on high ports"):
         rented(box, fake)
     assert not fake.instances and box.load_state() is None and box.load_history() == []
-    assert not any(c[1:3] == ["create", "instance"] for c in fake.calls)  # nothing rented, nothing charged
+    assert not fake.created()  # nothing rented, nothing charged
 
 
 def test_c24b_a_refused_connection_counts_as_reachable_and_silence_does_not(box, monkeypatch):
@@ -317,14 +446,156 @@ def test_c24b_a_refused_connection_counts_as_reachable_and_silence_does_not(box,
     assert box.high_ports_reachable() is False  # dropped by a firewall
 
 
-def test_c25_a_rented_box_is_labelled_and_teardown_touches_only_its_own_id(box, fake):
-    fake.instances[777] = {"id": 777, "actual_status": "running", "ssh_host": "other", "ssh_port": 1}  # another chat's box
+def test_c25_a_rented_box_is_labelled_and_only_its_own_id_is_ever_touched(box, fake):
+    fake.instances[777] = {"id": 777, "actual_status": "running", "ssh_host": "other", "ssh_port": 1}  # another chat's
     state = rented(box, fake)
     assert fake.instances[state["instance_id"]]["label"] == box.LABEL == "image-augmentation"
+    box.stop(sleep=NOSLEEP)
+    box.start(sleep=NOSLEEP)
     box.teardown(force_discard=True, sleep=NOSLEEP)
-    assert list(fake.instances) == [777]  # ours is gone; the other one was never touched
-    touched = [c for c in fake.calls if c[0] == "vastai" and c[1] in ("destroy", "stop", "start", "label")]
-    assert all(int(c[3]) == state["instance_id"] for c in touched)
+    assert list(fake.instances) == [777] and fake.instances[777]["actual_status"] == "running"
+    touched = [c for c in fake.calls if c[0] == "vastai" and c[1] in ("destroy", "stop", "start")]
+    assert touched and all(int(c[3]) == state["instance_id"] for c in touched)
+
+
+def test_offers_that_vanish_are_skipped_and_only_one_box_is_rented(box, fake):
+    fake.gone_offers = {11}
+    state = box.rent_first([good_offer(id=11), good_offer(id=12), good_offer(id=13)], sleep=NOSLEEP)
+    assert len(fake.instances) == 1 and state["instance_id"] in fake.instances
+    assert [c[3] for c in fake.created()] == ["11", "12"]  # stopped after the first success
+    fake2_gone = {21, 22}
+    box.abandon("test", sleep=NOSLEEP)
+    fake.gone_offers = fake2_gone
+    with pytest.raises(box.BoxError, match="none of the listed offers"):
+        box.rent_first([good_offer(id=21), good_offer(id=22)], sleep=NOSLEEP)
+    assert not fake.instances
+    with pytest.raises(box.BoxError, match="none of the listed offers"):
+        box.rent_first([good_offer(id=30)], only=99, sleep=NOSLEEP)
+
+
+def test_noisy_or_unreadable_create_output_never_rents_a_second_box(box, fake):
+    fake.create_prefix = "Warning: your CLI is out of date\n"
+    state = box.rent_first([good_offer(id=1), good_offer(id=2)], sleep=NOSLEEP)
+    assert len(fake.created()) == 1 and box.load_state()["instance_id"] == state["instance_id"]
+    box.abandon("test", sleep=NOSLEEP)
+    fake.create_prefix, fake.create_garbled = "", True  # no JSON at all, but an instance did appear
+    state = box.rent_first([good_offer(id=3), good_offer(id=4)], sleep=NOSLEEP)
+    assert len(fake.created()) == 2 and list(fake.instances) == [state["instance_id"]]  # adopted, not rented again
+
+
+def test_c8_teardown_raises_if_the_instance_is_still_listed(box, fake):
+    rented(box, fake)
+    fake.destroy_works = False
+    with pytest.raises(box.BoxError, match="still listed"):
+        box.teardown(force_discard=True, sleep=NOSLEEP)
+    assert box.load_state() is not None  # not booked as gone
+
+
+def test_c8b_an_instance_that_is_already_gone_counts_as_destroyed(box, fake):
+    state = rented(box, fake)
+    fake.instances.clear()  # the host removed it
+    box.teardown(force_discard=True, now=4600.0, sleep=NOSLEEP)  # `vastai destroy` now exits non-zero
+    assert box.load_state() is None and box.load_history()[-1]["closed_reason"] == "done"
+    assert box.spent_total(10 * 3600.0) == pytest.approx(state["dph"])  # one hour booked, and it stops growing
+    rented(box, fake, now=5000.0)
+    fake.destroy_errors = 1  # one transient API error, then it works
+    box.abandon("test", sleep=NOSLEEP)
+    assert not fake.instances
+
+
+# ---------------------------------------------------------------- the teardown gate and pull (C9, C10)
+
+def finished_job(box, fake, name="grid"):
+    job = box.run(name, "true", sleep=NOSLEEP)
+    fake.rc[job] = 0
+    return job
+
+
+def test_c9_teardown_refuses_until_the_results_on_the_box_are_on_this_machine(box, fake):
+    state = rented(box, fake)
+    job = box.run("grid", "true", sleep=NOSLEEP)
+    put(fake.remote, "data/processed/vision/frozen/metrics.json", '{"a": 1}')
+    put(fake.remote, "data/processed/vision/frozen/emb.npy", b"\x00" * 64)
+    with pytest.raises(box.BoxError, match="still running"):  # a pull while the job runs must not open the gate
+        box.pull("data/processed/vision", box.ROOT / "data/processed/vision")
+        box.teardown(sleep=NOSLEEP)
+    fake.rc[job] = 0
+    put(fake.remote, "data/processed/vision/finetune/report.md", "written after the pull")
+    with pytest.raises(box.BoxError, match="1 result files on the box are not on this machine"):
+        box.teardown(sleep=NOSLEEP)
+    assert state["instance_id"] in fake.instances
+    box.pull("data/processed/vision", box.ROOT / "data/processed/vision")
+    put(box.ROOT, "data/processed/vision/frozen/metrics.json", '{"a": 2}')  # altered locally after the pull
+    with pytest.raises(box.BoxError, match="differ"):
+        box.teardown(sleep=NOSLEEP)
+    box.pull("data/processed/vision", box.ROOT / "data/processed/vision")
+    put(box.ROOT, "data/processed/vision/extra_local_note.txt", "extra local files are fine")
+    box.teardown(now=3000.0, sleep=NOSLEEP)
+    assert not fake.instances and box.load_state() is None
+    assert box.load_history()[-1]["closed_reason"] == "done" and box.abandoned_count() == 0
+
+
+def test_c9b_an_empty_results_folder_needs_force(box, fake):
+    rented(box, fake)
+    finished_job(box, fake, "fetch")
+    with pytest.raises(box.BoxError, match="holds no results"):
+        box.teardown(sleep=NOSLEEP)
+    assert fake.instances
+    box.teardown(force_discard=True, now=3000.0, sleep=NOSLEEP)
+    assert not fake.instances
+
+
+def test_c10_pull_copies_checks_and_guards_its_destination(box, fake):
+    rented(box, fake)
+    put(fake.remote, "data/processed/vision/frozen/metrics.json", '{"a": 1}')
+    put(fake.remote, "data/processed/vision/ndvi_stats.parquet", b"PAR1" + b"\x01" * 100)
+    dest = box.ROOT / "data/processed/vision"
+    put(box.ROOT, "data/processed/vision/frozen/metrics.json", "older result")
+    assert box.pull("data/processed/vision", dest, now=1234.0) == 2
+    assert (dest / "frozen/metrics.json").read_text() == '{"a": 1}'  # results replace older results
+    assert (dest / "ndvi_stats.parquet").read_bytes().startswith(b"PAR1")
+    assert not list(dest.glob(".incoming-*")) and box.load_state()["last_verified_pull_at"] == 1234.0
+    for bad in (box.ROOT / "data/processed", box.ROOT / "data/raw", box.ROOT, box.ROOT / "src"):
+        with pytest.raises(box.BoxError, match="pull may only write into"):
+            box.pull("data/processed/vision", bad)  # e.g. it must never replace segments_targets.parquet
+    for bad in ("../etc", "/etc", "data/$(touch x)", "data/a b"):
+        with pytest.raises(box.BoxError, match="plain path"):
+            box.pull(bad, dest)
+
+
+def test_c10b_a_pull_that_does_not_match_the_boxes_list_is_refused(box, fake):
+    rented(box, fake)
+    put(fake.remote, "data/processed/vision/frozen/metrics.json", '{"a": 1}')
+    put(box.ROOT, "data/processed/vision/frozen/metrics.json", "older result")
+    fake.corrupt_pull = True
+    with pytest.raises(box.BoxError, match="do not match the box's list"):
+        box.pull("data/processed/vision", box.ROOT / "data/processed/vision")
+    assert (box.ROOT / "data/processed/vision/frozen/metrics.json").read_text() == "older result"  # untouched
+    assert box.load_state()["last_verified_pull_at"] == 0.0
+
+
+def test_c10c_pulling_chips_never_replaces_one_that_is_already_here(box, fake):
+    rented(box, fake)
+    for name in ("a.npy", "b.npy", "c.npy"):
+        put(fake.remote, f"data/chips/{name}", b"from the box " + name.encode())
+    put(box.ROOT, "data/chips/a.npy", "already here")
+    assert box.county_chips() == 2  # the county copy goes through the same guard
+    assert (box.ROOT / "data/chips/a.npy").read_text() == "already here"
+    assert (box.ROOT / "data/chips/b.npy").read_bytes() == b"from the box b.npy"
+    assert box.pull("data/chips", box.ROOT / "data/chips", no_overwrite=False) == 0  # the flag cannot be turned off
+
+
+def test_c10d_verify_manifest_detects_every_kind_of_difference(box, tmp_path):
+    d = tmp_path / "got"
+    put(d, "a.json", "alpha")
+    put(d, "sub/b.npy", b"\x00\x01\x02")
+    good = [["a.json", 5, box.file_sha256(d / "a.json")], ["sub/b.npy", 3, box.file_sha256(d / "sub" / "b.npy")]]
+    assert box.verify_manifest(good, d) == [] and box.missing_or_different(good, d) == []
+    assert box.verify_manifest(good + [["missing.txt", 1, "0" * 64]], d) == ["missing.txt"]
+    assert box.verify_manifest(good[:1], d) == ["sub/b.npy"]            # an extra local file
+    assert box.missing_or_different(good[:1], d) == []                   # which the teardown gate allows
+    assert box.verify_manifest([["a.json", 6, good[0][2]], good[1]], d) == ["a.json"]  # size
+    assert box.verify_manifest([["a.json", 5, "f" * 64], good[1]], d) == ["a.json"]    # hash
 
 
 # ---------------------------------------------------------------- self-stop and watchdog (C20, C23)
@@ -345,7 +616,7 @@ def test_c23b_a_box_that_does_not_stop_itself_is_abandoned(box, fake):
     assert not fake.instances and box.load_history()[-1]["closed_reason"] == "no self-stop"
 
 
-def test_c23c_a_working_self_stop_restarts_and_arms_the_watcher(box, fake):
+def test_c23c_a_working_self_stop_restarts_and_confirms_the_watcher(box, fake):
     rented(box, fake)
     state = box.selfstop_test(sleep=NOSLEEP)
     assert fake.instances[state["instance_id"]]["actual_status"] == "running"
@@ -362,10 +633,42 @@ def test_c23d_a_failed_restart_is_abandoned(box, fake):
     assert not fake.instances and box.load_history()[-1]["closed_reason"] == "restart failed"
 
 
-def test_c23e_the_watcher_script_waits_for_the_fixed_deadline_then_stops_the_box(box):
+def test_c23e_the_watcher_waits_for_the_fixed_deadline_then_stops_the_box_until_it_works(box):
     script = box.watchdog_script(1234567.9)
     assert "-lt 1234567 ]" in script
-    assert script.index("pkill") < script.index("vastai stop instance $CONTAINER_ID")
+    assert script.index("pkill") < script.index("until vastai stop instance $CONTAINER_ID")
+    assert "do sleep 60; done" in script  # one failed stop call is retried, not the end of it
+    assert "CONTAINER_API_KEY" in script.splitlines()[0]  # it reads the box's own id and key
+
+
+@pytest.mark.parametrize("restart", ["selfstop", "start"])
+def test_c23f_a_box_whose_watcher_cannot_be_started_is_stopped_not_left_running(box, fake, restart):
+    state = rented(box, fake)
+    if restart == "start":
+        box.stop(sleep=NOSLEEP)
+    fake.watchdog = False  # after the restart the watcher is not running and cannot be started
+    with pytest.raises(box.BoxError, match="so the box was stopped"):
+        box.selfstop_test(sleep=NOSLEEP) if restart == "selfstop" else box.start(sleep=NOSLEEP)
+    assert fake.instances[state["instance_id"]]["actual_status"] == "exited"
+    s = box.load_state()
+    assert s["watchdog_armed"] is False and s["intervals"][-1]["rate"] == s["storage_rate"]
+
+
+def test_c23g_the_watcher_is_started_over_ssh_when_the_start_up_script_did_not(box, fake):
+    rented(box, fake)
+    answers = iter([False, True])  # not running, then running after the launch
+    real_ssh = fake.ssh
+
+    def ssh(cmd, input, stdin, stdout):
+        if "echo ALIVE" in cmd:
+            return reply(out="ALIVE\n") if next(answers) else reply(rc=1)
+        return real_ssh(cmd, input, stdin, stdout)
+
+    fake.ssh = ssh
+    box.arm_watchdog()
+    sent = [c[-1] for c in fake.calls if c[0] == "ssh"]
+    assert "cat > /root/watchdog.sh" in sent and box.WATCHDOG_LAUNCH in sent
+    assert box.load_state()["watchdog_armed"] is True
 
 
 def test_c20_launching_a_job_is_refused_without_the_deadline_watcher(box, fake):
@@ -374,15 +677,17 @@ def test_c20_launching_a_job_is_refused_without_the_deadline_watcher(box, fake):
     with pytest.raises(box.BoxError, match="deadline watcher"):
         box.run("fetch", "true", sleep=NOSLEEP)
     assert box.load_state()["jobs"] == {}
+    liveness = [c[-1] for c in fake.calls if c[0] == "ssh" and "echo ALIVE" in c[-1]]
+    assert all("pgrep -f '[w]atchdog.sh'" in c for c in liveness)  # by command line, not a stale pid file
 
 
-def test_stop_and_start_switch_the_billing_rate_and_rearm(box, fake):
+def test_stop_and_start_switch_the_billing_rate_and_never_extend_the_deadline(box, fake):
     state = rented(box, fake, now=0.0)
     box.stop(now=3600.0, sleep=NOSLEEP)
     assert box.load_state()["watchdog_armed"] is False
     box.start(now=7200.0, sleep=NOSLEEP)
     s = box.load_state()
-    assert s["watchdog_armed"] is True and s["deadline_epoch"] == state["deadline_epoch"]  # never extended
+    assert s["watchdog_armed"] is True and s["deadline_epoch"] == state["deadline_epoch"]
     assert box.rental_cost(s, 7200.0) == pytest.approx(state["dph"] + state["storage_rate"])
 
 
@@ -396,11 +701,29 @@ def test_c16_a_rerun_gets_a_new_id_and_never_reads_the_old_exit_status(box, fake
     second = box.run("fetch", "true", now=1_700_000_060.0, sleep=NOSLEEP)
     assert second != first and box.load_state()["jobs"]["fetch"] == second
     assert box.job_status("fetch")[0] is None  # the earlier run's exit status is not reported
+    assert box.running_jobs() == ["fetch"]
     fake.rc[second] = 3
-    assert box.wait("fetch", sleep=NOSLEEP) == 3
-    launch = [c[-1] for c in fake.calls if c[0] == "ssh" and "setsid nohup" in c[-1] and second in c[-1]][0]
-    assert f"{second}.rc.tmp" in launch and f"mv logs/{second}.rc.tmp logs/{second}.rc" in launch
-    assert "mkdir -p logs" in launch
+    assert box.wait("fetch", sleep=NOSLEEP) == 3 and box.running_jobs() == []
+    launch = [c[-1] for c in fake.calls if c[0] == "ssh" and "setsid nohup" in c[-1] and second in c[-1]]
+    assert len(launch) == 1  # launched exactly once
+    assert f"{second}.rc.tmp" in launch[0] and f"mv logs/{second}.rc.tmp logs/{second}.rc" in launch[0]
+    assert "mkdir -p logs" in launch[0]
+
+
+def test_c16b_a_dropped_connection_never_launches_a_job_twice(box, fake):
+    rented(box, fake)
+    real_ssh = fake.ssh
+    fails = iter([True])
+
+    def ssh(cmd, input, stdin, stdout):
+        if "setsid nohup sh -c" in cmd and next(fails, False):
+            return reply(rc=255, err="Connection reset")
+        return real_ssh(cmd, input, stdin, stdout)
+
+    fake.ssh = ssh
+    with pytest.raises(box.BoxError, match="ssh failed 1 times"):
+        box.run("grid", "true", sleep=NOSLEEP)
+    assert sum("setsid nohup sh -c" in c[-1] for c in fake.calls if c[0] == "ssh") == 1
 
 
 def test_c17_a_job_that_fails_to_launch_raises(box, fake):
@@ -409,6 +732,24 @@ def test_c17_a_job_that_fails_to_launch_raises(box, fake):
     with pytest.raises(box.BoxError, match="did not start"):
         box.run("fetch", "true", sleep=NOSLEEP)
     assert "fetch" not in box.load_state()["jobs"]
+
+
+@pytest.mark.parametrize("name", ["$(touch pwned)", "a b", "x;y", "", "../x", "a'b"])
+def test_c17b_a_job_name_that_is_not_a_plain_word_is_refused(box, fake, name):
+    rented(box, fake)
+    n_ssh = sum(c[0] == "ssh" for c in fake.calls)
+    with pytest.raises(box.BoxError, match="job name"):
+        box.run(name, "true", sleep=NOSLEEP)
+    assert sum(c[0] == "ssh" for c in fake.calls) == n_ssh  # nothing reached the box
+
+
+def test_c17c_a_command_with_quotes_reaches_the_box_intact(box, fake):
+    rented(box, fake)
+    job = box.run("grid", """python -c 'print("a b")' && echo "$HOME" """, sleep=NOSLEEP)
+    launch = [c[-1] for c in fake.calls if c[0] == "ssh" and job in c[-1] and "setsid" in c[-1]][0]
+    inner = launch.split("sh -c ", 1)[1].split(f" > logs/{job}.log")[0]
+    import shlex
+    assert shlex.split(inner)[0].startswith("""python -c 'print("a b")' && echo "$HOME" """)
 
 
 def test_wait_times_out_on_a_job_that_never_finishes(box, fake):
@@ -431,16 +772,25 @@ def test_c13_ssh_succeeds_after_two_failures_and_raises_after_five(box, fake):
         box.ssh("true", sleep=NOSLEEP)
 
 
-def test_c13b_a_failing_remote_command_is_not_retried(box, fake, monkeypatch):
+def test_c13b_a_failing_remote_command_is_not_retried_and_a_hang_is_a_box_error(box, fake, monkeypatch):
     rented(box, fake)
-    monkeypatch.setattr(fake, "ssh", lambda cmd: reply(rc=2, err="boom"))
+    monkeypatch.setattr(fake, "ssh", lambda cmd, i, si, so: reply(rc=2, err="boom"))
     fake.calls.clear()
     with pytest.raises(box.BoxError, match="remote command failed"):
         box.ssh("false", sleep=NOSLEEP)
     assert len(fake.calls) == 1
 
+    def hang(*a, **k):
+        raise subprocess.TimeoutExpired("ssh", 600)
 
-# ---------------------------------------------------------------- shipping (C10, C11, C12)
+    monkeypatch.setattr(box, "_sh", hang)
+    with pytest.raises(box.BoxError, match="timed out"):
+        box.ssh("sleep 9999", sleep=NOSLEEP)
+    with pytest.raises(box.BoxError, match="timed out"):
+        box.vast("show", "instances-v1", "--raw")
+
+
+# ---------------------------------------------------------------- shipping (C11, C12)
 
 def make_project(root):
     for rel, text in {"src/a.py": "x = 1\n", "src/model/b.py": "y = 2\n", "tests/vision/test_x.py": "z = 3\n",
@@ -448,73 +798,86 @@ def make_project(root):
                       ".python-version": "3.11\n", "data/raw/ncdot_joined.parquet": "p",
                       "data/raw/naip_2022_index.parquet": "q", "src/__pycache__/a.cpython-311.pyc": "junk",
                       "src/a 2.py": "icloud duplicate\n", "data/raw/other.parquet": "not listed"}.items():
-        p = root / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(text)
+        put(root, rel, text)
+
+
+EXPECTED_BUNDLE = sorted([".python-version", "data/raw/naip_2022_index.parquet", "data/raw/ncdot_joined.parquet",
+                          "pyproject.toml", "scripts/cloud/box.py", "src/a.py", "src/model/b.py",
+                          "tests/vision/test_x.py", "uv.lock"])
 
 
 def test_c12_the_push_list_holds_only_the_expected_paths(box, tmp_path):
     make_project(tmp_path)
-    files = box.bundle_files(tmp_path)
-    assert files == sorted([".python-version", "data/raw/naip_2022_index.parquet", "data/raw/ncdot_joined.parquet",
-                            "pyproject.toml", "scripts/cloud/box.py", "src/a.py", "src/model/b.py",
-                            "tests/vision/test_x.py", "uv.lock"])
+    assert box.bundle_files(tmp_path) == EXPECTED_BUNDLE
     assert all(not e.startswith(("/", "~", "..")) and ".git" not in e and ".config" not in e for e in box.PUSH_LIST)
-    (tmp_path / "data/processed").mkdir(parents=True)
-    (tmp_path / "data/processed/segments_targets.parquet").write_text("t")
+    put(tmp_path, "data/processed/segments_targets.parquet", "t")
     assert "data/processed/segments_targets.parquet" in box.bundle_files(tmp_path)
     (tmp_path / "uv.lock").unlink()
     with pytest.raises(box.BoxError, match="missing uv.lock"):
         box.bundle_files(tmp_path)
 
 
+def test_c12b_push_sends_exactly_the_bundle_and_records_the_code_hash(box, fake):
+    rented(box, fake)
+    make_project(box.ROOT)
+    digest = box.push()
+    sent = sorted(p.relative_to(fake.remote).as_posix() for p in fake.remote.rglob("*") if p.is_file())
+    assert sent == sorted(EXPECTED_BUNDLE + ["CODE_HASH"])
+    assert (fake.remote / "CODE_HASH").read_text().strip() == digest == box.code_hash(box.ROOT)
+    assert (fake.remote / "src/model/b.py").read_text() == "y = 2\n"
+    assert not (box.LOGS / "cloud_push.tar").exists()
+    put(box.ROOT, "src/settings.py", "API" + "_KEY = 'A1b2C3d4E5f6G7h8I9j0K1l2'\n")
+    before = sum(c[0] == "ssh" for c in fake.calls)
+    with pytest.raises(box.BoxError, match="look like they hold a key"):
+        box.push()
+    assert sum(c[0] == "ssh" for c in fake.calls) == before  # refused before anything was sent
+
+
 @pytest.mark.parametrize("rel,text", [
     ("src/vast_api_key", "abc"),
     ("src/deploy.pem", "abc"),
+    ("src/server.key", "abc"),
     ("src/id_ed25519", "abc"),
     ("src/.env", "A=1"),
-    ("src/creds.txt", "secret_access" + "_key=abcdef"),
+    ("src/.env.local", "A=1"),
+    ("src/aws_credentials.json", "{}"),
+    ("src/creds.txt", "secret_access" + "_key=abcdefghijklmnop"),
+    ("src/creds2.txt", "AWS_SECRET_ACCESS" + "_KEY=abcdefghijklmnop"),
     ("src/k.py", "-----BEGIN OPENSSH PRIVATE" + " KEY-----"),
     ("src/cfg.toml", "api" + "_key = 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4'"),
+    ("src/upper.py", "VAST_API" + "_KEY = \"0123456789abcdef0123456789abcdef\""),
+    ("src/camel.json", '{"api' + 'Key": "0123456789abcdef0123456789"}'),
+    ("src/gh.py", "t = 'gh" + "p_" + "a" * 36 + "'"),
+    ("src/pw.py", "PASS" + "WORD = 'correct-horse-battery'"),
+    ("src/notes.csv", "name,value\ntok" + "en=abcdefghijklmnopqrstuvwx\n"),
+    ("src/aws.py", "k = 'AKIA" + "ABCDEFGHIJKLMNOP'"),
 ])
 def test_c11_a_bundle_that_looks_like_it_holds_a_key_is_refused(box, tmp_path, rel, text):
     make_project(tmp_path)
     box.scan_for_keys(box.bundle_files(tmp_path), tmp_path)  # the clean project passes
-    (tmp_path / rel).write_text(text)
+    put(tmp_path, rel, text)
+    files = sorted(set(box.bundle_files(tmp_path)) | {rel})
     with pytest.raises(box.BoxError, match="look like they hold a key"):
-        box.scan_for_keys(box.bundle_files(tmp_path) + ([rel] if rel not in box.bundle_files(tmp_path) else []),
-                          tmp_path)
+        box.scan_for_keys(files, tmp_path)
 
 
-def test_c11b_the_real_bundle_holds_no_key(box):
-    real = box.ROOT
-    files = [f for f in box.bundle_files(real) if not f.endswith(".parquet")]
-    box.scan_for_keys(files, real)
-
-
-def test_c10_a_results_list_that_differs_is_detected(box, tmp_path):
-    d = tmp_path / "got"
-    (d / "sub").mkdir(parents=True)
-    (d / "a.json").write_text("alpha")
-    (d / "sub" / "b.npy").write_bytes(b"\x00\x01\x02")
-    good = [["a.json", 5, box.file_sha256(d / "a.json")], ["sub/b.npy", 3, box.file_sha256(d / "sub" / "b.npy")]]
-    assert box.verify_manifest(good, d) == []
-    assert box.verify_manifest(good + [["missing.txt", 1, "0" * 64]], d) == ["missing.txt"]
-    assert box.verify_manifest(good[:1], d) == ["sub/b.npy"]  # an extra local file
-    assert box.verify_manifest([["a.json", 6, good[0][2]], good[1]], d) == ["a.json"]  # size
-    assert box.verify_manifest([["a.json", 5, "f" * 64], good[1]], d) == ["a.json"]  # hash
+def test_c11b_the_real_bundle_holds_no_key():
+    real = __import__("vision_helpers").load_box()
+    files = [f for f in real.bundle_files(real.ROOT) if not f.endswith(".parquet")]
+    assert len(files) > 20
+    real.scan_for_keys(files, real.ROOT)
 
 
 def test_code_hash_is_stable_and_changes_with_a_file(box, tmp_path):
     make_project(tmp_path)
     h = box.code_hash(tmp_path)
     assert h == box.code_hash(tmp_path) and len(h) == 64
-    (tmp_path / "src/a 2.py").write_text("changed duplicate\n")
+    put(tmp_path, "src/a 2.py", "changed duplicate\n")
     assert box.code_hash(tmp_path) == h  # iCloud duplicates are not part of the code
-    (tmp_path / "src/model/b.py").write_text("y = 3\n")
+    put(tmp_path, "src/model/b.py", "y = 3\n")
     assert box.code_hash(tmp_path) != h
     h2 = box.code_hash(tmp_path)
-    (tmp_path / "uv.lock").write_text("other lock\n")
+    put(tmp_path, "uv.lock", "other lock\n")
     assert box.code_hash(tmp_path) != h2
 
 
@@ -522,6 +885,8 @@ def test_code_hash_is_stable_and_changes_with_a_file(box, tmp_path):
 
 BANNER = "112,393 chips to cut from 4,012 NAIP tiles with 64 workers (37 midpoints outside NAIP 2022 coverage)\n"
 FINAL = "[chips] 112,393/112,393 (100.0%)  80.0 chips/s  12 failed  done in 1404.9s\n"
+RETRY = ("49 chips to cut from 40 NAIP tiles with 64 workers (37 midpoints outside NAIP 2022 coverage)\n"
+         "[chips] 12/12 (100.0%)  3.0 chips/s  2 failed  done in 4.0s\n")
 
 
 def test_c14_log_parsing_and_the_success_only_rate(box):
@@ -539,6 +904,14 @@ def test_c14_log_parsing_and_the_success_only_rate(box):
         box.parse_chips_log("Traceback (most recent call last):\n")
 
 
+def test_c14c_a_log_with_several_runs_is_read_from_its_last_run(box):
+    both = box.parse_chips_log(BANNER + FINAL + RETRY)
+    assert both == {"to_cut": 49, "uncovered": 37, "done": 12, "failed": 2, "seconds": 4.0}  # the retry, not a mix
+    killed = BANNER + FINAL + "37 chips to cut from 30 NAIP tiles with 64 workers\n[chips] 5/37 (13.5%)  2.0 chips/s  0 failed  eta 0.3 min\n"
+    with pytest.raises(box.BoxError, match="did not finish"):  # a finished run followed by a killed one
+        box.parse_chips_log(killed)
+
+
 def test_c14b_the_census_must_add_up_and_failures_stay_under_half_a_percent(box):
     parsed = {"to_cut": 49, "uncovered": 37, "done": 49, "failed": 12, "seconds": 5.0}
     assert box.census(112443 - 49, parsed)["on_disk"] == 112394
@@ -548,6 +921,25 @@ def test_c14b_the_census_must_add_up_and_failures_stay_under_half_a_percent(box)
     with pytest.raises(box.BoxError, match="above 0.5%"):
         box.census(112443 - 563 - 37, many)
     box.census(112443 - 562 - 37, dict(parsed, failed=562))  # 0.4998% passes
+
+
+def test_c14d_a_failed_fetch_contract_stops_the_box_and_keeps_the_photos(box, fake, monkeypatch):
+    state = rented(box, fake)
+    monkeypatch.setattr(box, "TOTAL_SEGMENTS", 10)
+    job = finished_job(box, fake, "fetch")
+    fake.logs[job] = ("10 chips to cut from 9 NAIP tiles with 64 workers (1 midpoints outside NAIP 2022 coverage)\n"
+                      "[chips] 9/9 (100.0%)  30.0 chips/s  0 failed  done in 0.3s\n")
+    for i in range(9):
+        put(fake.remote, f"data/chips/c{i}.npy", b"x")
+    got = box.fetch_census()
+    assert {k: got[k] for k in ("on_disk", "failed", "uncovered", "total")} == {"on_disk": 9, "failed": 0,
+                                                                                "uncovered": 1, "total": 10}
+    assert got["rate"] == pytest.approx(30.0)
+    (fake.remote / "data/chips/c0.npy").unlink()  # a photo is missing: 8 + 0 + 1 is not 10
+    with pytest.raises(box.BoxError, match="does not add up"):
+        box.fetch_census(sleep=NOSLEEP)
+    assert fake.instances[state["instance_id"]]["actual_status"] == "exited"  # stopped, not destroyed
+    assert box.load_state() is not None
 
 
 def test_c15_a_differing_photo_hash_is_detected(box):
@@ -561,27 +953,76 @@ def test_c15_a_differing_photo_hash_is_detected(box):
     assert box.compare_digests(mac, extra) == ["d.npy"]
 
 
-def test_c15b_the_digest_code_hashes_pixels_not_file_bytes(box, tmp_path):
-    np = pytest.importorskip("numpy")
-    arr = np.arange(4 * 8 * 8, dtype=np.uint8).reshape(4, 8, 8)
-    np.save(tmp_path / "x.npy", arr)
-    import contextlib
-    import io
-    import sys
-    buf, argv = io.StringIO(), sys.argv
-    sys.argv = ["digest", str(tmp_path)]
-    try:
-        with contextlib.redirect_stdout(buf):
-            exec(box.DIGEST_PY, {})
-    finally:
-        sys.argv = argv
+def photos(n=4, seed=0):
+    rng = np.random.default_rng(seed)
+    return {f"ncdot_{i}_0.000.npy": rng.integers(0, 255, size=(4, 8, 8), dtype=np.uint8) for i in range(n)}
+
+
+def test_c15b_the_identity_check_passes_on_equal_pixels_and_destroys_the_box_on_a_difference(box, fake, tmp_path):
+    local = tmp_path / "mac_chips"
+    local.mkdir()
+    mine = photos()
+    for name, arr in mine.items():
+        np.save(local / name, arr)
     import hashlib
-    assert box.parse_digests(buf.getvalue()) == {"x.npy": hashlib.sha256(arr.tobytes()).hexdigest()}
+    assert box.local_digests(local) == {n: hashlib.sha256(a.tobytes()).hexdigest() for n, a in mine.items()}
+    rented(box, fake)
+    fake.box_chips = {**mine, "extra_on_box.npy": np.zeros((4, 8, 8), dtype=np.uint8)}
+    assert box.identity_check(local, sleep=NOSLEEP) == 4 and fake.instances  # extras on the box are fine
+    changed = dict(mine)
+    name = sorted(changed)[1]
+    changed[name] = changed[name].copy()
+    changed[name][0, 0, 0] ^= 1  # one pixel differs in one photo
+    fake.box_chips = changed
+    with pytest.raises(box.BoxError, match="1 of 4 photos differ"):
+        box.identity_check(local, sleep=NOSLEEP)
+    assert not fake.instances and box.load_history()[-1]["closed_reason"] == "photo identity"
+    rented(box, fake, now=2000.0)
+    with pytest.raises(box.BoxError, match="no photos on this machine"):
+        box.identity_check(tmp_path / "empty", sleep=NOSLEEP)
 
 
-# ---------------------------------------------------------------- status
+def test_c15c_the_speed_trial_limits_every_run_and_picks_the_fastest(box, fake):
+    rented(box, fake)
+    got = box.speed_trial(sleep=NOSLEEP)
+    assert got["best_workers"] == 64 and set(got["rates"]) == {32, 64, 128}
+    assert [got["rates"][w] for w in (32, 64, 128)] == pytest.approx([40.0, 80.0, 60.0], rel=0.02)  # log rounds seconds
+    trials = [c[-1] for c in fake.calls if c[0] == "ssh" and "src.pipeline.chips" in c[-1]]
+    assert len(trials) == 3 and all("--limit 500" in t for t in trials)  # none of them is a statewide fetch
+    assert [re.search(r"--seed (\d+) --workers (\d+)", t).groups() for t in trials] == [("1", "32"), ("2", "64"), ("3", "128")]
+    fake.trial_rates = {32: 5.0, 64: 19.9, 128: 12.0}
+    with pytest.raises(box.BoxError, match="under 20"):
+        box.speed_trial(sleep=NOSLEEP)
+    assert not fake.instances and box.load_history()[-1]["closed_reason"] == "too slow"
+
+
+# ---------------------------------------------------------------- status and the command line
 
 def test_status_reports_spend_and_time_left(box, fake):
     rented(box, fake, now=0.0, dph_total=1.0)
     s = box.status(now=1800.0)
     assert s["spent_total"] == 0.5 and s["cap_left"] == 14.5 and s["minutes_to_deadline"] == 450.0
+
+
+def test_the_command_line_runs_the_same_functions(box, fake, capsys):
+    fake.offers = [good_offer(id=41), good_offer(id=42, machine_id=101, dph_total=0.7)]
+    box.main(["offers"])
+    assert capsys.readouterr().out.splitlines()[0].startswith("42 $0.700/h RTX 5090")
+    box.main(["rent"])
+    assert "rented instance" in capsys.readouterr().out and len(fake.instances) == 1
+    assert fake.created()[0][3] == "42"  # the cheapest European offer
+    box.main(["selfstop-test"])
+    box.main(["run", "fetch", "true"])
+    job = box.load_state()["jobs"]["fetch"]
+    fake.rc[job] = 0
+    with pytest.raises(SystemExit) as e:
+        box.main(["wait", "fetch", "--poll", "1"])
+    assert e.value.code == 0
+    capsys.readouterr()
+    box.main(["status"])
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["instance_id"] == box.load_state()["instance_id"] and shown["watchdog_armed"] is True
+    with pytest.raises(box.BoxError, match="holds no results"):
+        box.main(["teardown"])
+    box.main(["teardown", "--force-discard"])
+    assert not fake.instances

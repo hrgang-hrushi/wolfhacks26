@@ -93,6 +93,9 @@ def contrast(chip: np.ndarray, c: float) -> np.ndarray:
 def shift(chip: np.ndarray, dx: int, dy: int) -> np.ndarray:
     """Move the picture dx pixels right and dy pixels down, all bands together. The exposed strip repeats the edge."""
     check_chip(chip)
+    for v in (dx, dy):
+        if not isinstance(v, (int, np.integer)) or isinstance(v, bool):
+            raise ValueError(f"shift must be whole pixels, got {v!r}")
     if abs(dx) > MAX_SHIFT or abs(dy) > MAX_SHIFT:
         raise ValueError(f"shift ({dx}, {dy}) exceeds {MAX_SHIFT} px")
     dx, dy, m = int(dx), int(dy), MAX_SHIFT

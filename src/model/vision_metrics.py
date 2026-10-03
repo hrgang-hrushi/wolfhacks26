@@ -22,6 +22,9 @@ METRIC_LABELS = {"rate_mae": "wear-rate error (MAE)", "rate_spearman": "wear-rat
                  "crack_aucpr": "cracking score (AUC-PR)", "flood_p50": "flood precision at 50",
                  "flood_aucpr": "flood score (AUC-PR)"}
 HASH_KEYS = ("code", "table", "manifest")
+MIN_BLOCKS = 30          # fewer blocks than this and a block bootstrap says nothing
+CHANCE_SPEARMAN = 0.05   # a shuffled-label control must rank within this of 0
+CHANCE_AUCPR = 0.02      # and score within this of prevalence
 
 
 def _pair(y, pred):
@@ -79,15 +82,33 @@ METRIC_FNS = {"rate_mae": mae, "rate_spearman": spearman, "crack_aucpr": aucpr, 
               "flood_aucpr": aucpr}
 
 
-def naive_rate_mae(y, fold) -> float:
-    """MAE of predicting, for each fold, the median of the labelled rows in the other folds."""
+def naive_prediction(y, fold) -> np.ndarray:
+    """For each fold, the median of the labelled rows in the other folds: the do-nothing prediction."""
     y, fold = np.asarray(y, dtype="float64"), np.asarray(fold)
     pred = np.full(len(y), np.nan)
     for k in np.unique(fold):
         train = y[(fold != k) & ~np.isnan(y)]
         if len(train):
             pred[fold == k] = np.median(train)
-    return mae(y, pred)
+    return pred
+
+
+def naive_rate_mae(y, fold) -> float:
+    """MAE of the do-nothing prediction over all folds."""
+    return mae(y, naive_prediction(y, fold))
+
+
+def reference_by_fold(y_rate, y_crack, fold) -> dict:
+    """Per fold: the do-nothing rate error and the share of cracking positives, to read the scores against."""
+    y_rate, y_crack, fold = np.asarray(y_rate, "float64"), np.asarray(y_crack, "float64"), np.asarray(fold)
+    naive = naive_prediction(y_rate, fold)
+    out = {"rate_mae_do_nothing": {}, "crack_prevalence": {}}
+    for k in sorted(np.unique(fold)):
+        m = fold == k
+        out["rate_mae_do_nothing"][str(int(k))] = mae(y_rate[m], naive[m])
+        yc = y_crack[m][~np.isnan(y_crack[m])]
+        out["crack_prevalence"][str(int(k))] = float(yc.mean()) if len(yc) else NAN
+    return out
 
 
 def by_fold(y, pred, fold, metric: str) -> dict:
@@ -131,7 +152,10 @@ def block_bootstrap_diff(blocks, y, pred_a, pred_b, metric: str, n=1000, seed=0)
 
 
 def interval_excludes_zero(d: dict) -> bool:
-    return not (math.isnan(d["lo"]) or math.isnan(d["hi"])) and (d["lo"] > 0 or d["hi"] < 0)
+    """Whether the interval is entirely on one side of 0. Too few blocks to resample gives no usable interval."""
+    if d.get("n_blocks", MIN_BLOCKS) < MIN_BLOCKS or math.isnan(d["lo"]) or math.isnan(d["hi"]):
+        return False
+    return d["lo"] > 0 or d["hi"] < 0
 
 
 def seed_spread(values) -> float:
@@ -140,16 +164,31 @@ def seed_spread(values) -> float:
     return float(max(vals) - min(vals)) if len(vals) >= 2 else NAN
 
 
-def is_real(diff: dict, spread: float | None = None) -> bool:
-    """A difference counts only if its interval excludes 0 and, when a seed spread is given, it exceeds that."""
+def is_real(diff: dict, spread: float | None = None, require_spread: bool = False) -> bool:
+    """A difference counts only if its interval excludes 0 and it exceeds the seed-to-seed spread.
+
+    With require_spread (the fine-tune, where two runs of the same arm differ), a missing spread
+    means the difference cannot be judged, so it does not count.
+    """
     if not interval_excludes_zero(diff):
         return False
-    return spread is None or math.isnan(spread) or abs(diff["diff"]) > spread
+    if spread is None or math.isnan(spread):
+        return not require_spread
+    return abs(diff["diff"]) > spread
+
+
+def control_at_chance(control: dict, crack_prevalence: float) -> bool:
+    """The shuffled-label control: ranking near 0 and the cracking score near prevalence."""
+    rho, ap = control.get("rate_spearman", NAN), control.get("crack_aucpr", NAN)
+    if math.isnan(rho) or math.isnan(ap) or math.isnan(crack_prevalence):
+        return False
+    return abs(rho) < CHANCE_SPEARMAN and abs(ap - crack_prevalence) < CHANCE_AUCPR
 
 
 def compare(result_a: dict, result_b: dict) -> None:
-    """Refuse to compare results made from different roads, code or labels."""
-    bad = [k for k in HASH_KEYS if result_a["hashes"].get(k) != result_b["hashes"].get(k)]
+    """Refuse to compare results made from different roads, code or labels. A missing fingerprint is a difference."""
+    a, b = result_a.get("hashes", {}), result_b.get("hashes", {})
+    bad = [k for k in HASH_KEYS if not a.get(k) or a.get(k) != b.get(k)]
     if bad:
         raise ValueError(f"results are not comparable: different {', '.join(bad)} hash")
 
@@ -159,12 +198,19 @@ def compare(result_a: dict, result_b: dict) -> None:
 def fmt(x) -> str:
     if x is None or (isinstance(x, float) and math.isnan(x)):
         return "n/a"
-    if isinstance(x, (int, np.integer)) and not isinstance(x, bool):
+    if isinstance(x, (bool, np.bool_)):
+        return "yes" if x else "no"
+    if isinstance(x, str):
+        return x
+    if isinstance(x, (int, np.integer)):
         return f"{int(x):,}"
     return f"{float(x):.4f}"
 
 
 def _verdict(d: dict) -> str:
+    spread = d.get("seed_spread")
+    if d.get("spread_required") and (spread is None or math.isnan(spread)):
+        return "not judged (no seed spread)"
     if not d.get("real"):
         return "no measurable difference"
     better = (d["diff"] < 0) == (d["metric"] in LOWER_IS_BETTER)
@@ -198,6 +244,13 @@ def render_report(results: dict) -> str:
             lines.append(f"| {d['arm']} | {d['vs']} | {METRIC_LABELS[d['metric']]} | {fmt(d['diff'])} | "
                          f"{fmt(d['lo'])} to {fmt(d['hi'])} | {fmt(d['folds_up'])} / {fmt(d['folds_down'])} | "
                          f"{fmt(d.get('seed_spread'))} | {_verdict(d)} |")
+        lines.append("")
+    ref = results.get("reference_by_fold")
+    if ref:
+        folds = sorted({k for v in ref.values() for k in v})
+        lines += ["## What the scores are read against, per fold", "", "| Reference | " + " | ".join(f"fold {k}" for k in folds) + " |",
+                  "|---|" + "---|" * len(folds)]
+        lines += [f"| {name} | " + " | ".join(fmt(v.get(k)) for k in folds) + " |" for name, v in ref.items()]
         lines.append("")
     for t in results.get("tables", []):
         lines += [f"## {t['title']}", "", "| " + " | ".join(t["columns"]) + " |", "|---|" + "---|" * (len(t["columns"]) - 1)]

@@ -163,7 +163,7 @@ def shuffled_labels(d: pd.DataFrame, rows=None, seed: int = 0) -> pd.DataFrame:
 
 
 def vit_frozen_format(emb_2d: np.ndarray, seg_ids) -> pd.DataFrame:
-    """The landed vit_frozen.parquet layout (train_vit.py lines 91 to 94): PCA to 16, random_state 0."""
+    """The landed vit_frozen.parquet layout (train_vit.py's --frozen branch): PCA to 16, random_state 0."""
     z = PCA(16, random_state=0).fit_transform(emb_2d)
     out = pd.DataFrame(z, columns=[f"im_emb{i}" for i in range(16)])
     out.insert(0, "seg_id", np.asarray(seg_ids))
@@ -197,6 +197,7 @@ def main(processed=None, chips_dir=None, out_root=None, net_factory=None, batch=
     log(f"{len(d):,} of {len(table):,} segments have a chip; loading")
     chips, blank = V.load_chips(d.seg_id.values, chips_dir)
     usable = V.usable_mask(blank)
+    V.save_chip_index(d.seg_id.values, blank, out_root)
     log(f"{int((~usable).sum()):,} chips are more than {V.MAX_BLANK:.0%} blank and are left out of the comparison")
 
     write_parquet(out_root / "ndvi_stats.parquet", ndvi_table(chips, d.seg_id.values, blank, usable), out_root)
@@ -227,6 +228,8 @@ def main(processed=None, chips_dir=None, out_root=None, net_factory=None, batch=
     shuffled = shuffled_labels(d, usable, seed=0)
     control_oof, _ = probe(arms_emb["8view"], shuffled, usable)
     control = score_arm(shuffled, control_oof, metrics)["pooled"]
+    control["crack_prevalence"] = float(np.nanmean(labels_for(shuffled, "crack")[usable]))
+    control["at_chance"] = M.control_at_chance(control, control["crack_prevalence"])
     yr, yc = labels_for(d, "rate"), labels_for(d, "crack")
     yr[~usable], yc[~usable] = np.nan, np.nan
     results = {
@@ -239,8 +242,9 @@ def main(processed=None, chips_dir=None, out_root=None, net_factory=None, batch=
                    "chip_pairs_overlapping_across_folds": V.cross_fold_neighbours(d[usable])},
         "reference": {"rate_mae_do_nothing": M.naive_rate_mae(yr, d.fold.values),
                       "crack_prevalence": float(np.nanmean(yc)) if (~np.isnan(yc)).any() else float("nan")},
+        "reference_by_fold": M.reference_by_fold(yr, yc, d.fold.values),
         "arms": arms, "differences": differences,
-        "controls": {"shuffled labels, 8view": {**control, "crack_prevalence": float(np.nanmean(labels_for(shuffled, "crack")[usable]))}},
+        "controls": {"shuffled labels, 8view": control},
         "skips": skips,
         "notes": ["folds: fold = crc32(split_block) % 5, read from segments_targets.parquet",
                   f"probe: standardise, Ridge(alpha={RIDGE_ALPHA}) for rate, LogisticRegression(C={LOGIT_C}) for cracking and flood; "

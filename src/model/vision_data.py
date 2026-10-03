@@ -87,8 +87,11 @@ def check_table(d: pd.DataFrame) -> pd.DataFrame:
     wrong = d.split_block.astype(str).values != expected_block
     if wrong.any():
         raise ValueError(f"{int(wrong.sum())} rows have a split_block that is not the 5 km block of their midpoint; {RERUN}")
-    expected_fold = np.array([fold_of(b) for b in d.split_block.values])
-    if not np.array_equal(pd.to_numeric(d.fold, errors="coerce").fillna(-1).astype(int).values, expected_fold):
+    if not pd.api.types.is_numeric_dtype(d.fold) or pd.api.types.is_bool_dtype(d.fold):
+        raise ValueError(f"fold must be a whole number, got {d.fold.dtype}; {RERUN}")
+    fold = d.fold.to_numpy(dtype="float64", na_value=np.nan)
+    expected_fold = np.array([fold_of(b) for b in d.split_block.values], dtype="float64")
+    if not np.array_equal(fold, expected_fold):  # exact: 2.5, NaN or a string never pass
         raise ValueError(f"fold is not crc32(split_block) % {N_FOLDS}; {RERUN}")
     return d
 
@@ -116,9 +119,9 @@ def table_hash(d: pd.DataFrame) -> str:
         if c in d.columns:
             col = d[c]
             if pd.api.types.is_numeric_dtype(col):
-                parts.append(np.ascontiguousarray(col.values, dtype="float64").tobytes())
+                parts.append(np.ascontiguousarray(col.to_numpy(dtype="float64", na_value=np.nan)).tobytes())
             else:
-                parts.append("\x1e".join(col.astype(str).values))
+                parts.append("\x1e".join("<NA>" if pd.isna(v) else str(v) for v in col))
         else:
             parts.append("<absent>")
     return _sha(parts)
@@ -177,6 +180,24 @@ def load_chips(seg_ids, chips_dir=None, workers=16):
 
 def usable_mask(blank_frac, max_blank=MAX_BLANK) -> np.ndarray:
     return np.asarray(blank_frac) <= max_blank
+
+
+def save_chip_index(seg_ids, blank_frac, out_root=None) -> Path:
+    """Record each chip's blank fraction, so a later step (the report) need not load 7 GB of chips to know it."""
+    root = Path(OUT_ROOT if out_root is None else out_root)
+    df = pd.DataFrame({"seg_id": np.asarray(seg_ids), "blank_frac": np.asarray(blank_frac, dtype="float32")})
+    return atomic_write(root / "chip_index.parquet", lambda tmp: df.to_parquet(tmp, index=False), root)
+
+
+def load_chip_index(seg_ids, out_root=None):
+    """The saved blank fractions for exactly these roads, in this order, or None if the record does not match."""
+    path = Path(OUT_ROOT if out_root is None else out_root) / "chip_index.parquet"
+    if not path.exists():
+        return None
+    df = pd.read_parquet(path)
+    if len(df) != len(seg_ids) or list(df.seg_id) != list(seg_ids):
+        return None
+    return df.blank_frac.to_numpy(dtype="float32")
 
 
 def to_model_input(chips_u8: np.ndarray) -> np.ndarray:
@@ -239,11 +260,15 @@ def fold_split(d: pd.DataFrame, k: int):
     return np.where(fold != k)[0], np.where(fold == k)[0]
 
 
-def cross_fold_neighbours(d: pd.DataFrame, radius_m: float = 77.0) -> int:
-    """Pairs of roads closer than radius_m whose folds differ: chips that overlap across a held-out boundary."""
+def cross_fold_neighbours(d: pd.DataFrame, side_m: float = 77.0) -> int:
+    """Pairs of roads in different folds whose chips overlap.
+
+    A chip is a square about side_m on a side centred on the road's midpoint, so two chips overlap
+    when the midpoints are closer than side_m along BOTH axes (not within a circle).
+    """
     from scipy.spatial import cKDTree
     xy = d[["mid_x", "mid_y"]].values
-    pairs = cKDTree(xy).query_pairs(radius_m, output_type="ndarray")
+    pairs = cKDTree(xy).query_pairs(side_m, p=np.inf, output_type="ndarray")
     if len(pairs) == 0:
         return 0
     fold = d.fold.values

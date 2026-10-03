@@ -197,10 +197,18 @@ def test_a19_the_exposed_strip_repeats_the_edge_not_the_far_side():
     assert not (A.shift(chip2, 0, 2)[:, :2, :] == 60).any()  # bottom row did not wrap to the top
 
 
-@pytest.mark.parametrize("dx,dy", [(5, 0), (0, -5), (9, 9)])
+@pytest.mark.parametrize("dx,dy", [(5, 0), (0, -5), (9, 9), (-5, 4), (4, 5)])
 def test_a20_a_shift_above_four_pixels_raises(chip, dx, dy):
     with pytest.raises(ValueError, match="exceeds"):
         A.shift(chip, dx, dy)
+
+
+@pytest.mark.parametrize("dx,dy", [(2.9, 0), (0, 1.0), (True, 0), ("1", 0), (None, 0)])
+def test_a20b_a_shift_that_is_not_whole_pixels_raises(chip, dx, dy):
+    with pytest.raises(ValueError, match="whole pixels"):  # 2.9 must not silently become 2
+        A.shift(chip, dx, dy)
+    assert np.array_equal(A.shift(chip, np.int64(3), np.int32(-4)), A.shift(chip, 3, -4))  # numpy integers are fine
+    assert np.array_equal(A.shift(chip, 4, -4)[:, :-4, 4:], chip[:, 4:, :-4])              # the limits, both signs
 
 
 # ---------------------------------------------------------------- NDVI

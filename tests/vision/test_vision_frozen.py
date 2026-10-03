@@ -136,6 +136,19 @@ def test_e7b_shuffling_a_held_out_folds_labels_does_not_change_its_predictions(p
         assert not np.allclose(oof[col].values[others], oof2[col].values[others])  # the labels do matter elsewhere
 
 
+def test_e7c_corrupting_a_held_out_folds_features_does_not_change_the_model_that_scores_it(planted):
+    d, emb = planted
+    oof, _ = Fz.probe(emb, d)
+    in_fold = np.where(d.fold.values == 0)[0]
+    spoiled, kept = in_fold[::2], in_fold[1::2]
+    bad = emb.copy()
+    bad[spoiled] = 1e6  # if fold 0's own rows fed its scaler or model, this would move every fold-0 prediction
+    oof2, _ = Fz.probe(bad, d)
+    for col in ("pred_rate", "pred_crack"):
+        assert np.array_equal(oof[col].values[kept], oof2[col].values[kept])
+        assert not np.allclose(oof[col].values[spoiled], oof2[col].values[spoiled])  # their own inputs did change
+
+
 def test_e8_real_labels_score_and_shuffled_labels_score_at_chance(planted):
     d, emb = planted
     oof, _ = Fz.probe(emb, d)
@@ -183,6 +196,12 @@ def test_e12_a_fold_without_training_labels_or_with_one_class_is_skipped_and_cou
     results = {"title": "t", "metrics": ["crack_aucpr"], "hashes": {"code": "c"}, "arms": {"a": scored}, "skips": skips}
     report = M.render_report(results)
     assert "folds skipped: 1" in report and "crack fold 2: one class in training" in report
+
+    nothing_to_score = np.ones(len(d), dtype=bool)
+    nothing_to_score[d.fold.values == 3] = False  # every chip in fold 3 is unusable
+    oof, skips = Fz.probe(emb, d, nothing_to_score)
+    assert {"rate fold 3: no rows to score", "crack fold 3: no rows to score", "flood fold 3: no rows to score"} <= set(skips)
+    assert oof.pred_rate[d.fold == 3].isna().all() and oof.pred_rate[d.fold != 3].notna().all()
 
 
 def test_e13_a_flood_subset_with_no_rows_gives_nan_not_an_error(planted):
@@ -249,6 +268,14 @@ def test_e10_both_arms_are_scored_on_the_same_roads(frozen_run):
     assert printed and set(round(p, 4) for p in printed) <= set(leaves(saved))
     control = saved["controls"]["shuffled labels, 8view"]
     assert abs(control["rate_spearman"]) < 0.15 and saved["arms"]["8view"]["pooled"]["rate_spearman"] > 0.5
+    # AC5's thresholds are evaluated by the runner itself and printed
+    assert control["at_chance"] == (abs(control["rate_spearman"]) < 0.05
+                                    and abs(control["crack_aucpr"] - control["crack_prevalence"]) < 0.02)
+    assert ("at_chance yes" in report) == control["at_chance"] and ("at_chance no" in report) != control["at_chance"]
+    # the do-nothing error and the prevalence are given per fold as well as pooled (D8)
+    ref = saved["reference_by_fold"]
+    assert set(ref) == {"rate_mae_do_nothing", "crack_prevalence"} and set(ref["rate_mae_do_nothing"]) == set("01234")
+    assert "What the scores are read against, per fold" in report
 
 
 def test_e14_by_products_cover_every_valid_chip_blank_ones_included(frozen_run):
@@ -269,7 +296,10 @@ def test_e14_by_products_cover_every_valid_chip_blank_ones_included(frozen_run):
         assert np.allclose(f.iloc[:, 1:].values, PCA(16, random_state=0).fit_transform(emb), atol=1e-4)
     assert not list(out.rglob("*.tmp"))
     produced = {p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()}
+    index = pd.read_parquet(out / "chip_index.parquet")
+    assert list(index.seg_id) == with_chip and np.allclose(index.blank_frac, ndvi.blank_frac)
     assert produced == {"ndvi_stats.parquet", "vit_frozen_statewide.parquet", "vit_frozen_statewide_8view.parquet",
+                        "chip_index.parquet",
                         "frozen/emb_view0.npy", "frozen/emb_mean8.npy", "frozen/index.parquet",
                         "frozen/oof_1view.parquet", "frozen/oof_8view.parquet", "frozen/metrics.json",
                         "frozen/report.md"}

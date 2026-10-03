@@ -21,7 +21,7 @@ from src.pipeline.chips import chip_path
 from vision_helpers import REAL_CHIPS, ROOT, chips_for, make_table, tiny_net_factory
 
 QUIET = lambda *a, **k: None  # noqa: E731
-TIMING = {"startup_s": 3.0, "train_epoch_s": 30.0, "score_epoch_s": 5.0, "tta_s": 20.0, "write_s": 1.0}
+TIMING = {"load_s": 60.0, "startup_s": 3.0, "train_epoch_s": 30.0, "score_epoch_s": 5.0, "tta_s": 20.0, "write_s": 1.0}
 
 
 @pytest.fixture(scope="module")
@@ -94,6 +94,31 @@ def test_f4_arm_settings_differ_only_in_the_preset():
     assert cfgs["none"]["preset"] == "none" and cfgs["full"]["epochs"] == 6 and cfgs["full"]["batch_size"] == 128
     with pytest.raises(ValueError, match="unknown arm"):
         Ft.arm_config("mixup", 0)
+
+
+def test_f4b_what_training_actually_does_differs_between_arms_only_in_the_changes_applied(data, monkeypatch):
+    seen = {}
+    real_adamw, real_loader = torch.optim.AdamW, torch.utils.data.DataLoader
+
+    def spy_adamw(groups, **kw):
+        seen["optim"] = ([g["lr"] for g in groups], kw)
+        return real_adamw(groups, **kw)
+
+    def spy_loader(ds, batch_size, **kw):
+        seen.setdefault("loader", []).append((batch_size, kw["shuffle"], kw["drop_last"],
+                                              kw["generator"].initial_seed(), tuple(ds.rows)))
+        return real_loader(ds, batch_size, **kw)
+
+    monkeypatch.setattr(torch.optim, "AdamW", spy_adamw)
+    monkeypatch.setattr(torch.utils.data, "DataLoader", spy_loader)
+    runs = {}
+    for arm in Ft.ARMS:
+        seen.clear()
+        res = fit(data, arm, seed=3, epochs=2)
+        runs[arm] = (seen["optim"], seen["loader"], res["start_weights"], res["steps"], res["n_train"], tuple(res["rows"]))
+    assert runs["none"] == runs["flips"] == runs["full"]  # optimiser, batches, order, rows, starting weights, steps
+    assert runs["none"][0] == ([2e-5, 1e-3], {"weight_decay": 0.05})
+    assert [b[:4] for b in runs["none"][1]] == [(8, True, True, 3000), (8, True, True, 3001)]
 
 
 # ---------------------------------------------------------------- folds (F5, F16)
@@ -263,8 +288,9 @@ def test_f17_the_reduced_schedule_keeps_seed_0_everywhere():
 def test_f13_the_schedule_must_fit_the_time_and_money_left():
     per_job_min = 1.2 * (3 + 6 * 35 + 20 + 1) / 60  # 4.68 minutes
     assert Ft.job_seconds(TIMING) / 60 == pytest.approx(per_job_min)
-    full_min = 31 * per_job_min + 5       # 150.1 minutes: 30 jobs, the control, the report
-    reduced_min = 19 * per_job_min + 5    # 93.9 minutes
+    load_min = 1.2 * 60 / 60                           # the chips are loaded once
+    full_min = load_min + 31 * per_job_min + 10        # 30 jobs, the control, the report
+    reduced_min = load_min + 19 * per_job_min + 10
     roomy = Ft.plan_grid(TIMING, dph=1.0, cap_left=10.0, minutes_left=full_min + 21)
     assert roomy["schedule"] == "full" and len(roomy["jobs"]) == 30 and roomy["minutes"] == pytest.approx(full_min)
     assert roomy["cost"] == pytest.approx(full_min / 60)
@@ -280,8 +306,11 @@ def test_f13_the_schedule_must_fit_the_time_and_money_left():
         Ft.plan_grid(TIMING, dph=1.0, cap_left=reduced_min / 60 - 0.01, minutes_left=600)
     with pytest.raises(ValueError, match="timing lacks"):
         Ft.plan_grid({"train_epoch_s": 30.0}, 1.0, 10.0, 600)
-    # every part of a job is in the estimate: leaving out scoring would understate it
-    assert Ft.job_seconds({**TIMING, "score_epoch_s": 0.0, "tta_s": 0.0}) < Ft.job_seconds(TIMING)
+    # every part of a job is in the estimate: leaving any of them out would understate it
+    for part in Ft.TIMING_PARTS:
+        shorter = Ft.plan_grid({**TIMING, part: 0.0}, 1.0, 100.0, 6000)["minutes"]
+        assert shorter < Ft.plan_grid(TIMING, 1.0, 100.0, 6000)["minutes"], part
+    assert Ft.REPORT_MIN == 10.0
 
 
 def test_f14_a_flood_target_is_refused():
@@ -293,10 +322,8 @@ def test_f14_a_flood_target_is_refused():
 
 # ---------------------------------------------------------------- the whole runner (F12, F17 to F19, E15)
 
-@pytest.fixture(scope="module")
-def grid(tmp_path_factory):
-    tmp = tmp_path_factory.mktemp("grid")
-    d = make_table(n_blocks=30, per_block=12, seed=4)
+def build_inputs(tmp, seed=4):
+    d = make_table(n_blocks=30, per_block=12, seed=seed)
     processed, cdir, out = tmp / "processed", tmp / "chips", tmp / "vision"
     processed.mkdir(), cdir.mkdir()
     d.to_parquet(processed / "segments_targets.parquet")
@@ -306,20 +333,30 @@ def grid(tmp_path_factory):
         np.save(cdir / chip_path(seg_id).name, c)
     base = ["--processed", str(processed), "--chips", str(cdir), "--out", str(out), "--epochs", "1", "--batch", "8",
             "--workers", "0", "--boot", "30"]
+    return d, processed, cdir, out, base
+
+
+def write_jobs(path, jobs):
+    path.write_text(json.dumps([list(j) for j in jobs]))
+    return str(path)
+
+
+@pytest.fixture(scope="module")
+def grid(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("grid")
+    d, processed, cdir, out, base = build_inputs(tmp)
     frozen = Fz.main(processed, cdir, out, net_factory=lambda: (torch.manual_seed(0), tiny_net_factory())[1],
                      n_boot=30, log=QUIET)
     frozen_files = {p: p.read_bytes() for p in (out / "frozen").iterdir()}
-    jobs = tmp / "jobs.json"
-    jobs.write_text(json.dumps([list(j) for j in Ft.reduced_schedule()]))
-    outcomes = Ft.main(base + ["--jobs", str(jobs)], net_factory=tiny_net_factory, log=QUIET)
-    Ft.main(base + ["--shuffled-control"], net_factory=tiny_net_factory, log=QUIET)
-    results = Ft.main(base + ["--report"], net_factory=tiny_net_factory, log=QUIET)
-    return {"d": d, "out": out, "base": base, "jobs": jobs, "outcomes": outcomes, "results": results, "frozen": frozen,
-            "frozen_files": frozen_files, "tmp": tmp}
+    jobs = write_jobs(tmp / "jobs.json", Ft.reduced_schedule())
+    done = Ft.main(base + ["--jobs", jobs, "--shuffled-control", "--report"], net_factory=tiny_net_factory, log=QUIET)
+    ctx = {"out_root": out, "hashes": done["report"]["hashes"], "net_factory": tiny_net_factory}
+    return {"d": d, "out": out, "base": base, "jobs": jobs, "outcomes": done["jobs"], "control": done["control"],
+            "results": done["report"], "frozen": frozen, "frozen_files": frozen_files, "tmp": tmp, "ctx": ctx}
 
 
 def test_f17b_the_runner_executes_exactly_the_jobs_listed(grid):
-    assert grid["outcomes"] == ["ran"] * 18
+    assert grid["outcomes"] == ["ran"] * 18 and grid["control"] == "ran"
     done = sorted(p.relative_to(grid["out"] / "finetune").as_posix()
                   for p in (grid["out"] / "finetune").rglob("*.done.json") if "control" not in p.parts)
     expected = sorted(f"{a}/seed{s}/fold{f}.done.json" for a, s, f in Ft.reduced_schedule())
@@ -342,85 +379,182 @@ def test_f12_outputs_columns_one_row_per_road_and_fingerprints(grid):
     assert set(rec["hashes"]) == {"code", "table", "manifest", "weights"} and all(len(h) == 64 for h in rec["hashes"].values())
     f = out / "finetune" / "full" / "seed0" / "fold2.parquet"
     assert rec["files"] == {"fold2.parquet": {"size": f.stat().st_size, "sha256": V.file_sha256(f)}}
-    assert set(rec["timing"]) == set(Ft.TIMING_PARTS) and all(v >= 0 for v in rec["timing"].values())
+    assert set(rec["timing"]) == set(Ft.TIMING_PARTS) - {"load_s"} and all(v >= 0 for v in rec["timing"].values())
     assert rec["hashes"]["code"] == V.code_hash() and rec["n_scored"] > 0 and rec["steps"][0] > 0
+    assert len(rec["start_weights"]) == 64 and rec["start_weights"] != rec["hashes"]["weights"]
+    other_seed = json.loads((out / "finetune" / "full" / "seed1" / "fold0.done.json").read_text())
+    same_seed = json.loads((out / "finetune" / "none" / "seed0" / "fold2.done.json").read_text())
+    assert rec["start_weights"] == same_seed["start_weights"] != other_seed["start_weights"]  # arms start identical
     produced = [p for p in grid["tmp"].rglob("*") if p.is_file() and p.suffix in {".parquet", ".json", ".md", ".npy"}
                 and "vision" not in p.parts and p.parent.name not in {"chips", "processed"} and p.name != "jobs.json"]
     assert not produced and not list(out.rglob("*.tmp"))  # nothing written outside the output root
+
+
+def leaves(o):
+    if isinstance(o, dict):
+        for v in o.values():
+            yield from leaves(v)
+    elif isinstance(o, list):
+        for v in o:
+            yield from leaves(v)
+    elif isinstance(o, float) and not math.isnan(o):
+        yield round(o, 4)
 
 
 def test_report_tables_differences_and_control(grid):
     r = grid["results"]
     assert list(r["arms"]) == ["none", "none+8view", "flips", "flips+8view", "full", "full+8view"]
     assert len(r["differences"]) == 5 * 3 and {x["vs"] for x in r["differences"]} == {"none"}
+    assert all(x["spread_required"] for x in r["differences"])
     assert r["counts"]["changes_applied_none"] == 0  # AC6
     assert r["counts"]["changes_applied_flips"] > 0 and r["counts"]["changes_applied_full"] > 0
     assert r["counts"]["segments_compared"] == len(grid["d"]) - 1
-    assert "shuffled labels, full, fold 0" in r["controls"]
+    control = r["controls"]["shuffled labels, full, fold 0"]
+    assert set(control) == {"rate_mae", "rate_spearman", "crack_aucpr", "crack_prevalence", "at_chance"}
+    assert control["at_chance"] == (abs(control["rate_spearman"]) < 0.05
+                                    and abs(control["crack_aucpr"] - control["crack_prevalence"]) < 0.02)
+    assert set(r["reference_by_fold"]["rate_mae_do_nothing"]) == set("01234")
     assert r["hashes"] == json.loads((grid["out"] / "finetune" / "none" / "seed0" / "fold0.done.json").read_text())["hashes"]
     saved = json.loads((grid["out"] / "finetune" / "metrics.json").read_text())
     report = (grid["out"] / "finetune" / "report.md").read_text()
-
-    def leaves(o):
-        if isinstance(o, dict):
-            for v in o.values():
-                yield from leaves(v)
-        elif isinstance(o, list):
-            for v in o:
-                yield from leaves(v)
-        elif isinstance(o, float) and not math.isnan(o):
-            yield round(o, 4)
-
     printed = M.report_numbers(report)
     assert len(printed) > 60 and set(round(p, 4) for p in printed) <= set(leaves(saved))
     assert "Held-out score after each epoch" in report and "| none+8view |" in report
+    assert "What the scores are read against, per fold" in report and "at_chance" in report
+
+
+def test_the_shuffled_control_really_trains_on_permuted_labels(grid, monkeypatch):
+    d = grid["d"]
+    seen = {}
+
+    def spy(table, chips, fold, cfg, *a, **k):
+        seen["table"], seen["cfg"] = table, cfg
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(Ft, "train_fold", spy)
+    usable = np.ones(len(d), dtype=bool)
+    ctx = {**grid["ctx"], "out_root": grid["tmp"] / "elsewhere"}
+    with pytest.raises(RuntimeError, match="stop here"):
+        Ft.run_job(d, None, usable, "full", 0, 0, ctx, 1, 8, control=True, workers=0, log=QUIET)
+    t = seen["table"]
+    assert seen["cfg"]["shuffle_labels"] is True
+    assert not t.y_rate.equals(d.y_rate) and not t.y_crack.equals(d.y_crack)       # the labels moved
+    assert sorted(t.y_rate.dropna()) == sorted(d.y_rate.dropna())                  # the same labels, on other roads
+    assert (t.y_rate.isna() == d.y_rate.isna()).all() and list(t.seg_id) == list(d.seg_id)
+    with pytest.raises(RuntimeError, match="stop here"):
+        Ft.run_job(d, None, usable, "full", 0, 0, ctx, 1, 8, control=False, workers=0, log=QUIET)
+    assert seen["table"] is d and seen["cfg"]["shuffle_labels"] is False
 
 
 def test_f18_the_seed_spread_uses_matched_runs_only(grid):
-    spread = Ft.matched_seed_spread(grid["out"], "rate_mae")
+    spread = Ft.matched_seed_spread(grid["ctx"], "rate_mae", 1, 8)
     assert spread["folds"] == [0] and spread["n_pairs"] == 3  # seed 1 ran on fold 0 only, for the three arms
-    a = json.loads((grid["out"] / "finetune" / "none" / "seed0" / "fold0.done.json").read_text())["scores"]["1view"]
-    b = json.loads((grid["out"] / "finetune" / "none" / "seed1" / "fold0.done.json").read_text())["scores"]["1view"]
-    assert spread["spread"] >= abs(a["rate_mae"] - b["rate_mae"]) - 1e-12
+    gaps = []
+    for arm in Ft.ARMS:
+        a = json.loads((grid["out"] / "finetune" / arm / "seed0" / "fold0.done.json").read_text())["scores"]["1view"]
+        b = json.loads((grid["out"] / "finetune" / arm / "seed1" / "fold0.done.json").read_text())["scores"]["1view"]
+        gaps.append(abs(a["rate_mae"] - b["rate_mae"]))
+    assert spread["spread"] == pytest.approx(max(gaps))
     assert grid["results"]["seed_spread"]["rate_mae"] == spread
-    assert all(x["seed_spread"] == grid["results"]["seed_spread"][x["metric"]]["spread"] for x in grid["results"]["differences"])
+    for x in grid["results"]["differences"]:
+        s = grid["results"]["seed_spread"][x["metric"]]["spread"]
+        assert x["seed_spread"] == s
+        assert x["real"] == (M.interval_excludes_zero(x) and abs(x["diff"]) > s)  # must also beat the seed spread
+
+
+def test_f18b_without_a_second_seed_no_difference_is_called_real(tmp_path):
+    d, processed, cdir, out, base = build_inputs(tmp_path, seed=6)
+    jobs = write_jobs(tmp_path / "jobs.json", [(a, 0, f) for a in Ft.ARMS for f in range(5)])  # seed 0 only
+    r = Ft.main(base + ["--jobs", jobs, "--shuffled-control", "--report"], net_factory=tiny_net_factory, log=QUIET)["report"]
+    assert all(math.isnan(s["spread"]) and s["n_pairs"] == 0 for s in r["seed_spread"].values())
+    assert not any(x["real"] for x in r["differences"])
+    report = (out / "finetune" / "report.md").read_text()
+    assert report.count("not judged (no seed spread)") == 15
+    assert "| better |" not in report and "| worse |" not in report
+
+
+def test_report_refuses_stale_damaged_or_missing_inputs(tmp_path):
+    d, processed, cdir, out, base = build_inputs(tmp_path, seed=7)
+    jobs = write_jobs(tmp_path / "jobs.json", Ft.reduced_schedule())
+    with pytest.raises(ValueError, match="missing fold 0"):
+        Ft.main(base + ["--report"], net_factory=tiny_net_factory, log=QUIET)
+    Ft.main(base + ["--jobs", jobs], net_factory=tiny_net_factory, log=QUIET)
+    with pytest.raises(ValueError, match="control has not been run"):
+        Ft.main(base + ["--report"], net_factory=tiny_net_factory, log=QUIET)
+    Ft.main(base + ["--shuffled-control"], net_factory=tiny_net_factory, log=QUIET)
+    ok = Ft.main(base + ["--report"], net_factory=tiny_net_factory, log=QUIET)["report"]
+    assert ok["counts"]["changes_applied_none"] == 0
+
+    parquet, done = Ft.job_paths(out, "flips", 0, 2)
+    good_record, good_file = done.read_text(), parquet.read_bytes()
+    rec = json.loads(good_record)
+
+    def expect_refusal(match="does not match the current"):
+        with pytest.raises(ValueError, match=match):
+            Ft.main(base + ["--report"], net_factory=tiny_net_factory, log=QUIET)
+
+    for key in ("code", "table", "manifest", "weights"):  # results made from other code, labels, roads or weights
+        done.write_text(json.dumps({**rec, "hashes": {**rec["hashes"], key: "0" * 64}}))
+        expect_refusal()
+    done.write_text(json.dumps({**rec, "config": {**rec["config"], "epochs": 99}}))  # other settings
+    expect_refusal()
+    done.write_text(good_record)
+    table = pd.read_parquet(parquet)
+    table["im_vit_rate"] += 100.0  # the predictions were altered after the record was written
+    table.to_parquet(parquet, index=False)
+    expect_refusal()
+    parquet.write_bytes(good_file)
+    Ft.main(base + ["--report"], net_factory=tiny_net_factory, log=QUIET)  # restored: accepted again
+
+    _, seed1 = Ft.job_paths(out, "none", 1, 0)  # a stale seed-1 record must not feed the seed spread
+    seed1_text = seed1.read_text()
+    seed1.write_text(json.dumps({**json.loads(seed1_text), "hashes": {**rec["hashes"], "code": "0" * 64}}))
+    expect_refusal()
+    seed1.write_text(seed1_text)
+    _, control = Ft.job_paths(out, "full", 0, 0, control=True)
+    control.write_text(json.dumps({**json.loads(control.read_text()), "hashes": {**rec["hashes"], "table": "0" * 64}}))
+    expect_refusal()
 
 
 def test_f19_resume_skips_only_a_job_whose_completion_record_validates(grid):
     out = grid["out"]
     parquet, done = Ft.job_paths(out, "flips", 0, 3)
     rec = json.loads(done.read_text())
-    expected = Ft.job_record(Ft.arm_config("flips", 0, 1, 8), 3, rec["hashes"])
+    expected = Ft.expected_record("flips", 0, 3, rec["hashes"], 1, 8)
     assert Ft.job_is_complete(done, expected)
-    assert not Ft.job_is_complete(done, Ft.job_record(Ft.arm_config("flips", 0, 2, 8), 3, rec["hashes"]))   # epochs
-    assert not Ft.job_is_complete(done, Ft.job_record(Ft.arm_config("flips", 0, 1, 16), 3, rec["hashes"]))  # batch
-    assert not Ft.job_is_complete(done, Ft.job_record(Ft.arm_config("full", 0, 1, 8), 3, rec["hashes"]))    # arm
-    shuffled = {**Ft.arm_config("flips", 0, 1, 8), "shuffle_labels": True}
-    assert not Ft.job_is_complete(done, Ft.job_record(shuffled, 3, rec["hashes"]))
+    assert not Ft.job_is_complete(done, Ft.expected_record("flips", 0, 3, rec["hashes"], 2, 8))   # epochs
+    assert not Ft.job_is_complete(done, Ft.expected_record("flips", 0, 3, rec["hashes"], 1, 16))  # batch
+    assert not Ft.job_is_complete(done, Ft.expected_record("full", 0, 3, rec["hashes"], 1, 8))    # arm
+    assert not Ft.job_is_complete(done, Ft.expected_record("flips", 0, 3, rec["hashes"], 1, 8, control=True))
     for key in ("code", "table", "manifest", "weights"):
-        assert not Ft.job_is_complete(done, Ft.job_record(Ft.arm_config("flips", 0, 1, 8), 3, {**rec["hashes"], key: "x"}))
+        assert not Ft.job_is_complete(done, Ft.expected_record("flips", 0, 3, {**rec["hashes"], key: "x"}, 1, 8))
     assert not Ft.job_is_complete(out / "finetune" / "flips" / "seed0" / "fold9.done.json", expected)  # no record
-    original = parquet.read_bytes()
+    original, done_text = parquet.read_bytes(), done.read_text()
     try:
         parquet.write_bytes(original + b"x")
         assert not Ft.job_is_complete(done, expected)  # altered
         parquet.unlink()
         assert not Ft.job_is_complete(done, expected)  # missing
+        # a record that vouches for some other file does not vouch for this fold's predictions
+        other = parquet.with_name("something_else.parquet")
+        other.write_bytes(original)
+        done.write_text(json.dumps({**rec, "files": {other.name: rec["files"][parquet.name]}}))
+        assert not Ft.job_is_complete(done, expected)
+        other.unlink()
+        parquet.write_bytes(original)
+        for broken in ("{ not json", "[1, 2, 3]", json.dumps({**rec, "files": {parquet.name: {"size": 1}}}),
+                       json.dumps({**rec, "files": None}), json.dumps({k: v for k, v in rec.items() if k != "files"})):
+            done.write_text(broken)
+            assert Ft.job_is_complete(done, expected) is False  # malformed: not complete, and no exception
     finally:
         parquet.write_bytes(original)
-    done_text = done.read_text()
-    try:
-        done.write_text("{ not json")
-        assert not Ft.job_is_complete(done, expected)
-    finally:
         done.write_text(done_text)
     assert Ft.job_is_complete(done, expected)
     # rerunning the same job list skips everything; a new job in the list runs
-    again = Ft.main(grid["base"] + ["--jobs", str(grid["jobs"])], net_factory=tiny_net_factory, log=QUIET)
-    assert again == ["skipped"] * 18
-    extra = grid["tmp"] / "extra.json"
-    extra.write_text(json.dumps([["none", 0, 0], ["none", 1, 1]]))
-    assert Ft.main(grid["base"] + ["--jobs", str(extra)], net_factory=tiny_net_factory, log=QUIET) == ["skipped", "ran"]
+    again = Ft.main(grid["base"] + ["--jobs", grid["jobs"]], net_factory=tiny_net_factory, log=QUIET)
+    assert again == {"jobs": ["skipped"] * 18}
+    extra = write_jobs(grid["tmp"] / "extra.json", [("none", 0, 0), ("none", 1, 1)])
+    assert Ft.main(grid["base"] + ["--jobs", extra], net_factory=tiny_net_factory, log=QUIET)["jobs"] == ["skipped", "ran"]
 
 
 def test_e15_frozen_and_fine_tune_results_do_not_overwrite_each_other(grid):
@@ -434,20 +568,32 @@ def test_e15_frozen_and_fine_tune_results_do_not_overwrite_each_other(grid):
     M.compare(grid["frozen"], grid["results"])  # same roads, code and labels: the two stages are comparable
 
 
-def test_report_refuses_a_missing_fold(grid, tmp_path):
-    d = grid["d"]
-    usable = np.ones(len(d), dtype=bool)
-    with pytest.raises(ValueError, match="missing fold 0"):
-        Ft.report(d, usable, {"out_root": tmp_path, "hashes": {}}, n_boot=5, log=QUIET)
+def test_the_report_alone_does_not_load_the_chips(grid, monkeypatch):
+    def no_chips(*a, **k):
+        raise AssertionError("the report loaded the chips")
+
+    monkeypatch.setattr(V, "load_chips", no_chips)
+    again = Ft.main(grid["base"] + ["--report"], net_factory=tiny_net_factory, log=QUIET)["report"]
+    assert again["arms"]["full"]["pooled"] == grid["results"]["arms"]["full"]["pooled"]
+    assert again["counts"]["segments_compared"] == len(grid["d"]) - 1  # the blank chip is still left out
 
 
-def test_time_only_writes_timing_and_no_results(grid):
+def test_time_only_times_every_part_and_writes_no_results(grid):
+    before = {p: p.stat().st_mtime_ns for p in (grid["out"] / "finetune").rglob("*.done.json")}
     timing = Ft.main(grid["base"][:6] + ["--batch", "8", "--workers", "0", "--time-only"],
                      net_factory=tiny_net_factory, log=QUIET)
     assert set(Ft.TIMING_PARTS) <= set(timing) and timing["n_train"] > 0
+    assert all(timing[p] > 0 for p in Ft.TIMING_PARTS)   # each part is measured, none is a constant
+    assert timing["write_s"] != 2.0 and (grid["out"] / "finetune" / "timing" / "fold0.parquet").exists()
     saved = json.loads((grid["out"] / "finetune" / "timing.json").read_text())
     assert saved["train_epoch_s"] == timing["train_epoch_s"]
     Ft.plan_grid(saved, dph=0.87, cap_left=14.0, minutes_left=400)  # the timing file feeds the planner as is
+    assert {p: p.stat().st_mtime_ns for p in (grid["out"] / "finetune").rglob("*.done.json")} == before
+    for clash in (["--report"], ["--shuffled-control"], ["--jobs", grid["jobs"]]):
+        with pytest.raises(SystemExit):
+            Ft.main(grid["base"] + ["--time-only"] + clash, net_factory=tiny_net_factory, log=QUIET)
+    with pytest.raises(SystemExit):
+        Ft.main(grid["base"], net_factory=tiny_net_factory, log=QUIET)  # no mode chosen
 
 
 # ---------------------------------------------------------------- the real model (F15, GPU box only)

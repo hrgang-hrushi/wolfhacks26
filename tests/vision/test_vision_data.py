@@ -48,6 +48,20 @@ def test_d2_a_fold_that_is_not_crc32_mod_5_is_refused(table):
     shuffled["fold"] = np.roll(shuffled.fold.values, 7)  # what a row-dependent splitter could produce
     with pytest.raises(ValueError, match="crc32"):
         V.check_table(shuffled)
+    half = table.copy()
+    half["fold"] = half.fold.astype("float64")
+    V.check_table(half)  # whole numbers stored as floats are the same folds
+    half.loc[3, "fold"] += 0.5
+    with pytest.raises(ValueError, match="crc32"):  # 2.5 is not fold 2
+        V.check_table(half)
+    missing = table.copy()
+    missing["fold"] = missing.fold.astype("float64")
+    missing.loc[3, "fold"] = np.nan
+    with pytest.raises(ValueError, match="crc32"):
+        V.check_table(missing)
+    for as_text in (table.fold.astype(str), table.fold.astype(object).map(str)):
+        with pytest.raises(ValueError, match="whole number"):  # "2" != 2 would make fold_split hold out nothing
+            V.check_table(table.assign(fold=as_text))
 
 
 def test_d3_blocks_are_5000_metres_not_degrees(table):
@@ -81,9 +95,21 @@ def test_d5_a_good_table_is_accepted_with_row_order_kept(table, processed_dir):
 
 
 def test_d6_every_block_maps_to_one_fold(table):
-    assert (table.groupby("split_block").fold.nunique() == 1).all()
-    assert set(table.fold.unique()) <= set(range(5)) and table.fold.nunique() >= 4
     assert V.fold_of("100_40") == zlib.crc32(b"100_40") % 5
+    rng = np.random.default_rng(0)
+    x, y = rng.uniform(4.0e5, 9.0e5, 5000), rng.uniform(0.0, 3.0e5, 5000)
+    blocks = V.block_of(x, y)
+    folds = np.array([V.fold_of(b) for b in blocks])
+    assert (pd.Series(folds).groupby(blocks.values).nunique() == 1).all()  # the rule itself: one fold per block
+    assert set(folds) == set(range(5))
+    assert blocks.nunique() > 1000 and (np.bincount(folds) / 5000 > 0.15).all()  # and the folds are balanced
+    # the gate enforces it: a table in which one block spans two folds is refused
+    split = table.copy()
+    in_block = np.where(split.split_block.values == split.split_block.values[0])[0]
+    split.loc[in_block[0], "fold"] = (split.fold[in_block[0]] + 1) % 5
+    assert split[split.split_block == split.split_block[0]].fold.nunique() == 2
+    with pytest.raises(ValueError, match="crc32"):
+        V.check_table(split)
 
 
 # ---------------------------------------------------------------- chips (D7 to D9)
@@ -220,13 +246,31 @@ def test_d14_copies_stay_in_their_roads_fold(table):
         assert not set(table.seg_id.values[train]) & set(table.seg_id.values[held])
         assert not set(table.split_block.values[train]) & set(table.split_block.values[held])  # whole blocks
         assert (table.fold.values[held] == k).all() and (table.fold.values[train] != k).all()
-    # a copy is made on the fly from row i and carries row i's index, so it can only be in row i's fold
-    for epoch in range(4):
+    # A copy is made on the fly from one road's chip and carries that road's row, so its fold is the road's.
+    # Serve only fold 2's training rows, as the fine-tune does, and draw 20 random copies of each.
+    train, held = V.fold_split(table, 2)
+    ds = V.ViewDataset(ds.chips, table.y_rate.values, table.y_crack.values, preset=A.FULL, seed=1, train=True, rows=train)
+    assert len(ds) == len(train)
+    for epoch in range(20):
         ds.set_epoch(epoch)
-        for i in (0, 17, 99):
-            assert int(ds[i][4]) == i
-    for i in (0, 17, 99):
-        assert len({table.fold.values[i] for _ in A.all_views(ds.chips[i])}) == 1
+        for i in (0, 17, len(ds) - 1):
+            x, _, _, _, row, _ = ds[i]
+            row = int(row)
+            assert row == train[i] and table.fold.values[row] != 2 and row not in set(held)
+            chip, rec = ds.draw(i)
+            expected = A.random_augment(ds.chips[row], A.sample_rng(1, epoch, row), A.FULL)[0]
+            assert np.array_equal(chip, expected)  # the copy is of that road's chip and of no other
+            assert torch.equal(x, torch.from_numpy(V.to_model_input(expected)))
+    # the same road gets the same draw whichever fold is held out: the draw is keyed by the road, not its position
+    other = V.ViewDataset(ds.chips, table.y_rate.values, table.y_crack.values, preset=A.FULL, seed=1, train=True,
+                          rows=V.fold_split(table, 4)[0])
+    shared = int(np.intersect1d(ds.rows, other.rows)[0])
+    ds.set_epoch(3), other.set_epoch(3)
+    a = ds.draw(int(np.where(ds.rows == shared)[0][0]))[0]
+    b = other.draw(int(np.where(other.rows == shared)[0][0]))[0]
+    assert np.array_equal(a, b)
+    # the 8 fixed views of a held-out road are scored only by the model that held it out (see F5, F11)
+    assert all(A.view(ds.chips[int(held[0])], k).shape == (4, 128, 128) for k in range(8))
 
 
 def test_d15_each_road_is_held_out_exactly_once(table):
@@ -250,6 +294,15 @@ def test_d17_cross_fold_neighbours_are_counted():
     assert V.cross_fold_neighbours(pair(50, [0, 1])) == 1   # chips overlap across a held-out boundary
     assert V.cross_fold_neighbours(pair(100, [0, 1])) == 0  # too far apart to overlap
     assert V.cross_fold_neighbours(pair(50, [2, 2])) == 0   # same fold: not a leak
+
+    def offset(dx, dy):
+        return pd.DataFrame({"mid_x": [500_000.0, 500_000.0 + dx], "mid_y": [200_000.0, 200_000.0 + dy], "fold": [0, 1]})
+
+    # chips are 77 m squares: 60 m apart on both axes still overlaps, though the centres are 85 m apart
+    assert V.cross_fold_neighbours(offset(60, 60)) == 1
+    assert V.cross_fold_neighbours(offset(80, 10)) == 0 and V.cross_fold_neighbours(offset(10, -80)) == 0
+    three = pd.DataFrame({"mid_x": [0.0, 30.0, 60.0], "mid_y": [0.0, 0.0, 0.0], "fold": [0, 1, 0]})
+    assert V.cross_fold_neighbours(three) == 2  # pairs are counted, not roads
 
 
 def test_d18_the_code_hash_is_stable_changes_with_a_file_and_matches_the_driver(tmp_path):
@@ -320,6 +373,25 @@ def test_d21_changing_any_hashed_column_changes_the_table_hash(table, column):
     assert V.table_hash(changed) != base
     assert V.table_hash(table.drop(columns=column)) != base
     assert V.table_hash(table.assign(pv_COUNTY="x")) == base  # a column this change does not read
+
+
+def test_d21b_the_table_hash_handles_missing_values_and_row_order(table):
+    with_none = table.assign(split_block=table.split_block.astype(object))
+    with_none.loc[4, "split_block"] = None
+    assert len(V.table_hash(with_none)) == 64 and V.table_hash(with_none) != V.table_hash(table)
+    as_int8 = table.assign(fold=table.fold.astype("int8"), in_helene_zone=table.in_helene_zone.astype("int8"))
+    assert V.table_hash(as_int8) == V.table_hash(table)  # the storage type of a whole number does not matter
+    assert V.table_hash(table.iloc[::-1].reset_index(drop=True)) != V.table_hash(table)  # row order does
+
+
+def test_the_chip_index_round_trips_and_is_refused_for_another_road_list(tmp_path):
+    ids = ["ncdot:1:0.000", "ncdot:2:0.000", "ncdot:3:0.000"]
+    blank = np.array([0.0, 0.25, 0.01], dtype="float32")
+    assert V.load_chip_index(ids, tmp_path) is None  # nothing saved yet
+    V.save_chip_index(ids, blank, tmp_path)
+    assert np.array_equal(V.load_chip_index(ids, tmp_path), blank)
+    assert V.load_chip_index(ids[:2], tmp_path) is None and V.load_chip_index(ids[::-1], tmp_path) is None
+    assert V.load_chip_index(ids[:2] + ["ncdot:9:0.000"], tmp_path) is None
 
 
 def test_weights_hash_changes_with_the_weights(tiny_net):

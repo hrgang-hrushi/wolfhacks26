@@ -135,6 +135,48 @@ def test_m9b_seed_spread_uses_only_real_numbers():
     assert math.isnan(M.seed_spread([0.41])) and math.isnan(M.seed_spread([]))
 
 
+def test_m9c_too_few_blocks_give_no_usable_interval():
+    y = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    a, b = y + 0.1, y + 1.0
+    one = M.block_bootstrap_diff(np.zeros(6), y, a, b, "rate_mae", n=50)
+    assert one["n_blocks"] == 1 and one["lo"] == one["hi"] < 0  # one block: every resample is the same
+    assert not M.interval_excludes_zero(one) and not M.is_real(one)  # a zero-width interval proves nothing
+    two = M.block_bootstrap_diff(np.array([0, 0, 0, 1, 1, 1]), y, a, b, "rate_mae", n=50)
+    assert two["n_blocks"] == 2 and not M.is_real(two)
+    enough = {"diff": -0.9, "lo": -1.0, "hi": -0.8, "n_blocks": M.MIN_BLOCKS}
+    assert M.is_real(enough) and not M.is_real({**enough, "n_blocks": M.MIN_BLOCKS - 1})
+    assert not M.is_real({**enough, "lo": float("nan")}) and not M.is_real({**enough, "hi": 0.1})
+
+
+def test_m9d_a_fine_tune_difference_needs_a_seed_spread_to_count():
+    d = {"diff": 0.05, "lo": 0.02, "hi": 0.08, "n_blocks": 500}
+    assert M.is_real(d) and M.is_real(d, None) and M.is_real(d, float("nan"))  # the frozen probe has no seed
+    assert not M.is_real(d, None, require_spread=True) and not M.is_real(d, float("nan"), require_spread=True)
+    assert M.is_real(d, 0.04, require_spread=True) and not M.is_real(d, 0.05, require_spread=True)
+    row = {"arm": "full", "vs": "none", "metric": "crack_aucpr", **d, "folds_up": 5, "folds_down": 0,
+           "seed_spread": float("nan"), "spread_required": True, "real": False}
+    results = {"title": "t", "metrics": ["crack_aucpr"], "hashes": {}, "arms": {}, "differences": [row]}
+    assert "| not judged (no seed spread) |" in M.render_report(results)
+    assert "| better |" in M.render_report({**results, "differences": [{**row, "seed_spread": 0.01, "real": True}]})
+
+
+def test_the_control_thresholds_and_the_per_fold_references():
+    assert M.control_at_chance({"rate_spearman": 0.049, "crack_aucpr": 0.170}, 0.158)
+    assert not M.control_at_chance({"rate_spearman": 0.051, "crack_aucpr": 0.158}, 0.158)   # ranking off chance
+    assert not M.control_at_chance({"rate_spearman": 0.0, "crack_aucpr": 0.179}, 0.158)     # score off prevalence
+    assert not M.control_at_chance({"rate_spearman": float("nan"), "crack_aucpr": 0.158}, 0.158)
+    assert not M.control_at_chance({}, 0.158)
+    y = np.array([1.0, 1.0, 3.0, 100.0, 100.0, np.nan])
+    yc = np.array([0.0, 1.0, 1.0, 0.0, np.nan, np.nan])
+    fold = np.array([0, 0, 0, 1, 1, 1])
+    ref = M.reference_by_fold(y, yc, fold)
+    assert ref["rate_mae_do_nothing"] == {"0": pytest.approx((99 + 99 + 97) / 3), "1": pytest.approx(99.0)}
+    assert ref["crack_prevalence"] == {"0": pytest.approx(2 / 3), "1": 0.0}
+    results = {"title": "t", "metrics": [], "hashes": {}, "arms": {}, "reference_by_fold": ref}
+    assert "| rate_mae_do_nothing | 98.3333 | 99.0000 |" in M.render_report(results)
+    assert (M.fmt(True), M.fmt(False), M.fmt(np.bool_(True)), M.fmt("text")) == ("yes", "no", "yes", "text")
+
+
 def sample_results():
     rng = np.random.default_rng(4)
 
@@ -195,6 +237,11 @@ def test_m10b_a_worse_result_is_called_worse():
 def test_m11_results_with_different_fingerprints_are_refused(key):
     a, b = {"hashes": dict(HASHES)}, {"hashes": dict(HASHES)}
     M.compare(a, b)
+    both_missing = ({"hashes": {k: v for k, v in HASHES.items() if k != key}},) * 2
+    with pytest.raises(ValueError, match=key):  # two results that both lack a fingerprint are not thereby equal
+        M.compare(*both_missing)
+    with pytest.raises(ValueError):
+        M.compare({}, {})
     b["hashes"][key] = "x" * 64
     with pytest.raises(ValueError, match=key):
         M.compare(a, b)

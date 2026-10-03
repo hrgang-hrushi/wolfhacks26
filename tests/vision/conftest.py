@@ -7,11 +7,23 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-HERE = Path(__file__).parent
+HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+# This checkout's root must come first on the path, ahead of any other checkout pytest may have put
+# there (a worktree sits inside the main checkout, whose pytest config adds its own root).
 for p in (str(ROOT), str(HERE)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+    while p in sys.path:
+        sys.path.remove(p)
+    sys.path.insert(0, p)
+for name in [n for n in sys.modules if n == "src" or n.startswith("src.")]:
+    if not str(getattr(sys.modules[name], "__file__", "") or "").startswith(str(ROOT)):
+        del sys.modules[name]  # a copy of the package imported from another checkout
+
+import torch  # noqa: E402
+
+# On macOS, LightGBM and PyTorch each bring their own OpenMP runtime; with both loaded (tests/conftest.py
+# imports LightGBM through src.model.common) a multi-threaded PyTorch call segfaults. One thread is safe.
+torch.set_num_threads(1)
 
 import vision_helpers as vh  # noqa: E402
 
