@@ -21,6 +21,7 @@ dependencies = [
     "scipy>=1.17.1",
     "torch>=2.14.1",
     "timm>=1.0.30",
+    "pillow",  # camera still review sheets (already installed through torchvision)
 ]
 
 [build-system]
@@ -36,4 +37,7 @@ dev = ["pytest"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-markers = ["realdata: needs data/processed/segments.parquet on this machine"]
+markers = [
+    "realdata: needs data/processed/segments.parquet on this machine",
+    "network: needs internet access",
+]
