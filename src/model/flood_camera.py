@@ -11,6 +11,7 @@ Writes: {out}/flood_camera_oof_{frozen|finetune}_{split}.parquet   held-out pred
   python -m src.model.flood_camera --export            # no training: best held-out-camera run on disk ->
         {out}/flood_camera_depth.parquet                 one row per frame, with seg_id where the camera sits on
                                                          an NCDOT segment
+        {out}/flood_camera_summary.json                  the four runs side by side; null = not run
 
 Rows with role == "extra" (e.g. NCDOT stills, all known dry) are never trained on; --final scores them.
 The frames carry a burned-in clock, and the tide floods every site at about the same hour, so the clock
@@ -226,6 +227,11 @@ def export(out: Path, max_dist_m: float = 75.0) -> pd.DataFrame:
     df[cols].to_parquet(out / "flood_camera_depth.parquet", index=False)
     print(f"flood_camera_depth.parquet from {src.name}: {len(df)} frames, {df['site'].nunique()} cameras, "
           f"{df.loc[df['seg_id'].notna(), 'site'].nunique()} on an NCDOT segment", flush=True)
+    runs = {}  # the results table: one entry per run, None where that run's metrics are not on disk
+    for r in ("frozen_camera", "finetune_camera", "frozen_day", "finetune_day"):
+        f = out / f"flood_camera_metrics_{r}.json"
+        runs[r] = {k: v for k, v in json.loads(f.read_text()).items() if k not in ("run", "by_station")} if f.exists() else None
+    (out / "flood_camera_summary.json").write_text(json.dumps({"predictions_from": src.name, "runs": runs}, indent=1))
     return df[cols]
 
 
@@ -246,6 +252,11 @@ def main() -> None:
     mode = "frozen" if args.frozen else "finetune"
     run = f"{mode}_{args.split}"
     print(f"{run} on {dev}", flush=True)
+    args.out.mkdir(parents=True, exist_ok=True)  # before any training: --final saves weights here
+
+    def save(oof, metrics):
+        oof.drop(columns=["level_time"], errors="ignore").to_parquet(args.out / f"flood_camera_oof_{run}.parquet", index=False)
+        (args.out / f"flood_camera_metrics_{run}.json").write_text(json.dumps(metrics, indent=1))
 
     labels = pd.read_parquet(args.data / "labels.parquet")
     cv = labels[labels["role"] == "cv"].reset_index(drop=True)
@@ -275,6 +286,7 @@ def main() -> None:
                        for m in [(cv["station"] == s).to_numpy()]},
     }
     oof = cv.assign(p_flooded=p, depth_pred_cm=d, p_flooded_clock=pc, depth_clock_cm=dc, run=run)
+    save(oof, metrics)  # the held-out results are on disk before the all-frames model is trained
 
     if args.final:
         if args.frozen:
@@ -288,9 +300,7 @@ def main() -> None:
                                           "depth_mean_cm": round(float(de.mean()), 2)}
             oof = pd.concat([oof, extra.assign(p_flooded=pe, depth_pred_cm=de, run=run)], ignore_index=True)
 
-    args.out.mkdir(parents=True, exist_ok=True)
-    oof.drop(columns=["level_time"], errors="ignore").to_parquet(args.out / f"flood_camera_oof_{run}.parquet", index=False)
-    (args.out / f"flood_camera_metrics_{run}.json").write_text(json.dumps(metrics, indent=1))
+        save(oof, metrics)
     print(json.dumps({key: metrics[key] for key in metrics if key != "by_station"}, indent=1), flush=True)
 
 
