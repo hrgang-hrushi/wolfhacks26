@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { PathLayer } from '@deck.gl/layers';
+import { Map as MapIcon, Moon, Globe } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
 import { getScoreRGBA, getConditionInfo } from '../utils/colors';
 
@@ -17,11 +18,12 @@ interface MapViewProps {
   onSelectSegment: (segment: RoadSegment) => void;
 }
 
-// Coordinate anchors for city zoom buttons
+export type BasemapMode = 'streets' | 'satellite' | 'dark';
+
 const CITY_COORDINATES = {
   Asheville: {
     center: [-82.5515, 35.5951] as [number, number],
-    zoom: 13.4,
+    zoom: 13.5,
     pitch: 35,
     bearing: -15
   },
@@ -33,29 +35,32 @@ const CITY_COORDINATES = {
   }
 };
 
-// Dark basemap with high visual contrast for neon path layers
-const BASEMAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
-
-// Offline/fallback OSM raster basemap style in case remote vector tiles are blocked
-const FALLBACK_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: {
-    'osm-tiles': {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '&copy; OpenStreetMap contributors'
-    }
-  },
-  layers: [
-    {
-      id: 'osm-tiles-layer',
-      type: 'raster',
-      source: 'osm-tiles',
-      minzoom: 0,
-      maxzoom: 19
-    }
-  ]
+// Available basemaps
+const BASEMAP_STYLES: Record<BasemapMode, string | maplibregl.StyleSpecification> = {
+  streets: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  satellite: {
+    version: 8,
+    sources: {
+      'esri-satellite': {
+        type: 'raster',
+        tiles: [
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+        ],
+        tileSize: 256,
+        attribution: '&copy; Esri, Maxar, Earthstar Geographics'
+      }
+    },
+    layers: [
+      {
+        id: 'esri-satellite-layer',
+        type: 'raster',
+        source: 'esri-satellite',
+        minzoom: 0,
+        maxzoom: 19
+      }
+    ]
+  }
 };
 
 export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
@@ -66,6 +71,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
+  const [basemapMode, setBasemapMode] = useState<BasemapMode>('streets');
 
   // Hover state for interactive tooltip
   const [hoveredInfo, setHoveredInfo] = useState<{
@@ -95,45 +101,37 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       mapRef.current.flyTo({
         center: [lng, lat],
         zoom: 15.6,
-        pitch: 45,
+        pitch: 40,
         duration: 1400,
         essential: true
       });
     }
   }));
 
-  // Initialize MapLibre GL map and deck.gl MapboxOverlay
+  // Switch basemap style
+  const handleSwitchBasemap = (mode: BasemapMode) => {
+    setBasemapMode(mode);
+    if (!mapRef.current) return;
+    mapRef.current.setStyle(BASEMAP_STYLES[mode]);
+  };
+
+  // Initialize MapLibre GL map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    let mapInstance: maplibregl.Map;
+    const mapInstance = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: BASEMAP_STYLES[basemapMode],
+      center: CITY_COORDINATES.Raleigh.center,
+      zoom: CITY_COORDINATES.Raleigh.zoom,
+      pitch: CITY_COORDINATES.Raleigh.pitch,
+      bearing: CITY_COORDINATES.Raleigh.bearing,
+      attributionControl: false
+    });
 
-    try {
-      mapInstance = new maplibregl.Map({
-        container: mapContainerRef.current,
-        style: BASEMAP_STYLE,
-        center: CITY_COORDINATES.Raleigh.center,
-        zoom: CITY_COORDINATES.Raleigh.zoom,
-        pitch: CITY_COORDINATES.Raleigh.pitch,
-        bearing: CITY_COORDINATES.Raleigh.bearing,
-        attributionControl: false
-      });
-    } catch {
-      // Graceful fallback to raster OSM style if GL style fetch fails
-      mapInstance = new maplibregl.Map({
-        container: mapContainerRef.current,
-        style: FALLBACK_STYLE,
-        center: CITY_COORDINATES.Raleigh.center,
-        zoom: CITY_COORDINATES.Raleigh.zoom,
-        attributionControl: false
-      });
-    }
-
-    // Standard map navigation controls
     mapInstance.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
     mapInstance.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
 
-    // Create deck.gl MapboxOverlay
     const overlayInstance = new MapboxOverlay({
       interleaved: false,
       layers: []
@@ -144,7 +142,6 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     mapRef.current = mapInstance;
     overlayRef.current = overlayInstance;
 
-    // Handle map container resize
     const handleResize = () => {
       mapInstance.resize();
     };
@@ -167,55 +164,20 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
     const layers = [];
 
-    // Layer 1: Glow halo under selected segment
-    if (selectedSegment) {
-      layers.push(
-        new PathLayer<RoadSegment>({
-          id: 'selected-segment-glow',
-          data: [selectedSegment],
-          pickable: false,
-          widthScale: 1,
-          widthMinPixels: 10,
-          widthMaxPixels: 22,
-          rounded: true,
-          capRounded: true,
-          jointRounded: true,
-          getPath: (d) => d.path,
-          getColor: [56, 189, 248, 220], // Radiant cyan halo
-          getWidth: 16
-        })
-      );
-    }
-
-    // Layer 2: Main Road Segments PathLayer
+    // Transparent wide hit-detection layer for effortless clicking
     layers.push(
       new PathLayer<RoadSegment>({
-        id: 'road-segments-path-layer',
+        id: 'road-segments-hit-area',
         data: segments,
         pickable: true,
         widthScale: 1,
-        widthMinPixels: 4,
-        widthMaxPixels: 16,
+        widthMinPixels: 20,
         rounded: true,
         capRounded: true,
         jointRounded: true,
         getPath: (d) => d.path,
-        getColor: (d) => {
-          if (selectedSegment && selectedSegment.seg_id === d.seg_id) {
-            return [255, 255, 255, 255]; // Crisp white core on selection
-          }
-          return getScoreRGBA(d.score, 240);
-        },
-        getWidth: (d) => {
-          if (selectedSegment && selectedSegment.seg_id === d.seg_id) {
-            return 9;
-          }
-          return 5;
-        },
-        updateTriggers: {
-          getColor: [selectedSegment?.seg_id],
-          getWidth: [selectedSegment?.seg_id]
-        },
+        getColor: [0, 0, 0, 0], // completely transparent
+        getWidth: 18,
         onClick: (info) => {
           if (info.object) {
             onSelectSegment(info.object as RoadSegment);
@@ -235,6 +197,78 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       })
     );
 
+    // Dark casing shadow under all segments for high contrast on any basemap
+    layers.push(
+      new PathLayer<RoadSegment>({
+        id: 'road-segments-casing',
+        data: segments,
+        pickable: false,
+        widthScale: 1,
+        widthMinPixels: 9,
+        rounded: true,
+        capRounded: true,
+        jointRounded: true,
+        getPath: (d) => d.path,
+        getColor: [15, 23, 42, 220],
+        getWidth: 9
+      })
+    );
+
+    // Radiant cyan halo under selected segment
+    if (selectedSegment) {
+      layers.push(
+        new PathLayer<RoadSegment>({
+          id: 'selected-segment-glow',
+          data: [selectedSegment],
+          pickable: false,
+          widthScale: 1,
+          widthMinPixels: 14,
+          rounded: true,
+          capRounded: true,
+          jointRounded: true,
+          getPath: (d) => d.path,
+          getColor: [56, 189, 248, 255],
+          getWidth: 16
+        })
+      );
+    }
+
+    // Main colored road segment layer
+    layers.push(
+      new PathLayer<RoadSegment>({
+        id: 'road-segments-core',
+        data: segments,
+        pickable: true,
+        widthScale: 1,
+        widthMinPixels: 6,
+        rounded: true,
+        capRounded: true,
+        jointRounded: true,
+        getPath: (d) => d.path,
+        getColor: (d) => {
+          if (selectedSegment && selectedSegment.seg_id === d.seg_id) {
+            return [255, 255, 255, 255]; // Crisp white core on selection
+          }
+          return getScoreRGBA(d.score, 245);
+        },
+        getWidth: (d) => {
+          if (selectedSegment && selectedSegment.seg_id === d.seg_id) {
+            return 10;
+          }
+          return 6;
+        },
+        updateTriggers: {
+          getColor: [selectedSegment?.seg_id],
+          getWidth: [selectedSegment?.seg_id]
+        },
+        onClick: (info) => {
+          if (info.object) {
+            onSelectSegment(info.object as RoadSegment);
+          }
+        }
+      })
+    );
+
     overlayRef.current.setProps({ layers });
   }, [segments, selectedSegment, onSelectSegment]);
 
@@ -242,12 +276,43 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     <div className="map-view-wrapper">
       <div ref={mapContainerRef} className="map-container" />
 
+      {/* Basemap Switcher Controls */}
+      <div className="basemap-switcher" aria-label="Select Basemap Cartography">
+        <button
+          type="button"
+          className={`basemap-btn ${basemapMode === 'streets' ? 'active' : ''}`}
+          onClick={() => handleSwitchBasemap('streets')}
+          title="Street Map with City Labels"
+        >
+          <MapIcon size={13} />
+          <span>Streets</span>
+        </button>
+        <button
+          type="button"
+          className={`basemap-btn ${basemapMode === 'satellite' ? 'active' : ''}`}
+          onClick={() => handleSwitchBasemap('satellite')}
+          title="High-Res Aerial Satellite Imagery"
+        >
+          <Globe size={13} />
+          <span>Satellite</span>
+        </button>
+        <button
+          type="button"
+          className={`basemap-btn ${basemapMode === 'dark' ? 'active' : ''}`}
+          onClick={() => handleSwitchBasemap('dark')}
+          title="Dark Night Mode"
+        >
+          <Moon size={13} />
+          <span>Dark</span>
+        </button>
+      </div>
+
       {/* Floating Hover Tooltip */}
       {hoveredInfo.segment && (
         <div
           className="map-tooltip"
           style={{
-            transform: `translate(${hoveredInfo.x + 14}px, ${hoveredInfo.y + 14}px)`
+            transform: `translate(${hoveredInfo.x + 16}px, ${hoveredInfo.y + 16}px)`
           }}
         >
           <div className="tooltip-header">

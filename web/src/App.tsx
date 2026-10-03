@@ -7,6 +7,8 @@ import { DetailPanel } from './components/DetailPanel';
 import { Legend } from './components/Legend';
 import { StatsOverlay } from './components/StatsOverlay';
 import { PMTilesArchitectureModal } from './components/PMTilesArchitectureModal';
+import { SegmentListDrawer } from './components/SegmentListDrawer';
+import { AboutProjectModal } from './components/AboutProjectModal';
 import './App.css';
 
 export function App() {
@@ -18,11 +20,13 @@ export function App() {
   // Currently focused city: Raleigh (default) or Asheville
   const [activeCity, setActiveCity] = useState<'Asheville' | 'Raleigh' | null>('Raleigh');
 
-  // Currently selected segment for deep inspection panel
-  const [selectedSegment, setSelectedSegment] = useState<RoadSegment | null>(null);
+  // Currently selected segment for deep inspection panel (default to first segment so panel is immediately functional)
+  const [selectedSegment, setSelectedSegment] = useState<RoadSegment | null>(MOCK_ROAD_SEGMENTS[0] || null);
 
-  // Architecture modal state
+  // Modal and drawer visibility states
   const [isArchModalOpen, setIsArchModalOpen] = useState(false);
+  const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Filter road segments based on viewFilter toggle
   const filteredSegments = useMemo(() => {
@@ -42,6 +46,7 @@ export function App() {
   const handleSelectSegment = useCallback((segment: RoadSegment) => {
     setSelectedSegment(segment);
     setActiveCity(segment.city);
+    mapViewRef.current?.flyToSegment(segment);
   }, []);
 
   // Handle fly to segment
@@ -65,6 +70,9 @@ export function App() {
         totalSegmentsCount={MOCK_ROAD_SEGMENTS.length}
         visibleSegmentsCount={filteredSegments.length}
         onOpenArchitectureModal={() => setIsArchModalOpen(true)}
+        isDrawerOpen={isDrawerOpen}
+        onToggleDrawer={() => setIsDrawerOpen((prev) => !prev)}
+        onOpenAboutModal={() => setIsAboutModalOpen(true)}
       />
 
       {/* Main Map Canvas Area */}
@@ -82,7 +90,16 @@ export function App() {
         {/* Continuous Color Scale Legend */}
         <Legend />
 
-        {/* Selected Road Segment Detail Panel */}
+        {/* Left Side: Road Segments Directory Drawer */}
+        <SegmentListDrawer
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          segments={filteredSegments}
+          selectedSegment={selectedSegment}
+          onSelectSegment={handleSelectSegment}
+        />
+
+        {/* Right Side: Selected Road Segment Detail Panel */}
         {selectedSegment && (
           <DetailPanel
             segment={selectedSegment}
@@ -96,6 +113,12 @@ export function App() {
       <PMTilesArchitectureModal
         isOpen={isArchModalOpen}
         onClose={() => setIsArchModalOpen(false)}
+      />
+
+      {/* "What is this Project?" Mission & Guide Modal */}
+      <AboutProjectModal
+        isOpen={isAboutModalOpen}
+        onClose={() => setIsAboutModalOpen(false)}
       />
     </div>
   );
