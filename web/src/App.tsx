@@ -47,63 +47,53 @@ export function App() {
   }, []);
 
   return (
-    <div className="canvas-frame-container">
-      {/* 110% Pixel-Accurate Master Reference Backdrop */}
-      <img
-        src="/assets/reference/dashboard_master_reference.webp"
-        alt="Dashboard Master Reference"
-        className="master-backdrop-image"
+    <div className="fullscreen-dashboard-root">
+      {/* Left Vertical Navigation Rail */}
+      <CleanSidebar
+        onHomeClick={() => handleZoomCity('Raleigh')}
+        onPlusClick={() => setIsDetailModalOpen(true)}
+        onDocsClick={() => setIsAboutModalOpen(true)}
+        onChatClick={() => setIsArchModalOpen(true)}
+        onTagClick={() => setIsDetailModalOpen(true)}
+        onSettingsClick={() => setIsArchModalOpen(true)}
       />
 
-      {/* 110% Pixel-Accurate Main Window Card */}
-      <div className="pixel-app-card">
-        {/* Left Vertical Navigation Rail (183px width) */}
-        <CleanSidebar
-          onHomeClick={() => handleZoomCity('Raleigh')}
-          onPlusClick={() => setIsDetailModalOpen(true)}
-          onDocsClick={() => setIsAboutModalOpen(true)}
-          onChatClick={() => setIsArchModalOpen(true)}
-          onTagClick={() => setIsDetailModalOpen(true)}
-          onSettingsClick={() => setIsArchModalOpen(true)}
+      {/* Main Workspace (Full Screen) */}
+      <main className="fullscreen-main-pane">
+        {/* Top Map Card */}
+        <CleanMapCard
+          ref={mapCardRef}
+          segments={filteredSegments}
+          selectedSegment={selectedSegment}
+          onSelectSegment={handleSelectSegment}
+          viewFilter={viewFilter}
+          onToggleFilter={setViewFilter}
+          activeCity={activeCity}
+          onZoomCity={handleZoomCity}
+          onOpenHelp={() => setIsArchModalOpen(true)}
         />
 
-        {/* Main Workspace (1597px width) */}
-        <main className="pixel-main-pane">
-          {/* Top Map Card (1597px x 752px) */}
-          <CleanMapCard
-            ref={mapCardRef}
-            segments={filteredSegments}
-            selectedSegment={selectedSegment}
-            onSelectSegment={handleSelectSegment}
-            viewFilter={viewFilter}
-            onToggleFilter={setViewFilter}
-            activeCity={activeCity}
-            onZoomCity={handleZoomCity}
-            onOpenHelp={() => setIsArchModalOpen(true)}
-          />
+        {/* Bottom Row */}
+        <div className="fullscreen-bottom-row">
+          {/* Card 1: Location */}
+          <CleanLocationCard selectedSegment={selectedSegment} />
 
-          {/* Bottom Row (1597px x 460px) */}
-          <div className="pixel-bottom-row">
-            {/* Card 1: Location (717px x 460px) */}
-            <CleanLocationCard selectedSegment={selectedSegment} />
+          {/* Card 2: Modern Architecture */}
+          <CleanPhotoCard selectedSegment={selectedSegment} />
 
-            {/* Card 2: Modern Architecture (433px x 460px) */}
-            <CleanPhotoCard selectedSegment={selectedSegment} />
+          {/* Card 3: Tenants & Donut Gauge */}
+          <CleanTenantsCard selectedSegment={selectedSegment} />
+        </div>
+      </main>
 
-            {/* Card 3: Tenants & Donut Gauge (420px x 460px) */}
-            <CleanTenantsCard selectedSegment={selectedSegment} />
-          </div>
-        </main>
-
-        {/* Deep Road Segment Drilldown Modal */}
-        {isDetailModalOpen && selectedSegment && (
-          <SegmentDetailModal
-            segment={selectedSegment}
-            onClose={() => setIsDetailModalOpen(false)}
-            onFlyTo={handleFlyToSegment}
-          />
-        )}
-      </div>
+      {/* Deep Road Segment Drilldown Modal */}
+      {isDetailModalOpen && selectedSegment && (
+        <SegmentDetailModal
+          segment={selectedSegment}
+          onClose={() => setIsDetailModalOpen(false)}
+          onFlyTo={handleFlyToSegment}
+        />
+      )}
 
       {/* Architecture & PMTiles Modal */}
       <PMTilesArchitectureModal

@@ -1,11 +1,14 @@
 /* ==========================================================================
-   ROADSENSE AI / 110% PIXEL MATCHING MASTER STYLESHEET
-   Exact coordinates & geometry sampled directly from reference
+   ROADSENSE AI / FULLSCREEN DASHBOARD MASTER STYLESHEET
+   Edge-to-edge, zero overflow, fully responsive at 100% zoom
    ========================================================================== */
 
 :root {
-  --canvas-bg: #98bec3;
   --font-family: 'Plus Jakarta Sans', 'Outfit', 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bg-dashboard: #ffffff;
+  --bg-pane: #f8fafc;
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #eef1f4;
 }
 
 * {
@@ -14,190 +17,186 @@
   padding: 0;
 }
 
-body, html {
+html, body, #root {
   width: 100%;
   height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--bg-dashboard);
   font-family: var(--font-family);
-  background-color: var(--canvas-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Outer Viewport Canvas (2048 x 1536) */
-.canvas-frame-container {
-  width: 2048px;
-  height: 1536px;
-  background-color: var(--canvas-bg);
-  position: relative;
-  overflow: hidden;
-}
-
-.master-backdrop-image {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 2048px;
-  height: 1536px;
-  object-fit: cover;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Main Application Window Card (1817px x 1275px, border-radius 40px) */
-.pixel-app-card {
-  position: absolute;
-  top: 115px;
-  left: 115px;
-  width: 1817px;
-  height: 1275px;
-  border-radius: 40px;
-  background: transparent;
+/* Fullscreen Dashboard Root (Edge to edge, 100vw x 100vh) */
+.fullscreen-dashboard-root {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: row;
+  background: var(--bg-dashboard);
   overflow: hidden;
-  z-index: 2;
 }
 
 /* ==========================================================================
-   Sidebar (183px x 1275px)
+   Left Sidebar Navigation Rail
    ========================================================================== */
-.pixel-sidebar-container {
-  width: 183px;
-  height: 1275px;
-  position: relative;
+.fullscreen-sidebar {
+  width: 76px;
+  height: 100vh;
   flex-shrink: 0;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0 14px 0;
+  box-sizing: border-box;
   user-select: none;
+  z-index: 20;
 }
 
-.sidebar-backdrop-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  opacity: 0;
-  pointer-events: none;
+.sidebar-top-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-/* Hotspots on Sidebar */
-.sidebar-hotspot {
-  position: absolute;
+.sidebar-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.sidebar-bottom-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.sidebar-icon-btn {
   background: transparent;
   border: none;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
   border-radius: 50%;
   transition: transform 0.15s ease, background-color 0.15s ease;
 }
 
-.sidebar-hotspot:hover {
-  background-color: rgba(0, 0, 0, 0.04);
+.sidebar-icon-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  transform: scale(1.08);
 }
 
-.hotspot-logo {
-  top: 45px;
-  left: 56px;
-  width: 72px;
-  height: 72px;
+.sidebar-icon-btn:active {
+  transform: scale(0.94);
 }
 
-.hotspot-home {
-  top: 420px;
-  left: 62px;
-  width: 60px;
-  height: 60px;
+.sidebar-icon-img {
+  width: 42px;
+  height: 38px;
+  object-fit: contain;
+  display: block;
 }
 
-.hotspot-plus {
-  top: 495px;
-  left: 67px;
-  width: 50px;
-  height: 50px;
+.svg-nav-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  transition: all 0.15s ease;
 }
 
-.hotspot-tasks {
-  top: 570px;
-  left: 67px;
-  width: 50px;
-  height: 50px;
+.svg-nav-btn:hover {
+  color: #0f172a;
+  background-color: #f1f5f9;
 }
 
-.hotspot-chat {
-  top: 645px;
-  left: 67px;
-  width: 50px;
-  height: 50px;
+.nav-svg-icon {
+  stroke-width: 2px;
 }
 
-.hotspot-ticket {
-  top: 1035px;
-  left: 67px;
-  width: 50px;
-  height: 50px;
+.logo-img {
+  width: 46px;
+  height: 46px;
 }
 
-.hotspot-settings {
-  top: 1110px;
-  left: 67px;
-  width: 50px;
-  height: 50px;
-}
-
-.hotspot-nbadge {
-  top: 1180px;
-  left: 62px;
-  width: 60px;
-  height: 60px;
+.profile-badge-img {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
 }
 
 /* ==========================================================================
-   Main Workspace Pane (1597px x 1275px)
+   Main Workspace Pane (Full Screen Flex)
    ========================================================================== */
-.pixel-main-pane {
-  width: 1634px;
-  height: 1275px;
-  padding: 23px 37px 25px 0;
+.fullscreen-main-pane {
+  flex: 1;
+  height: 100vh;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  padding: 12px 16px 12px 12px;
+  gap: 10px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--bg-pane);
 }
 
 /* ==========================================================================
-   Top Map Card (1597px x 752px, border-radius 28px)
+   Top Map Card (~57% of vertical viewport)
    ========================================================================== */
 .pixel-map-card {
-  width: 1597px;
-  height: 752px;
-  border-radius: 28px;
+  flex: 1.25;
+  min-height: 0;
+  width: 100%;
+  border-radius: 20px;
   position: relative;
   overflow: hidden;
-  background: transparent;
+  background: #edece8;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
 }
 
 .map-backdrop-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: top center;
   display: block;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
 }
 
-/* Top Floating Bar Hotspots */
+/* Top Floating Controls Bar on Map */
 .pixel-map-top-bar {
   position: absolute;
-  top: 10px;
-  left: 20px;
-  width: 1557px;
-  height: 50px;
+  top: 8px;
+  left: 14px;
+  right: 14px;
+  height: 44px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   pointer-events: none;
   z-index: 10;
 }
 
 .pixel-search-form {
-  width: 704px;
-  height: 50px;
+  width: 44%;
+  min-width: 240px;
+  max-width: 560px;
+  height: 44px;
   pointer-events: auto;
   position: relative;
 }
@@ -208,8 +207,8 @@ body, html {
   background: transparent;
   border: none;
   outline: none;
-  padding-left: 56px;
-  font-size: 16px;
+  padding-left: 50px;
+  font-size: 14px;
   font-family: var(--font-family);
   color: #111827;
   cursor: text;
@@ -218,7 +217,7 @@ body, html {
 .pixel-filters-cluster {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
   pointer-events: auto;
 }
 
@@ -227,7 +226,7 @@ body, html {
 }
 
 .pixel-filter-btn {
-  height: 50px;
+  height: 44px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -236,29 +235,18 @@ body, html {
 }
 
 .pixel-filter-btn:hover {
-  background-color: rgba(0, 0, 0, 0.03);
+  background-color: rgba(0, 0, 0, 0.04);
 }
 
-.pixel-filter-wrap:nth-child(1) .pixel-filter-btn {
-  width: 246px;
-}
-
-.pixel-filter-wrap:nth-child(2) .pixel-filter-btn {
-  width: 232px;
-}
-
-.pixel-filter-wrap:nth-child(3) .pixel-filter-btn {
-  width: 256px;
-}
-
-.pixel-filter-wrap:nth-child(4) .pixel-filter-btn {
-  width: 81px;
-}
+.pixel-filter-wrap:nth-child(1) .pixel-filter-btn { width: 165px; }
+.pixel-filter-wrap:nth-child(2) .pixel-filter-btn { width: 155px; }
+.pixel-filter-wrap:nth-child(3) .pixel-filter-btn { width: 170px; }
+.pixel-filter-wrap:nth-child(4) .pixel-filter-btn { width: 54px; }
 
 /* Dropdown Menu */
 .pixel-dropdown-menu {
   position: absolute;
-  top: 56px;
+  top: 50px;
   left: 0;
   background: #ffffff;
   border-radius: 14px;
@@ -291,11 +279,12 @@ body, html {
   background: #f3f4f6;
 }
 
-/* Floating 3 Black Cards Hotspot */
+/* Floating 3 Black Cards Hotspot Group */
 .pixel-black-cards-group {
   position: absolute;
-  top: 286px;
-  left: 776px;
+  top: 36%;
+  left: 55%;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -304,12 +293,12 @@ body, html {
 }
 
 .pixel-black-card-hotspot {
-  width: 146px;
-  height: 128px;
+  width: 98px;
+  height: 86px;
   background: transparent;
   border: none;
   cursor: pointer;
-  border-radius: 24px;
+  border-radius: 18px;
   transition: transform 0.15s ease;
 }
 
@@ -318,7 +307,7 @@ body, html {
 }
 
 .pixel-black-card-hotspot.hotspot-wide {
-  width: 266px;
+  width: 180px;
 }
 
 /* Amber Map Pin Hotspots */
@@ -333,44 +322,21 @@ body, html {
 }
 
 .pin-hotspot:hover {
-  transform: scale(1.15);
+  transform: scale(1.18);
 }
 
-.pin-costa-mesa {
-  left: 960px;
-  top: 540px;
-  width: 60px;
-  height: 60px;
-}
-
-.pin-oak-view {
-  left: 510px;
-  top: 410px;
-  width: 60px;
-  height: 60px;
-}
-
-.pin-quail-hill {
-  left: 1490px;
-  top: 640px;
-  width: 60px;
-  height: 60px;
-}
-
-.pin-northwood {
-  left: 1760px;
-  top: 300px;
-  width: 60px;
-  height: 60px;
-}
+.pin-costa-mesa { left: 60%; top: 68%; width: 48px; height: 48px; }
+.pin-oak-view { left: 32%; top: 52%; width: 48px; height: 48px; }
+.pin-quail-hill { left: 92%; top: 82%; width: 48px; height: 48px; }
+.pin-northwood { left: 95%; top: 36%; width: 48px; height: 48px; }
 
 /* Floating Question Help Button */
 .pixel-help-btn-hotspot {
   position: absolute;
-  bottom: 34px;
-  right: 36px;
-  width: 52px;
-  height: 52px;
+  bottom: 14px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: transparent;
   border: none;
@@ -380,45 +346,49 @@ body, html {
 }
 
 .pixel-help-btn-hotspot:hover {
-  transform: scale(1.08);
+  transform: scale(1.1);
 }
 
 /* ==========================================================================
-   Bottom Row (1597px x 460px)
+   Bottom Row (~43% of vertical viewport)
    ========================================================================== */
-.pixel-bottom-row {
-  width: 1597px;
-  height: 460px;
+.fullscreen-bottom-row {
+  flex: 1.0;
+  min-height: 0;
+  width: 100%;
   display: flex;
-  gap: 15px;
+  gap: 10px;
 }
 
-/* Card 1: Location (717px x 460px) */
+/* Card 1: Location */
 .pixel-location-card {
-  width: 717px;
-  height: 460px;
-  border-radius: 28px;
+  flex: 1.68;
+  height: 100%;
+  min-width: 0;
+  border-radius: 20px;
   position: relative;
   overflow: hidden;
-  background: transparent;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
   user-select: none;
+  background: #ffffff;
 }
 
-.card-crop-img {
+.pixel-location-card .card-crop-img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
   display: block;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  background: #ffffff;
 }
 
 .heart-interactive-overlay {
   position: absolute;
-  top: 24px;
-  right: 28px;
-  width: 44px;
-  height: 44px;
+  top: 14px;
+  right: 18px;
+  width: 36px;
+  height: 36px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -427,56 +397,78 @@ body, html {
 
 .subcards-overlay-container {
   position: absolute;
-  bottom: 20px;
-  left: 24px;
-  right: 24px;
-  height: 280px;
+  bottom: 12px;
+  left: 14px;
+  right: 14px;
+  height: 60%;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 14px;
+  gap: 8px;
 }
 
 .subcard-clickable-area {
   cursor: pointer;
-  border-radius: 20px;
+  border-radius: 14px;
   transition: background-color 0.15s ease;
 }
 
 .subcard-clickable-area:hover {
-  background-color: rgba(0, 0, 0, 0.02);
+  background-color: rgba(0, 0, 0, 0.03);
 }
 
-/* Card 2: Photo (430px x 460px) */
+/* Card 2: Photo */
 .pixel-photo-card {
-  width: 430px;
-  height: 460px;
-  border-radius: 28px;
+  flex: 1.01;
+  height: 100%;
+  min-width: 0;
+  border-radius: 20px;
   position: relative;
   overflow: hidden;
   cursor: pointer;
-  background: transparent;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
+  background: #000000;
 }
 
 .photo-zoom-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
   transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 1;
 }
 
 .pixel-photo-card:hover .photo-zoom-img {
-  transform: scale(1.04);
+  transform: scale(1.06);
 }
 
-/* Card 3: Tenants (420px x 460px) */
+/* Card 3: Tenants */
 .pixel-tenants-card {
-  width: 420px;
-  height: 460px;
-  border-radius: 28px;
+  flex: 0.98;
+  height: 100%;
+  min-width: 0;
+  border-radius: 20px;
   position: relative;
   overflow: hidden;
-  background: transparent;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
   user-select: none;
+  background: #ffffff;
 }
 
-/* Modals */
+.pixel-tenants-card .card-crop-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  opacity: 1;
+  background: #ffffff;
+}
+
+/* ==========================================================================
+   Modals & Drawers
+   ========================================================================== */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -524,4 +516,229 @@ body, html {
 .modal-close-btn:hover {
   background: #e2e8f0;
   color: #0f172a;
+}
+
+/* PMTiles & About Modal Backdrop */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-card {
+  background: #ffffff;
+  border-radius: 24px;
+  width: 760px;
+  max-width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  position: relative;
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-header-title h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.modal-subtitle {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: #334155;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.arch-callout {
+  display: flex;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 14px;
+  padding: 14px 16px;
+  color: #166534;
+}
+
+.arch-callout strong {
+  display: block;
+  color: #15803d;
+  margin-bottom: 4px;
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+}
+
+.btn-primary {
+  background: #0f172a;
+  color: #ffffff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-primary:hover {
+  background: #1e293b;
+}
+
+/* ==========================================================================
+   Segment Detail Inspection Drawer
+   ========================================================================== */
+.segment-detail-drawer {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  bottom: 14px;
+  width: 440px;
+  max-width: 90vw;
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: -8px 0 35px rgba(0, 0, 0, 0.12);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.drawer-header-light {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.drawer-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.jurisdiction-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.pill-state {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.pill-municipal {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.city-location-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.drawer-title-close-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.drawer-segment-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.drawer-segment-id {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 2px;
+  display: block;
+}
+
+.drawer-close-btn {
+  background: #f1f5f9;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.15s ease;
+}
+
+.drawer-close-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.drawer-body-scrollable {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
