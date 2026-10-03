@@ -14,6 +14,21 @@ Potholes and washed-out roads share a cause: water that does not drain. The plac
 
 Our idea: learn from the inspected roads what age, traffic and the shape of the land do to pavement, then score roads that have no rating. So far the model scores state roads. City streets are the goal.
 
+## End goals
+
+What this project is meant to become. The predictions exist today. The dashboard and the data feed are not built yet.
+
+| Goal | What it does | Where it stands |
+|---|---|---|
+| **Repair dashboard for officials** | A ranked work list for road agencies: fix now, fix within a year, plan within five, with alerts when a road crosses a threshold. | Predictions exist for all 112,443 state road stretches. The dashboard is not built. |
+| **Safer-route data for map companies** | A per-road risk file that navigation apps can read, so drivers are routed around rough pavement and flood-prone roads. | The held-out prediction file with road shapes exists (`handoff/predictions_geo.parquet`). No export format or routing yet. |
+| **Budget planner** | Ranks repairs by benefit per dollar and shows what waiting costs. | NCDOT's data carries a recommended treatment and a cost estimate per road. Not built. |
+| **Storm readiness** | Before a forecast storm, lists the roads most likely to wash out, so crews can stage equipment and plan detours. | The flood model found 18 damaged roads among its 50 riskiest in the Helene zone, against about 2 by chance. |
+| **Live confirmation from cameras** | Uses public traffic cameras to confirm water on the road or visible damage, so an alert rests on more than a prediction. | In progress: camera stills are being matched to roads and a first flood reader is being tested. |
+| **Scores for streets nobody inspects** | A first estimate for city streets, where no public survey exists. | Not built. Only state roads are scored so far. |
+
+Also planned: resident pothole reports as a check on the predictions, and ranking by who relies on the road (trucks, school routes, ambulance routes).
+
 ## Follow one road through the model
 
 State Road 2748 in Wake County is a two-lane road that runs 1.7 miles between SR 2755 and SR 1006. Every number below is this road's real record.
