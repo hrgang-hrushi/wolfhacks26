@@ -1,5 +1,4 @@
 import type { FC } from 'react';
-import { Home, Plus, FileText, MessageSquare, Tag, Sliders } from 'lucide-react';
 
 interface CleanSidebarProps {
   onHomeClick?: () => void;
@@ -19,102 +18,78 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
   onSettingsClick
 }) => {
   return (
-    <aside className="clean-sidebar" aria-label="Main Navigation">
-      {/* Top Section */}
-      <div className="sidebar-top-group">
-        {/* Geometric 4-Petal Brand Logo */}
-        <div className="sidebar-brand-mark" title="RoadSense AI">
-          <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Top Circle */}
-            <circle cx="17" cy="8" r="4.5" fill="#000000" />
-            {/* Bottom Ellipse */}
-            <ellipse cx="17" cy="26" rx="6.5" ry="4" fill="#000000" />
-            {/* Left Vertical Ellipse */}
-            <ellipse cx="8" cy="17" rx="4" ry="6.5" fill="#000000" />
-            {/* Right Vertical Ellipse */}
-            <ellipse cx="26" cy="17" rx="4" ry="6.5" fill="#000000" />
-          </svg>
-        </div>
+    <aside className="pixel-sidebar-container" aria-label="Main Navigation">
+      {/* 100% Authentic Full Sidebar Strip Image */}
+      <img
+        src="/assets/reference/sidebar_bg.webp"
+        alt="Sidebar Navigation"
+        className="sidebar-backdrop-img"
+      />
 
-        {/* Top Nav Buttons Group */}
-        <div className="sidebar-nav-cluster">
-          {/* Active Home Pill Button (Black Circle) */}
-          <button
-            type="button"
-            className="sidebar-btn-home active"
-            onClick={onHomeClick}
-            title="Overview Dashboard"
-          >
-            <Home size={20} strokeWidth={2.2} />
-          </button>
+      {/* Interactive Clickable Hotspots overlayed at exact pixel coordinates */}
+      <button
+        type="button"
+        className="sidebar-hotspot hotspot-logo"
+        onClick={onHomeClick}
+        title="RoadSense AI"
+        aria-label="Logo"
+      />
 
-          {/* Plus Add Button */}
-          <button
-            type="button"
-            className="sidebar-btn-pill"
-            onClick={onPlusClick}
-            title="Add Scenario / Filter"
-          >
-            <Plus size={18} strokeWidth={2} />
-          </button>
+      <button
+        type="button"
+        className="sidebar-hotspot hotspot-home"
+        onClick={onHomeClick}
+        title="Home Dashboard"
+        aria-label="Home"
+      />
 
-          {/* Document / Layers Button */}
-          <button
-            type="button"
-            className="sidebar-btn-pill"
-            onClick={onDocsClick}
-            title="Data & Methodology"
-          >
-            <FileText size={18} strokeWidth={2} />
-          </button>
+      <button
+        type="button"
+        className="sidebar-hotspot hotspot-plus"
+        onClick={onPlusClick}
+        title="Add Filter / Layer"
+        aria-label="Add"
+      />
 
-          {/* Chat / Assistant Button */}
-          <button
-            type="button"
-            className="sidebar-btn-pill"
-            onClick={onChatClick}
-            title="AI Insights"
-          >
-            <MessageSquare size={18} strokeWidth={2} />
-          </button>
-        </div>
-      </div>
+      <button
+        type="button"
+        className="sidebar-hotspot hotspot-tasks"
+        onClick={onDocsClick}
+        title="Schedule / Tasks"
+        aria-label="Tasks"
+      />
 
-      {/* Bottom Section */}
-      <div className="sidebar-bottom-group">
-        {/* Ticket / Bookmark Button */}
-        <button
-          type="button"
-          className="sidebar-btn-pill"
-          onClick={onTagClick}
-          title="Saved Segments"
-        >
-          <Tag size={18} strokeWidth={2} />
-        </button>
+      <button
+        type="button"
+        className="sidebar-hotspot hotspot-chat"
+        onClick={onChatClick}
+        title="AI Chat Insights"
+        aria-label="Chat"
+      />
 
-        {/* Settings / Config Button */}
-        <button
-          type="button"
-          className="sidebar-btn-pill"
-          onClick={onSettingsClick}
-          title="Architecture & PMTiles"
-        >
-          <Sliders size={18} strokeWidth={2} />
-        </button>
+      <button
+        type="button"
+        className="sidebar-hotspot hotspot-ticket"
+        onClick={onTagClick}
+        title="Saved Segments / Tickets"
+        aria-label="Tickets"
+      />
 
-        {/* Bottom "N" Stylized Badge */}
-        <div className="sidebar-bottom-badge" title="NCDOT Infrastructure Network">
-          <img
-            src="/assets/reference/n_badge.webp"
-            alt="NC DOT Network"
-            className="sidebar-n-img"
-            onError={(e) => {
-              // Fallback SVG if image not yet loaded
-              (e.target as HTMLElement).style.display = 'none';
-            }}
-          />
-        </div>
-      </div>
+      <button
+        type="button"
+        className="sidebar-hotspot hotspot-settings"
+        onClick={onSettingsClick}
+        title="Settings & PMTiles Architecture"
+        aria-label="Settings"
+      />
+
+      <button
+        type="button"
+        className="sidebar-hotspot hotspot-nbadge"
+        onClick={onSettingsClick}
+        title="Network / Profile"
+        aria-label="Network Profile"
+      />
     </aside>
   );
 };

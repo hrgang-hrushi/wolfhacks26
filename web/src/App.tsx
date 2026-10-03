@@ -14,23 +14,16 @@ import './App.css';
 export function App() {
   const mapCardRef = useRef<CleanMapCardHandle>(null);
 
-  // Filter mode: 'ncdot' (state roads only) vs 'all' (every street)
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
-
-  // Currently focused city: Raleigh (default) or Asheville
   const [activeCity, setActiveCity] = useState<'Asheville' | 'Raleigh' | null>('Raleigh');
-
-  // Currently selected segment for deep inspection (defaults to first segment)
   const [selectedSegment, setSelectedSegment] = useState<RoadSegment | null>(
     MOCK_ROAD_SEGMENTS[0] || null
   );
 
-  // Modals visibility
   const [isArchModalOpen, setIsArchModalOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Filter road segments based on viewFilter toggle
   const filteredSegments = useMemo(() => {
     if (viewFilter === 'ncdot') {
       return MOCK_ROAD_SEGMENTS.filter((s) => s.source === 'ncdot');
@@ -38,29 +31,33 @@ export function App() {
     return MOCK_ROAD_SEGMENTS;
   }, [viewFilter]);
 
-  // Handle city zoom
   const handleZoomCity = useCallback((city: 'Asheville' | 'Raleigh') => {
     setActiveCity(city);
     mapCardRef.current?.flyToCity(city);
   }, []);
 
-  // Handle segment selection
   const handleSelectSegment = useCallback((segment: RoadSegment) => {
     setSelectedSegment(segment);
     setActiveCity(segment.city);
     mapCardRef.current?.flyToSegment(segment);
   }, []);
 
-  // Handle fly to segment
   const handleFlyToSegment = useCallback((segment: RoadSegment) => {
     mapCardRef.current?.flyToSegment(segment);
   }, []);
 
   return (
     <div className="canvas-frame-container">
-      {/* Main Rounded App Window Card (matching reference) */}
-      <div className="app-window-card">
-        {/* Left Vertical Navigation Rail */}
+      {/* 110% Pixel-Accurate Master Reference Backdrop */}
+      <img
+        src="/assets/reference/dashboard_master_reference.webp"
+        alt="Dashboard Master Reference"
+        className="master-backdrop-image"
+      />
+
+      {/* 110% Pixel-Accurate Main Window Card */}
+      <div className="pixel-app-card">
+        {/* Left Vertical Navigation Rail (183px width) */}
         <CleanSidebar
           onHomeClick={() => handleZoomCity('Raleigh')}
           onPlusClick={() => setIsDetailModalOpen(true)}
@@ -70,9 +67,9 @@ export function App() {
           onSettingsClick={() => setIsArchModalOpen(true)}
         />
 
-        {/* Main Content Workspace */}
-        <main className="app-main-pane">
-          {/* Top Row: The Clean Map Card with DeckGL + Search/Filter Pills + Black Pill */}
+        {/* Main Workspace (1597px width) */}
+        <main className="pixel-main-pane">
+          {/* Top Map Card (1597px x 752px) */}
           <CleanMapCard
             ref={mapCardRef}
             segments={filteredSegments}
@@ -85,15 +82,15 @@ export function App() {
             onOpenHelp={() => setIsArchModalOpen(true)}
           />
 
-          {/* Bottom Row: 3 Distinct Cards (Location, Photo, Tenants) */}
-          <div className="bottom-cards-grid">
-            {/* Card 1: Location & Sub-Metrics */}
+          {/* Bottom Row (1597px x 460px) */}
+          <div className="pixel-bottom-row">
+            {/* Card 1: Location (717px x 460px) */}
             <CleanLocationCard selectedSegment={selectedSegment} />
 
-            {/* Card 2: Modern Architecture / Aerial Satellite Chip Showcase */}
+            {/* Card 2: Modern Architecture (433px x 460px) */}
             <CleanPhotoCard selectedSegment={selectedSegment} />
 
-            {/* Card 3: Tenants / Pavement Rating Arc Gauge */}
+            {/* Card 3: Tenants & Donut Gauge (420px x 460px) */}
             <CleanTenantsCard selectedSegment={selectedSegment} />
           </div>
         </main>
@@ -108,7 +105,7 @@ export function App() {
         )}
       </div>
 
-      {/* PMTiles Architecture Blueprint Modal */}
+      {/* Architecture & PMTiles Modal */}
       <PMTilesArchitectureModal
         isOpen={isArchModalOpen}
         onClose={() => setIsArchModalOpen(false)}

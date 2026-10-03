@@ -80,8 +80,14 @@ async function main() {
 
   await sendTarget('Runtime.enable');
   await sendTarget('Page.enable');
+  await sendTarget('Emulation.setDeviceMetricsOverride', {
+    width: 2048,
+    height: 1536,
+    deviceScaleFactor: 1,
+    mobile: false
+  });
 
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise(r => setTimeout(r, 2000));
 
   // Check DOM
   const domRes = await sendTarget('Runtime.evaluate', {
