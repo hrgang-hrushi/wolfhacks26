@@ -596,6 +596,57 @@ def test_time_only_times_every_part_and_writes_no_results(grid):
         Ft.main(grid["base"], net_factory=tiny_net_factory, log=QUIET)  # no mode chosen
 
 
+def test_the_planners_own_output_is_accepted_as_the_job_list(tmp_path):
+    d, processed, cdir, out, base = build_inputs(tmp_path, seed=8)
+    timing = {"load_s": 1.0, "startup_s": 1.0, "train_epoch_s": 1.0, "score_epoch_s": 1.0, "tta_s": 1.0, "write_s": 1.0}
+    plan = Ft.plan_grid(timing, dph=1.0, cap_left=10.0, minutes_left=600)
+    plan["jobs"] = plan["jobs"][:2]
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(plan))  # the dict plan_grid returns, written as is
+    done = Ft.main(base + ["--jobs", str(path)], net_factory=tiny_net_factory, log=QUIET)
+    assert done == {"jobs": ["ran", "ran"]}
+    assert Ft.job_paths(out, *plan["jobs"][1])[1].exists()
+
+
+def test_a_stale_record_is_found_before_any_training_and_the_report_never_rewrites_the_chip_index(tmp_path, monkeypatch):
+    d, processed, cdir, out, base = build_inputs(tmp_path, seed=9)
+    jobs = write_jobs(tmp_path / "jobs.json", Ft.reduced_schedule())
+    Ft.main(base + ["--jobs", jobs, "--shuffled-control", "--report"], net_factory=tiny_net_factory, log=QUIET)
+    index_before = (out / "chip_index.parquet").read_bytes()
+
+    _, old = Ft.job_paths(out, "flips", 1, 3)  # a seed-1 record left over from an earlier, fuller schedule
+    old.parent.mkdir(parents=True, exist_ok=True)
+    rec = json.loads(Ft.job_paths(out, "flips", 0, 3)[1].read_text())
+    old.write_text(json.dumps({**rec, "hashes": {**rec["hashes"], "code": "0" * 64}}))
+    trained = []
+    monkeypatch.setattr(Ft, "train_fold", lambda *a, **k: trained.append(1))
+    one_more = write_jobs(tmp_path / "more.json", [("none", 1, 1)])
+    with pytest.raises(ValueError, match="flips/seed1/fold3.done.json does not match .*different code hash"):
+        Ft.main(base + ["--jobs", one_more, "--report"], net_factory=tiny_net_factory, log=QUIET)
+    assert trained == []  # refused before the first job, not after an hour of training
+    monkeypatch.undo()
+    # a stale record that IS about to be redone is not a reason to refuse
+    redo = write_jobs(tmp_path / "redo.json", [("flips", 1, 3)])
+    assert Ft.main(base + ["--jobs", redo, "--report"], net_factory=tiny_net_factory, log=QUIET)["jobs"] == ["ran"]
+
+    # the report on a machine that holds fewer chips must refuse without touching the saved index
+    for f in sorted(cdir.glob("*.npy"))[50:]:
+        f.unlink()
+    with pytest.raises(ValueError):
+        Ft.main(base + ["--report"], net_factory=tiny_net_factory, log=QUIET)
+    assert (out / "chip_index.parquet").read_bytes() == index_before
+
+
+def test_parallel_bootstraps_give_the_sequential_answer():
+    rng = np.random.default_rng(0)
+    y = rng.normal(size=600)
+    blocks = rng.integers(0, 60, size=600)
+    tasks = [(blocks, y, y + rng.normal(scale=s, size=600), y + rng.normal(scale=1.0, size=600), m, 40)
+             for s, m in ((0.3, "rate_mae"), (0.5, "rate_spearman"), (0.8, "rate_mae"))]
+    assert Ft.run_bootstraps(tasks, 2) == Ft.run_bootstraps(tasks, 1) == [M.block_bootstrap_diff(*t) for t in tasks]
+    assert Ft.run_bootstraps(tasks[:1], 16) == Ft.run_bootstraps(tasks[:1], 0)  # never more workers than tasks
+
+
 # ---------------------------------------------------------------- the real model (F15, GPU box only)
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs the cloud GPU box")

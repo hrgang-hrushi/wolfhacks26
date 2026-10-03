@@ -203,8 +203,13 @@ def validated(ctx, arm, seed, fold, epochs=EPOCHS, batch_size=BATCH, control=Fal
     if not done.exists():
         return None
     if not job_is_complete(done, expected_record(arm, seed, fold, ctx["hashes"], epochs, batch_size, control)):
+        why = ""
+        try:  # say which fingerprint differs, when that is the reason
+            M.compare(json.loads(done.read_text()), {"hashes": ctx["hashes"]})
+        except ValueError as e:
+            why = f" ({e})" if "not comparable" in str(e) else ""
         raise ValueError(f"{done.relative_to(Path(ctx['out_root']))} does not match the current code, labels, roads or "
-                         "settings, or its result file is damaged; rerun that job")
+                         f"settings, or its result file is damaged{why}; rerun that job")
     return json.loads(done.read_text())
 
 
@@ -313,6 +318,29 @@ def _boot(task):
     return M.block_bootstrap_diff(*task)
 
 
+def run_bootstraps(tasks, workers: int):
+    """The block bootstraps, in parallel when asked. Worker processes are spawned fresh, not forked: the
+    parent may hold a GPU context, several GB of chips and live threads, none of which a fork handles well."""
+    workers = min(int(workers), len(tasks), 8)
+    if workers <= 1:
+        return [_boot(t) for t in tasks]
+    import multiprocessing
+    with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn")) as pool:
+        return list(pool.map(_boot, tasks))
+
+
+def check_no_stale_records(ctx, epochs=EPOCHS, batch_size=BATCH, about_to_run=(), control_will_run=False) -> None:
+    """Before any training: refuse if a record the report would read is stale and is not about to be redone."""
+    redo = {tuple(j) for j in about_to_run}
+    for arm in ARMS:
+        for seed in (0, 1):
+            for fold in range(N_FOLDS):
+                if (arm, seed, fold) not in redo:
+                    validated(ctx, arm, seed, fold, epochs, batch_size)
+    if not control_will_run:
+        validated(ctx, *CONTROL, epochs, batch_size, control=True)
+
+
 def report(d, usable, ctx, epochs=EPOCHS, batch_size=BATCH, n_boot=1000, workers=1, log=print) -> dict:
     out_root = Path(ctx["out_root"])
     out = out_root / "finetune"
@@ -340,11 +368,7 @@ def report(d, usable, ctx, epochs=EPOCHS, batch_size=BATCH, n_boot=1000, workers
     pairs = [(name, m) for name in tables if name != "none" for m in METRICS]
     tasks = [(d_u.split_block.values, y_of[m], tables[name][col[m]].values, tables["none"][col[m]].values, m, n_boot)
              for name, m in pairs]
-    if workers > 1:
-        with ProcessPoolExecutor(workers) as pool:
-            boots = list(pool.map(_boot, tasks))
-    else:
-        boots = [_boot(t) for t in tasks]
+    boots = run_bootstraps(tasks, workers)
     differences = []
     for (name, m), boot in zip(pairs, boots):
         a, b = tables[name][col[m]].values, tables["none"][col[m]].values
@@ -400,10 +424,14 @@ def load_context(processed=None, chips_dir=None, out_root=None, net_factory=None
     d = d[d.has_chip].reset_index(drop=True)
     if len(d) == 0:
         raise ValueError("no segment in the table has a chip")
-    chips, blank = None, None if need_chips else V.load_chip_index(d.seg_id.values, out_root)
-    if blank is None:
+    chips, blank = None, None
+    if need_chips:
         chips, blank = V.load_chips(d.seg_id.values, chips_dir)
         V.save_chip_index(d.seg_id.values, blank, out_root)
+    else:  # the report: use the record the training run left; never rewrite it from here
+        blank = V.load_chip_index(d.seg_id.values, out_root)
+        if blank is None:
+            _, blank = V.load_chips(d.seg_id.values, chips_dir)
     usable = V.usable_mask(blank)
     log(f"{len(d):,} segments with a chip, {int(usable.sum()):,} compared ({int((~usable).sum()):,} left out as blank)")
     hashes = {"code": code, "table": V.table_hash(table), "manifest": V.manifest_hash(d.seg_id.values[usable]),
@@ -466,9 +494,14 @@ def main(argv=None, net_factory=None, log=print):
     d, chips, usable, ctx = load_context(a.processed, a.chips, a.out, net_factory, a.time_only or training, log)
     if a.time_only:
         return time_one_job(d, chips, usable, ctx, a.batch, a.workers, time.perf_counter() - t0, log)
-    result = {}
+    result, jobs = {}, []
     if a.jobs:
-        jobs = [tuple(j) for j in json.loads(a.jobs.read_text())]
+        listed = json.loads(a.jobs.read_text())
+        listed = listed["jobs"] if isinstance(listed, dict) else listed  # plan_grid's own output is accepted as is
+        jobs = [(str(arm), int(seed), int(fold)) for arm, seed, fold in listed]
+    if a.report:  # find a stale record now, not after an hour of training
+        check_no_stale_records(ctx, a.epochs, a.batch, about_to_run=jobs, control_will_run=a.shuffled_control)
+    if a.jobs:
         result["jobs"] = [run_job(d, chips, usable, arm, int(seed), int(fold), ctx, a.epochs, a.batch, False,
                                   a.workers, log) for arm, seed, fold in jobs]
         log(f"{result['jobs'].count('ran')} jobs ran, {result['jobs'].count('skipped')} skipped")

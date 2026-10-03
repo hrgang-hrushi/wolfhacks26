@@ -51,7 +51,10 @@ DISK_GB = 100
 BW_FREE = 0.001  # $/GB; real free hosts show rounding dust
 HOURS_PER_MONTH = 730.0
 MIN_PHOTO_RATE = 20.0  # photos a second; below this the statewide fetch is not worth starting
+PRICE_MARGIN = 1.10    # the billed price may exceed the offer's by this much before the box is refused
 TOTAL_SEGMENTS = 112_443
+IDENTITY_MIN = 45      # of the 50 photos this machine holds, how many must also be on the box to call them identical
+TRIAL_MIN = 400        # a 500-photo trial that had fewer than this left to fetch measured nothing
 LABEL = "image-augmentation"
 EU = {"AT", "BE", "BG", "CH", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GB", "GR", "HR", "HU", "IE", "IS", "IT",
       "LT", "LU", "LV", "NL", "NO", "PL", "PT", "RO", "SE", "SI", "SK", "UK"}
@@ -254,12 +257,12 @@ def vast(*args, input=None, timeout=120) -> str:
 
 
 def _last_json(text: str):
-    """The last line of text that is a JSON object or list; the CLI may print warnings before it."""
-    for line in reversed((text or "").strip().splitlines()):
-        line = line.strip()
-        if line[:1] in "{[":
+    """The JSON document in the CLI's output. `--raw` prints it over several lines, and warnings may come first."""
+    lines = (text or "").strip().splitlines()
+    for i, line in enumerate(lines):
+        if line.lstrip()[:1] in ("{", "["):
             try:
-                return json.loads(line)
+                return json.loads("\n".join(lines[i:]))
             except ValueError:
                 continue
     return json.loads(text)
@@ -335,17 +338,32 @@ def abandon(reason: str, now=None, sleep=time.sleep) -> None:
     print(f"abandoned instance {state['instance_id']}: {reason}")
 
 
+GRACE_MIN = 20  # a box started again after its deadline gets this long to have its results copied off
+
+
 def watchdog_script(deadline_epoch: float) -> str:
-    """Runs on the box: wait for the fixed deadline, stop the jobs, then stop the box, retrying until it works."""
+    """Runs on the box: wait for the fixed deadline, stop the jobs, then keep asking vast.ai to stop the box.
+
+    The stop is repeated every minute for as long as the box is up: the vastai CLI exits 0 even when
+    the API refuses, so its exit status cannot tell a stop that worked from one that did not. The
+    loop ends when the box does. A start after the deadline gets GRACE_MIN minutes first, so results
+    can still be copied off. No procps tools are assumed (the image may not have pkill).
+    """
     return (f"{ENV_PREFIX}\n"
+            f"if [ $(date +%s) -ge {int(deadline_epoch)} ]; then sleep {GRACE_MIN * 60}; fi\n"
             f"while [ $(date +%s) -lt {int(deadline_epoch)} ]; do sleep 30; done\n"
-            "pkill -f 'src\\.(model|pipeline)'\n"
+            "for p in /proc/[0-9]*; do grep -qaE 'src\\.(model|pipeline)' $p/cmdline 2>/dev/null "
+            "&& kill ${p#/proc/} 2>/dev/null; done\n"
             "touch /root/DEADLINE_HIT\n"
             "command -v vastai >/dev/null 2>&1 || pip install -q vastai\n"
-            "until vastai stop instance $CONTAINER_ID --api-key $CONTAINER_API_KEY; do sleep 60; done\n")
+            "while true; do vastai stop instance $CONTAINER_ID --api-key $CONTAINER_API_KEY; sleep 60; done\n")
 
 
-WATCHDOG_LAUNCH = "setsid nohup sh /root/watchdog.sh > /root/watchdog.log 2>&1 < /dev/null &"
+WATCHDOG_LAUNCH = ("setsid nohup sh /root/watchdog.sh > /root/watchdog.log 2>&1 < /dev/null & "
+                   "echo $! > /root/watchdog.pid")
+# alive = the recorded pid exists AND its command line is the watcher (a reused pid does not count)
+WATCHDOG_ALIVE = ("p=$(cat /root/watchdog.pid 2>/dev/null); test -n \"$p\" && "
+                  "grep -qa watchdog.sh /proc/$p/cmdline 2>/dev/null && echo ALIVE")
 
 
 def onstart_script(deadline_epoch: float) -> str:
@@ -354,8 +372,13 @@ def onstart_script(deadline_epoch: float) -> str:
             + "WATCHDOG_EOF\n" + WATCHDOG_LAUNCH + "\n")
 
 
-def _created_id(stdout: str, before: set, sleep=time.sleep):
-    """The id of the instance a create call made, or None if it made none."""
+def _created_id(stdout: str, before: set, sleep=time.sleep, polls=3, poll_s=5):
+    """The id of the instance a create call made, or None if it made none.
+
+    When the output cannot be read, the only instance that may be adopted is one that was not there
+    before AND carries this driver's label: another session's box on the same account is never ours.
+    The listing can lag, so it is polled a few times before concluding that nothing was created.
+    """
     try:
         out = _last_json(stdout)
         if isinstance(out, dict) and out.get("new_contract"):
@@ -365,12 +388,21 @@ def _created_id(stdout: str, before: set, sleep=time.sleep):
     m = re.search(r"new_contract\D{0,5}(\d+)", stdout or "")
     if m:
         return int(m.group(1))
-    try:  # the output was unreadable: look for an instance that was not there before
-        new = {i["id"] for i in instances()} - before
-    except (BoxError, ValueError):
+    readable = False
+    for attempt in range(polls):
+        try:
+            new = {i["id"] for i in instances() if i.get("label") == LABEL} - before
+            readable = True
+            if new:
+                return max(new)
+        except (BoxError, ValueError):
+            pass
+        if attempt < polls - 1:
+            sleep(poll_s)
+    if not readable:
         raise BoxError("create returned unreadable output and the instance list could not be read; "
                        "check the vast.ai console before renting again")
-    return max(new) if new else None
+    return None
 
 
 def rent(offer, now=None, sleep=time.sleep):
@@ -386,27 +418,34 @@ def rent(offer, now=None, sleep=time.sleep):
     dph = float(offer["dph_total"])
     if not budget_ok(dph, money):
         raise BoxError(f"${money:.2f} left does not cover an hour at ${dph:.2f}/h")
-    deadline = now + allowed_hours(dph, money) * 3600.0
+    # The deadline is baked into the box's start-up script, so it is set from the offer price plus a
+    # margin; a billed price above that margin is refused below rather than outrunning the deadline.
+    deadline = now + allowed_hours(dph * PRICE_MARGIN, money) * 3600.0
     before = {i["id"] for i in instances()}
     try:
         stdout = vast("create", "instance", str(offer["id"]), "--image", "pytorch/pytorch", "--disk", str(DISK_GB),
-                      "--ssh", "--label", LABEL, "--onstart-cmd", onstart_script(deadline), "--raw")
+                      "--ssh", "--label", LABEL, "--cancel-unavail", "--onstart-cmd", onstart_script(deadline), "--raw")
     except BoxError as e:
         stdout = str(e)
     contract = _created_id(stdout, before, sleep=sleep)
     if contract is None:
         raise OfferGone(f"offer {offer['id']} could not be rented: {stdout[-200:]}")
     state = new_rental(contract, dph, storage_rate(offer), now, money)
+    state["deadline_epoch"] = deadline
     save_state(state)  # before anything else can fail
     try:
         inst = wait_status(contract, True, 900, sleep=sleep)
         if inst is None:
             raise BoxError("never reached running")
-        if float(inst.get("dph_total") or 0) > state["dph"]:  # the billed price, if higher than the offer's
-            state["dph"] = float(inst["dph_total"])
-            state["intervals"][0]["rate"] = state["dph"]
+        billed = float(inst.get("dph_total") or 0)
+        if billed > dph * PRICE_MARGIN:
+            raise BoxError(f"billed ${billed:.3f}/h is more than {PRICE_MARGIN:.0%} of the ${dph:.3f}/h offered")
+        if billed > state["dph"]:  # the billed price, if higher than the offer's
+            state["dph"] = billed
+            state["intervals"][0]["rate"] = billed
         refresh_ssh(state, inst)
         _ssh_ready(sleep=sleep)
+        arm_watchdog()  # the start-up script should have launched it; confirm, and launch it if not
     except BaseException as e:  # including Ctrl-C: a box nobody is driving must not stay rented
         reason = "ssh unreachable" if "ssh failed" in str(e) else str(e)[:60] or type(e).__name__
         try:
@@ -477,8 +516,8 @@ def ssh(cmd: str, retries=5, backoff=15, timeout=600, input=None, check=True, sl
 # ---------------------------------------------------------------- self-stop and watchdog
 
 def watchdog_alive() -> bool:
-    """Whether the watcher script is running on the box (by its command line, not a pid file)."""
-    r = ssh("pgrep -f '[w]atchdog.sh' > /dev/null && echo ALIVE", check=False)
+    """Whether the watcher script is running on the box: its recorded pid exists and is the watcher."""
+    r = ssh(WATCHDOG_ALIVE, check=False)
     return "ALIVE" in (r.stdout or "")
 
 
@@ -500,15 +539,23 @@ def _arm_or_stop(sleep=time.sleep) -> None:
         arm_watchdog()
     except BaseException as e:
         state = load_state()
-        try:
+        stopped = False
+        try:  # the CLI exits 0 even when the API refuses, so the stop is confirmed by the instance's status
             vast("stop", "instance", str(state["instance_id"]))
+            stopped = wait_status(state["instance_id"], False, 180, poll_s=10, sleep=sleep) is not None
+        except Exception:
+            pass
+        if stopped:
             switch_rate(state, state["storage_rate"], _now())
             state["watchdog_armed"] = False
             save_state(state)
+            raise BoxError(f"the deadline watcher could not be armed, so the box was stopped: {e}") from e
+        try:
+            abandon("unwatched and would not stop", sleep=sleep)
         except Exception as e2:
-            raise BoxError(f"the watcher could not be armed AND the box could not be stopped "
+            raise BoxError(f"the watcher could not be armed and the box could neither be stopped nor destroyed "
                            f"(instance {state['instance_id']}): {e2}") from e
-        raise BoxError(f"the deadline watcher could not be armed, so the box was stopped: {e}") from e
+        raise BoxError(f"the deadline watcher could not be armed and the box did not stop, so it was destroyed: {e}") from e
 
 
 def selfstop_test(sleep=time.sleep):
@@ -548,8 +595,17 @@ def stop(now=None, sleep=time.sleep) -> None:
     save_state(state)
 
 
-def start(now=None, sleep=time.sleep) -> None:
+def start(now=None, sleep=time.sleep, grace=False) -> None:
+    """Start a stopped box. Past its deadline this is refused, except with grace: the watcher then
+    gives it GRACE_MIN minutes, enough to copy results off, before stopping it again."""
     state = load_state()
+    at = _now() if now is None else now
+    if at >= state["deadline_epoch"]:
+        if not grace:
+            raise BoxError(f"the box is past its deadline; `start --grace` brings it up for {GRACE_MIN} minutes "
+                           "to copy results off")
+        if cap_left(at) < state["dph"] * GRACE_MIN / 60.0:
+            raise BoxError(f"${cap_left(at):.2f} left does not cover {GRACE_MIN} more minutes at ${state['dph']:.2f}/h")
     vast("start", "instance", str(state["instance_id"]))
     inst = wait_status(state["instance_id"], True, 600, sleep=sleep)
     if inst is None:
@@ -585,13 +641,18 @@ def bundle_files(root=None):
 _KEY_NAMES = re.compile(r"(^|/)(vast_api_key[^/]*|\.env[^/]*|id_(rsa|dsa|ecdsa|ed25519)[^/]*|[^/]*\.(pem|key|p12|pfx)|"
                         r"[^/]*credentials[^/]*|\.netrc|\.npmrc)$", re.I)
 _SECRET_WORD = "(?:api[_-]?" + "key|secret[_-]?access[_-]?" + "key|secret|pass" + "word|pass" + "wd|to" + "ken)"
+_SECRET_VALUE = r"[A-Za-z0-9_\-/+=.]{12,}"
 _KEY_TEXT = re.compile("|".join([
-    _SECRET_WORD + r"""["']?\s*[:=]\s*["']?[A-Za-z0-9_\-/+=.]{12,}""",
+    # a quoted value: API_KEY = "...", {"apiKey": "..."}
+    _SECRET_WORD + r"""["']?\s*[:=]\s*["']""" + _SECRET_VALUE + r"""["']""",
+    # or a bare value that is the whole rest of the line: SECRET_ACCESS_KEY=..., to-ken=... in a csv.
+    # (`token = get_token(...)` is ordinary code and does not match: it does not end the line there.)
+    r"^[^\n=:]*" + _SECRET_WORD + r"\w*\s*[:=]\s*" + _SECRET_VALUE + r"\s*$",
     "BEGIN [A-Z ]*PRIVATE" + " KEY",
     "gh[pousr]_" + "[A-Za-z0-9]{30,}",
     "AKIA" + "[0-9A-Z]{16}",
     "sk-" + "[A-Za-z0-9_-]{24,}",
-]), re.I)
+]), re.I | re.M)
 _BINARY_SUFFIXES = {".parquet", ".npy", ".png", ".jpg", ".jpeg", ".tif"}
 
 
@@ -683,8 +744,11 @@ def memcheck() -> str:
     ssh(f"cat > {REMOTE}/logs/memcheck.py", input=MEMCHECK_PY)
     r = ssh(f"{REMOTE_PREFIX} && uv run python logs/memcheck.py", check=False, timeout=900)
     if "MEMCHECK_OK" not in (r.stdout or ""):
-        abandon("memory check")
-        raise BoxError(f"the model does not fit or run on this GPU; destroyed. {(r.stderr or '')[-400:]}")
+        err = (r.stderr or "") + (r.stdout or "")
+        if re.search(r"out of memory|OutOfMemoryError", err, re.I):  # only this means the GPU is too small
+            abandon("memory check")
+            raise BoxError(f"the model does not fit on this GPU; destroyed. {err[-400:]}")
+        raise BoxError(f"the memory check could not run (the box is still up): {err[-600:]}")
     return [ln for ln in r.stdout.splitlines() if "MEMCHECK_OK" in ln][-1]
 
 
@@ -699,9 +763,11 @@ def _check_name(name: str) -> str:
 def run(name: str, cmd: str, now=None, sleep=time.sleep) -> str:
     _check_name(name)
     state = load_state()
+    now = _now() if now is None else now
+    if now >= state["deadline_epoch"]:
+        raise BoxError("the box is past its deadline; no new job is launched")
     if not watchdog_alive():
         raise BoxError("the deadline watcher is not running on the box; refusing to launch a job")
-    now = _now() if now is None else now
     job = f"{name}-{datetime.fromtimestamp(now, timezone.utc).strftime('%Y%m%d%H%M%S')}"
     if job == state["jobs"].get(name):
         raise BoxError(f"job id {job} was just used; wait a second")
@@ -725,10 +791,27 @@ def job_status(name: str):
     job = state["jobs"].get(name)
     if not job:
         raise BoxError(f"no job named {name} has been launched")
-    r = ssh(f"cd {REMOTE} && echo RC=$(cat logs/{job}.rc 2>/dev/null) && tail -n 4 logs/{job}.log", check=False)
+    return _probe(job)[::2]
+
+
+def _probe(job: str):
+    """(exit code or None, whether the job's process is still alive, last lines of its log)."""
+    r = ssh(f"cd {REMOTE} && echo RC=$(cat logs/{job}.rc 2>/dev/null) && "
+            f"(kill -0 $(cat logs/{job}.pid 2>/dev/null) 2>/dev/null && echo JOB_ALIVE || echo JOB_GONE) && "
+            f"tail -n 4 logs/{job}.log", check=False)
     out = r.stdout or ""
     m = re.search(r"^RC=(-?\d+)\s*$", out, re.M)
-    return (int(m.group(1)) if m else None), out.split("\n", 1)[-1]
+    tail = "\n".join(ln for ln in out.splitlines()[1:] if ln not in ("JOB_ALIVE", "JOB_GONE"))
+    return (int(m.group(1)) if m else None), "JOB_ALIVE" in out, tail
+
+
+def job_state(name: str) -> str:
+    """'finished', 'running', or 'died' (no exit status and no process: killed by the watcher or by a restart)."""
+    job = load_state()["jobs"].get(name)
+    if not job:
+        raise BoxError(f"no job named {name} has been launched")
+    rc, alive, _ = _probe(job)
+    return "finished" if rc is not None else ("running" if alive else "died")
 
 
 def job_log(name: str) -> str:
@@ -740,8 +823,8 @@ def job_log(name: str) -> str:
 
 
 def running_jobs():
-    """Names of launched jobs that have not published an exit status."""
-    return [name for name in load_state()["jobs"] if job_status(name)[0] is None]
+    """Names of launched jobs whose process is still alive. A job that died is not running."""
+    return [name for name in load_state()["jobs"] if job_state(name) == "running"]
 
 
 def wait(name: str, poll_s=30, timeout_s=3600, sleep=time.sleep) -> int:
@@ -751,6 +834,8 @@ def wait(name: str, poll_s=30, timeout_s=3600, sleep=time.sleep) -> int:
         if rc is not None:
             print(tail.rstrip())
             return rc
+        if job_state(name) == "died":
+            raise BoxError(f"job {name} died without an exit status; last lines:\n{tail.rstrip()}")
         print(f"[{name}] running... {tail.strip().splitlines()[-1] if tail.strip() else ''}", flush=True)
         sleep(poll_s)
         waited += poll_s
@@ -795,8 +880,9 @@ def verify_manifest(manifest, directory: Path):
 
 def _check_remote_dir(remote_dir: str) -> str:
     p = Path(remote_dir)
-    if p.is_absolute() or ".." in p.parts or not re.match(r"^[A-Za-z0-9_./-]+$", remote_dir):
-        raise BoxError(f"remote folder {remote_dir!r} must be a plain path inside the project")
+    if (p.is_absolute() or ".." in p.parts or not re.match(r"^[A-Za-z0-9_./-]+$", remote_dir)
+            or len(p.parts) < 2 or p.parts[0] != "data"):
+        raise BoxError(f"remote folder {remote_dir!r} must be a plain path under the project's data folder")
     return remote_dir.rstrip("/")
 
 
@@ -893,21 +979,41 @@ def identity_check(local_chips_dir=None, sleep=time.sleep) -> int:
     mine = local_digests(ROOT / CHIPS_DIR if local_chips_dir is None else local_chips_dir)
     if not mine:
         raise BoxError("no photos on this machine to compare against")
-    ssh(f"{REMOTE_PREFIX} && {CHIPS_CMD} --limit 50 --seed 0", timeout=1800)
-    theirs = parse_digests(ssh(f"{REMOTE_PREFIX} && uv run python - {CHIPS_DIR}", input=DIGEST_PY, timeout=600).stdout)
-    differ = compare_digests(mine, theirs, names=mine)
-    if differ:
+
+    def fetch_and_digest():
+        ssh(f"{REMOTE_PREFIX} && {CHIPS_CMD} --limit 50 --seed 0", timeout=1800)  # skips photos already there
+        return parse_digests(ssh(f"{REMOTE_PREFIX} && uv run python - {CHIPS_DIR}", input=DIGEST_PY, timeout=600).stdout)
+
+    theirs = fetch_and_digest()
+    common = sorted(set(mine) & set(theirs))
+    if len(common) < IDENTITY_MIN:  # some of the 50 did not arrive: try once more before judging anything
+        theirs = fetch_and_digest()
+        common = sorted(set(mine) & set(theirs))
+    differ = compare_digests(mine, theirs, names=common)
+    if differ:  # only differing pixels condemn the box; a photo that failed to download does not
         abandon("photo identity", sleep=sleep)
-        raise BoxError(f"{len(differ)} of {len(mine)} photos differ between this machine and the box; destroyed: {differ[:3]}")
-    return len(mine)
+        raise BoxError(f"{len(differ)} of {len(common)} photos differ between this machine and the box; destroyed: {differ[:3]}")
+    if len(common) < IDENTITY_MIN:
+        raise BoxError(f"only {len(common)} of the photos on this machine were fetched on the box (need {IDENTITY_MIN}); "
+                       "nothing differed, the box is still up; check the fetch")
+    return len(common)
 
 
 def speed_trial(settings=((1, 32), (2, 64), (3, 128)), sleep=time.sleep) -> dict:
-    """Three 500-photo trials. Returns the rates and the best worker count; too slow destroys the box."""
+    """Three 500-photo trials. Returns the rates and the best worker count; too slow destroys the box.
+
+    A trial that found its photos already fetched (a rerun) measures nothing, so it raises without
+    touching the box.
+    """
     rates = {}
     for seed, workers in settings:
-        out = ssh(f"{REMOTE_PREFIX} && {CHIPS_CMD} --limit 500 --seed {seed} --workers {workers}", timeout=1800).stdout
-        rates[workers] = ok_rate(parse_chips_log(out))
+        out = ssh(f"{REMOTE_PREFIX} && {CHIPS_CMD} --limit 500 --seed {seed} --workers {workers}", timeout=1800,
+                  retries=1).stdout
+        parsed = parse_chips_log(out)
+        if parsed["to_cut"] < TRIAL_MIN:
+            raise BoxError(f"the trial with seed {seed} had only {parsed['to_cut']} photos left to fetch, so it measured "
+                           "nothing (was it already run?); the box is untouched")
+        rates[workers] = ok_rate(parsed)
     best = max(rates, key=rates.get)
     if rates[best] < MIN_PHOTO_RATE:
         abandon("too slow", sleep=sleep)
@@ -957,12 +1063,18 @@ def census(n_on_disk: int, parsed: dict, total=None, max_failed_share=0.005) -> 
 
 
 def fetch_census(job: str = "fetch", sleep=time.sleep) -> dict:
-    """The fetch contract on the last run of the fetch job. If it fails the box is stopped (photos kept)."""
+    """The fetch contract on the last run of the fetch job. If the contract fails the box is stopped (photos kept).
+
+    Asking too early, or about a job that was never launched, is just an error: it does not stop the box.
+    """
+    state = job_state(job)
+    if state != "finished":
+        raise BoxError(f"the {job} job is {'still running' if state == 'running' else 'dead without an exit status'}; "
+                       "the box is untouched")
+    log = job_log(job)
+    n = int(ssh(f"ls {REMOTE}/{CHIPS_DIR} | grep -c '\\.npy$'", check=False).stdout.strip() or 0)
     try:
-        if job_status(job)[0] is None:
-            raise BoxError("the fetch is still running")
-        parsed = parse_chips_log(job_log(job))
-        n = int(ssh(f"ls {REMOTE}/{CHIPS_DIR} | grep -c '\\.npy$'", check=False).stdout.strip() or 0)
+        parsed = parse_chips_log(log)
         return {**census(n, parsed), "seconds": parsed["seconds"], "rate": ok_rate(parsed)}
     except BoxError:
         stop(sleep=sleep)
@@ -1009,7 +1121,17 @@ def status(now=None) -> dict:
 
 
 def results_safe() -> None:
-    """Raise unless every result on the box is on this machine, byte for byte, and no job is still running."""
+    """Raise unless every result on the box is on this machine, byte for byte, and no job is still running.
+
+    A job that died (killed by the watcher at the deadline, or by a restart) is not running; what it
+    left behind is still checked file by file. The box must be up for the check: a stopped box is
+    started first (`start`, or `start --grace` after the deadline).
+    """
+    state = load_state()
+    inst = instance(state["instance_id"])
+    if inst is None or inst.get("actual_status") != "running":
+        raise BoxError("the box is not running, so its results cannot be checked; start it (after the deadline: "
+                       "`start --grace`), pull, then tear down; or use --force-discard to give up what is on it")
     still = running_jobs()
     if still:
         raise BoxError(f"jobs still running on the box: {still}")
@@ -1043,8 +1165,10 @@ def main(argv=None) -> None:
     p = sub.add_parser("rent")
     p.add_argument("--offer", type=int, default=None, help="default: first that passes")
     for name in ("offers", "selfstop-test", "push", "setup", "memcheck", "identity", "trial", "census", "county-chips",
-                 "stop", "start", "status"):
+                 "stop", "status"):
         sub.add_parser(name)
+    sub.add_parser("start").add_argument("--grace", action="store_true",
+                                         help=f"past the deadline: bring the box up for {GRACE_MIN} minutes to copy results")
     sub.add_parser("ssh").add_argument("command")
     p = sub.add_parser("run")
     p.add_argument("name")
@@ -1105,7 +1229,7 @@ def main(argv=None) -> None:
         stop()
         print("stopped (storage-only billing)")
     elif a.cmd == "start":
-        start()
+        start(grace=a.grace)
         print("running; deadline watcher running")
     elif a.cmd == "status":
         print(json.dumps(status(), indent=1))
