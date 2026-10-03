@@ -49,7 +49,8 @@ ROAD_LEVEL_M = {
 }
 ALWAYS_DRY = {"DE_02", "NB_02"}  # sensor pinned at one value; the road is dry in every frame checked
 LEVEL_FROM = {"CB_01B": "CB_01"}  # second camera at the same site, no sensor of its own
-NCDOT_STILLS = ROOT / "data" / "raw" / "cctv" / "look_2026-10-03_1435"  # rainy afternoon, no flood alerts
+CCTV = ROOT / "data" / "raw" / "cctv"  # NCDOT traffic-camera stills, pulled by src.pipeline.cctv (branch cctv-potholes)
+NCDOT_STILLS = CCTV / "look_2026-10-03_1435"  # rainy afternoon, no flood alerts
 PACK_SIZE = 448
 
 _session = requests.Session()
@@ -209,6 +210,24 @@ def build_labels() -> pd.DataFrame:
                 }
             )
         )
+    if (CCTV / "stills.parquet").exists():  # collector rounds; a camera's view can change between rounds
+        st = pd.read_parquet(CCTV / "stills.parquet")
+        st = st[(st["status"] == "ok") & ~st["dark"]].merge(pd.read_parquet(CCTV / "cameras.parquet"), on="camera_id")
+        parts.append(
+            pd.DataFrame(
+                {
+                    "station": "NCDOT",
+                    "site": "NCDOT_" + st["camera_id"].astype(str),
+                    "time_utc": st["image_time"].dt.tz_localize(None).astype("datetime64[ns]"),
+                    "file": "../cctv/" + st["file"],
+                    "name": st["location_name"],
+                    "lat": st["lat"],
+                    "lon": st["lon"],
+                    "depth_cm": 0.0,
+                    "role": "extra",
+                }
+            )
+        )
     labels = pd.concat(parts, ignore_index=True)
     tmp = OUT / "labels.partial.parquet"
     labels.to_parquet(tmp, index=False)
@@ -229,7 +248,7 @@ def pack_colab() -> Path:
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:
         files = []
         for f in labels["file"]:
-            name = f"extra/ncdot/{Path(f).name}" if f.startswith("../") else f
+            name = "extra/ncdot/" + "_".join(Path(f).parts[-2:]) if f.startswith("../") else f
             buf = io.BytesIO()
             Image.open(OUT / f).convert("RGB").resize((PACK_SIZE, PACK_SIZE), Image.BILINEAR).save(buf, "JPEG", quality=88)
             z.writestr(f"sunnyday/{name}", buf.getvalue())
@@ -258,7 +277,7 @@ def main() -> None:
         cv = labels[labels["role"] == "cv"]
         flooded = cv[cv["depth_cm"] >= 2].groupby("station")["depth_cm"].agg(["size", "max"]).round(0)
         print(f"labels.parquet: {len(cv)} camera frames, {int((cv['depth_cm'] >= 2).sum())} flooded, "
-              f"{int((labels['role'] == 'extra').sum())} known-dry NCDOT stills", flush=True)
+              f"{int((labels['role'] == 'extra').sum())} NCDOT stills taken as not flooded", flush=True)
         print(cv.groupby("station").size().rename("frames").to_frame().join(flooded).fillna(0).astype(int)
               .rename(columns={"size": "flooded", "max": "deepest_cm"}).to_string(), flush=True)
         if args.pack:

@@ -212,6 +212,13 @@ def export(out: Path, max_dist_m: float = 75.0) -> pd.DataFrame:
     seg = gpd.GeoDataFrame(seg[["seg_id"]], geometry=shapely.from_wkb(seg["geometry"].values), crs=4326).to_crs(32119)
     near = gpd.sjoin_nearest(cams, seg, max_distance=max_dist_m, distance_col="seg_dist_m").drop_duplicates("site")
     df = df.merge(near[["site", "seg_id", "seg_dist_m"]], on="site", how="left")
+    ncdot = Path("data/raw/cctv/cameras.parquet")  # the camera collector's own match prefers the route a camera is named for
+    if ncdot.exists():
+        c = pd.read_parquet(ncdot, columns=["camera_id", "seg_id", "seg_dist_m"])
+        c = c.assign(site="NCDOT_" + c["camera_id"].astype(str)).set_index("site")
+        known = df["site"].isin(c.index)
+        df.loc[known, "seg_id"] = df.loc[known, "site"].map(c["seg_id"])
+        df.loc[known, "seg_dist_m"] = df.loc[known, "site"].map(c["seg_dist_m"])
     df = df.rename(columns={"depth_cm": "depth_measured_cm"})
     df.loc[df["role"] == "extra", "depth_measured_cm"] = np.nan  # known not flooded, but nothing was measured
     cols = ["station", "site", "name", "lat", "lon", "seg_id", "seg_dist_m", "time_utc", "file", "role",
