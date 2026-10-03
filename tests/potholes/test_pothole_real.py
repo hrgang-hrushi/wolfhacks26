@@ -22,9 +22,13 @@ def meta():
 
 
 @pytest.mark.realdata
-def test_N1_charlotte_rows_equal_the_servers_count(meta):
+def test_N1_charlotte_pull_size_and_bookkeeping(meta):
+    # that the rows received equal the server's count is enforced inside fetch_all (test P1); a pull that
+    # disagreed would never have written this file. Here: the pull is as large as on 2026-10-03 and every
+    # row received is either kept or in a named drop bucket.
     c = meta["sources"]["charlotte"]
     assert c["server_count"] >= 24_824 and c["kept"] + sum(c["dropped"].values()) == c["server_count"]
+    assert set(c["dropped"]) <= {"wrong_type", "unlocated", "out_of_state", "undated", "future", "duplicate"}
 
 
 @pytest.mark.network

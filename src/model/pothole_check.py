@@ -39,8 +39,10 @@ def fingerprint(path):
 
 
 def commit():
-    r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
-    return r.stdout.strip() or None
+    """Short hash of the code that ran, with "-dirty" when src/ had uncommitted or untracked changes."""
+    head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(["git", "status", "--porcelain", "--", "src"], capture_output=True, text=True).stdout.strip()
+    return (head + ("-dirty" if dirty else "")) or None
 
 
 def write_results(path, obj, md):

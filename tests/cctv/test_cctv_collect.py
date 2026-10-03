@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import sys
 from datetime import timedelta
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -62,8 +63,9 @@ def test_K4_stale_image_is_flagged_and_not_saved(fake, tmp_path, clock):
 
 
 def test_K5_only_cameras_marked_recent_are_fetched(fake, tmp_path, clock):
-    cams = fake.cameras(4, image_status=["Recent", "Unavailable", "Stale", "Recent"])
+    cams = fake.cameras(5, image_status=["Recent", "Unavailable", "Stale", "Recent", "Recent"])
     cams.loc[3, "image_url"] = None
+    cams.loc[4, "image_url"] = ""                       # NCDOT lists some "recent" cameras with an empty link
     new, s = run(fake, cams, tmp_path, lambda u, p: fake.image_resp(fake.jpeg(1)), clock)
     assert [u for u, _, _ in s.calls] == ["https://a.test/snapshots/chan-1_l.jpg"] and len(new) == 1
     assert all(h == UA for _, _, h in s.calls)
@@ -98,12 +100,21 @@ def test_K8_failed_download_or_write_leaves_no_partial_file(fake, tmp_path, cloc
     new, _ = run(fake, fake.cameras(1), tmp_path, lambda u, p: requests.ConnectionError("reset"), clock)
     assert new.status.tolist() == ["http_error"] and list(tmp_path.rglob("*.jpg*")) == []
 
-    def boom(a, b):
-        raise OSError("Operation timed out")
-    monkeypatch.setattr(cctv.os, "replace", boom)
-    with pytest.raises(OSError):   # the log write also fails here; the still itself must leave nothing behind
-        run(fake, fake.cameras(1), tmp_path, lambda u, p: fake.image_resp(fake.jpeg(1)), clock, round_id="r2")
+    real = Path.write_bytes
+
+    def disk_full(self, data):                          # half a still reaches the disk, then the write fails
+        if self.name.endswith(".jpg.tmp"):
+            real(self, data[:100])
+            raise OSError("No space left on device")
+        return real(self, data)
+    monkeypatch.setattr(Path, "write_bytes", disk_full)
+    each = lambda u, p: fake.image_resp(fake.jpeg(int(u.split("chan-")[1].split("_")[0])))
+    new, _ = run(fake, fake.cameras(3), tmp_path, each, clock, round_id="r2")
+    assert new.status.tolist() == ["save_error"] * 3    # logged, and the round carries on to the next camera
     assert list(tmp_path.rglob("*.jpg*")) == []
+    assert pd.read_parquet(tmp_path / "stills.parquet").status.tolist() == ["http_error"] + ["save_error"] * 3
+    with pytest.raises(RuntimeError, match="stopped: 40 of 40 requests failed"):     # and it counts toward the stop rule
+        run(fake, fake.cameras(60, hosts=("a.test",)), tmp_path / "many", each, clock)
 
 
 def test_K9_unchanged_image_is_not_saved_twice(fake, tmp_path, clock):
@@ -169,3 +180,32 @@ def test_K16_changed_bytes_with_the_same_image_time_never_overwrite(fake, tmp_pa
     assert new2.status.tolist() == ["ok"] and new1.file.iloc[0] != new2.file.iloc[0]
     assert (tmp_path / new1.file.iloc[0]).read_bytes() == first
     assert (tmp_path / new2.file.iloc[0]).read_bytes() == second
+    new3, _ = run(fake, fake.cameras(1), tmp_path, lambda u, p: fake.image_resp(first), clock, round_id="r3")
+    assert new3.status.tolist() == ["duplicate"] and len(jpgs(tmp_path)) == 2      # bytes already on disk are not rewritten
+    assert (tmp_path / new1.file.iloc[0]).read_bytes() == first
+
+
+def test_K17_placeholder_clean_up_never_deletes_an_earlier_rounds_still(fake, tmp_path, clock):
+    a, card, b = fake.jpeg(1), fake.jpeg(2), fake.jpeg(3)
+    run(fake, fake.cameras(1), tmp_path, lambda u, p: fake.image_resp(a), clock, round_id="r1")
+    r2, _ = run(fake, fake.cameras(1), tmp_path, lambda u, p: fake.image_resp(card), clock, round_id="r2")
+    run(fake, fake.cameras(1), tmp_path, lambda u, p: fake.image_resp(b), clock, round_id="r3")
+    kept = tmp_path / r2.file.iloc[0]
+    r4, _ = run(fake, fake.cameras(3), tmp_path, lambda u, p: fake.image_resp(card), clock, round_id="r4")
+    assert r4.status.tolist() == ["placeholder"] * 3 and r4.file.isna().all()
+    assert kept.read_bytes() == card                    # camera 1's round-2 still is the same bytes; it stays
+    log = pd.read_parquet(tmp_path / "stills.parquet")
+    assert jpgs(tmp_path) == sorted(log.file[log.status == "ok"])       # every "ok" row still points at a file
+    assert not (tmp_path / "2").exists() or list((tmp_path / "2").glob("*.jpg")) == []
+
+
+def test_K18_interrupted_round_still_logs_what_it_saved(fake, tmp_path, clock):
+    def handler(u, p):
+        if "chan-3_" in u:
+            raise KeyboardInterrupt
+        return fake.image_resp(fake.jpeg(int(u.split("chan-")[1].split("_")[0])))
+    with pytest.raises(KeyboardInterrupt):
+        run(fake, fake.cameras(5), tmp_path, handler, clock)
+    log = pd.read_parquet(tmp_path / "stills.parquet")
+    assert log.camera_id.tolist() == [1, 2] and log.status.tolist() == ["ok", "ok"]
+    assert jpgs(tmp_path) == sorted(log.file)

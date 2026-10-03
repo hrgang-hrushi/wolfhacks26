@@ -9,7 +9,12 @@ import pytest
 from src.model import common
 from src.model import pothole_head as ph
 
-pytestmark = pytest.mark.usefixtures("small_models")
+pytestmark = pytest.mark.usefixtures("small_models", "few_draws")
+
+
+@pytest.fixture
+def few_draws(monkeypatch):
+    monkeypatch.setattr(ph, "GAP_DRAWS", 200)
 SHARED = ("segments_targets.parquet", "split.parquet", "predictions.parquet")
 
 
@@ -53,6 +58,11 @@ def test_H3_shared_block_folds_and_no_block_on_both_sides(fake, table, tmp_path)
     for k in range(common.N_FOLDS):
         assert not set(d.split_block[train & (d.fold == k)]) & set(d.split_block[train & (d.fold != k)])
     assert d.fold[train].nunique() == common.N_FOLDS
+    split = split.reset_index()                          # a targets table whose folds are not the shared split is refused
+    split.loc[0, "fold"] = (split.fold[0] + 1) % common.N_FOLDS
+    split.to_parquet(p / "split.parquet")
+    with pytest.raises(ValueError, match="does not carry the folds in split.parquet"):
+        ph.load_table(p)
 
 
 def test_H4_no_raleigh_segment_trains_the_transfer_model(fake, table, tmp_path, monkeypatch):
@@ -110,6 +120,10 @@ def test_H7_every_method_is_scored_on_the_same_rows(fake, table, tmp_path):
         assert all(e[m]["aucpr_common"] is not None for m in ph.METHODS)
         assert e["main_model"]["aucpr_common"] == pytest.approx(e["main_model"]["aucpr"])
         assert e["base_rate"] == pytest.approx(d.y_pothole_any[mask].mean())
+        shared = mask & d.rate_heldout                   # hits in the top 50 are compared on the shared rows too
+        top = d.pred_rate[shared].nlargest(50).index
+        assert e["main_model"]["p_at_50_common"] == pytest.approx(d.y_pothole_any[top].mean())
+        assert all(e[m]["p_at_50_common"] is not None for m in ph.METHODS)
 
 
 def test_H8_two_runs_are_identical(fake, table, tmp_path):
@@ -181,7 +195,8 @@ def test_H14_empty_charlotte_population_is_unavailable_not_a_loss(fake, table, t
     out = json.loads((p / "results" / "pothole_head.json").read_text())
     pred = pd.read_parquet(p / "pothole_predictions.parquet")
     assert out["status"] == "unavailable" and "no labelled Charlotte" in out["reason"]
-    assert out["beats_traffic"] is None and "charlotte_heldout" not in out
+    assert out["beats_traffic"] is None and out["distinguishable_from_traffic"] is None
+    assert out["charlotte_heldout"] is None and out["raleigh_transfer"] is None        # null, not missing and not zero
     assert pred.pred_pothole.isna().all() and not pred.pothole_heldout.any()
     assert "unavailable" in (p / "results" / "pothole_head.md").read_text()
 
@@ -190,3 +205,22 @@ def test_H15_one_class_charlotte_population_is_unavailable(fake, table, tmp_path
     res, pred = ph.run(fake.processed_dir(tmp_path / "p", table, potholes="none"))
     assert res["status"] == "unavailable" and "one class" in res["reason"] and res["n_train_pos"] == 0
     assert res["beats_traffic"] is None and pred.pred_pothole.isna().all() and not pred.pothole_heldout.any()
+
+
+def test_H16_gap_to_the_traffic_only_model_comes_with_a_range(fake, table, tmp_path):
+    by_age, _ = ph.run(fake.processed_dir(tmp_path / "age", table, potholes="age"))
+    g = by_age["charlotte_heldout"]["head_minus_traffic"]
+    e = by_age["charlotte_heldout"]
+    assert g["gap"] == pytest.approx(e["head"]["aucpr"] - e["traffic_only"]["aucpr"]) and g["n_valid_draws"] == 200
+    assert g["range"][0] < g["gap"] < g["range"][1] and g["range"][0] > 0 and by_age["distinguishable_from_traffic"] is True
+    d = ph.load_table(tmp_path / "age")
+    y, mask = d.y_pothole_any, ph.labelled(d, "charlotte")
+    rng = np.random.default_rng(0)                       # two scores of equal skill: a small gap is not called a win
+    truth = y.fillna(0) + rng.normal(0, 1, len(d))
+    a, b = (pd.Series(truth + rng.normal(0, 1, len(d)), index=d.index) for _ in range(2))
+    g = ph.gap_range(d, y, a, b, mask)
+    assert abs(g["gap"]) < 0.05 and g["range"][0] < 0 < g["range"][1]
+    assert ph.gap_range(d, y, a, a, mask, n=50) == {"gap": 0.0, "range": [0.0, 0.0], "n_valid_draws": 50}
+    assert ph.gap_range(d, y, a, a, mask & False) == {"gap": None, "range": None, "n_valid_draws": 0}
+    w = (d.split_block[mask] == d.split_block[mask].iloc[0]).values      # whole blocks: weights are constant inside a block
+    assert w.any() and not w.all()

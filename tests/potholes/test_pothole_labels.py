@@ -42,6 +42,8 @@ def test_L3_far_reports_stay_unmatched(fake, capsys):
     reports = fake.reports_m([(1, X + 500, Y + 500, CDOT, "2024-06-01"), (2, X + 500, Y + 5, CDOT, "2024-06-01")])
     m = pl.match_reports(reports, segs)
     assert m.report_id.tolist() == ["t:2"]
+    assert pl.match_summary(reports, m).to_dict("records") == [
+        {"source": "charlotte", "request_type": CDOT, "reports": 2, "matched": 1, "unmatched": 1}]
     lab = pl.build_labels(segs, m, reports, pl.assign_city(segs, fake.city_m()), PULLED)
     assert lab.n_pothole_all_time.tolist() == [1]
 
@@ -94,17 +96,23 @@ def test_L8_exposure_years_per_city_and_rehab_year(fake):
     lab = labels(fake, segs, [(1, X + 5, Y + 900, CDOT, "2026-06-01")], city=both)
     assert lab.pothole_city.fillna("-").tolist() == ["charlotte"] * 4 + ["raleigh", "-"]
     years = lab.pothole_exposure_years
-    assert years.iloc[:5].tolist() == pytest.approx([1371 / 365.25, 275 / 365.25, 0, 1371 / 365.25, 520 / 365.25])
+    assert years.iloc[:5].tolist() == pytest.approx([1371 / 365.25, 275 / 365.25, 0, 1371 / 365.25, 472 / 365.25])
+    assert pl.WINDOW_START["raleigh"] == pd.Timestamp("2025-06-18")        # Raleigh's first pothole report
     assert np.isnan(years.iloc[5])
     assert np.isnan(lab.y_pothole_any.iloc[2]) and lab.n_pothole_reports.iloc[2] == 0   # resurfaced this year: not watched yet
 
 
-def test_L9_zero_length_gives_a_blank_rate(fake):
+def test_L9_zero_or_missing_length_gives_a_blank_rate_or_stops(fake, tmp_path):
     lab = labels(fake, [("point", X, Y, X, Y, None), ("mile", X, Y + 500, X + MILE, Y + 500, None)],
                  [(1, X, Y + 2, CDOT, "2024-06-01"), (2, X + 5, Y + 500, CDOT, "2024-06-01")])
     assert np.isnan(lab.y_pothole_rate.iloc[0]) and lab.y_pothole_any.iloc[0] == 1.0
     assert lab.y_pothole_rate.iloc[1] == pytest.approx(1 / (1371 / 365.25))
     assert np.isfinite(lab.y_pothole_rate.dropna()).all()
+    segs, (lon, lat) = clt_segs(fake)                    # a segment with no shape at all stops the run
+    segs = pd.concat([segs, segs.assign(seg_id="ncdot:no-shape", geometry=None)], ignore_index=True)
+    raw = write_raw(fake, tmp_path, segs, [fake.clt(1, lon=lon, lat=lat)])
+    with pytest.raises(ValueError, match="1 segments have no geometry"):
+        pl.main(raw, tmp_path / "processed")
 
 
 def test_L10_charlotte_report_types_are_separate_counts(fake):
@@ -172,6 +180,9 @@ def test_L13_main_on_the_real_raw_schema_computes_length_from_geometry(fake, tmp
     row = lab.iloc[0]
     assert (row.pothole_city, row.n_pothole_reports, row.n_pothole_ncdot, row.n_pothole_all_time) == ("charlotte", 2, 1, 3)
     assert row.y_pothole_rate == pytest.approx(2 / (1.0 * 1371 / 365.25), rel=1e-3)     # 2 reports, 1 mile, 3.75 years
+    meta = json.loads((tmp_path / "processed" / "pothole_labels.meta.json").read_text())      # the match rate is kept, not only printed
+    assert (meta["reports"], meta["matched"], meta["unmatched"]) == (4, 3, 1) and meta["match_m"] == pl.MATCH_M
+    assert {(r["request_type"], r["matched"], r["unmatched"]) for r in meta["by_type"]} == {(CDOT, 2, 0), (NCDOT, 1, 0), ("Pothole", 0, 1)}
 
 
 def test_L14_file_that_does_not_match_the_manifest_is_refused(fake, tmp_path):

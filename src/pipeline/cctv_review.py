@@ -23,6 +23,8 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw
 
+from src.model.common import write_atomic
+
 OUT = Path("data/raw/cctv")
 VIEWS = ("clear", "far", "unusable")
 DAMAGE = ("none", "cracks_or_patches", "pothole", "cant_tell")
@@ -71,7 +73,7 @@ def build(base, round_id, sample=400, seed=0):
     m = pd.DataFrame({"index": s.index, "camera_id": s.camera_id, "file": s.file})   # and nothing else
     out = base / "review" / round_id
     make_sheets([base / f for f in m.file], out / "sheets")
-    m.to_csv(out / "manifest.csv", index=False)
+    write_atomic(out / "manifest.csv", lambda f: m.to_csv(f, index=False))
     return m
 
 
@@ -90,8 +92,8 @@ def crops(base, round_id, cap=160, repeat=40, seed=0):
     again = clear.sample(min(repeat, len(clear)), random_state=seed + 1).reset_index(drop=True)
     for j, f in enumerate(again.file):
         near_crop(Image.open(Path(base) / f).convert("RGB")).save(out / "repeat" / f"{j:03d}.jpg", quality=92)
-    pd.DataFrame({"repeat_index": again.index, "camera_id": again.camera_id, "file": again.file}).to_csv(
-        out / "repeat_key.csv", index=False)
+    key = pd.DataFrame({"repeat_index": again.index, "camera_id": again.camera_id, "file": again.file})
+    write_atomic(out / "repeat_key.csv", lambda f: key.to_csv(f, index=False))
     return clear, again
 
 
@@ -182,7 +184,7 @@ def main():
                      pd.read_csv(d / "repeat_key.csv") if rep is not None else None, rep, a.grader,
                      pd.Timestamp.now("UTC").isoformat())
         validate_grades(g, pd.read_parquet(OUT / "cameras.parquet"), OUT)
-        g.to_csv(OUT / "grades.csv", index=False)
+        write_atomic(OUT / "grades.csv", lambda f: g.to_csv(f, index=False))
         print(f"saved {OUT / 'grades.csv'}: {len(g)} rows; views {g[g['pass'] == 1]['view'].value_counts().to_dict()}")
     else:
         g = pd.read_csv(OUT / "grades.csv", keep_default_na=False)

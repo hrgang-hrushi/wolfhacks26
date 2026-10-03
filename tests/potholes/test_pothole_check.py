@@ -1,6 +1,7 @@
 """The check of rankings against pothole reports."""
 import hashlib
 import json
+import re
 
 import numpy as np
 import pandas as pd
@@ -115,7 +116,8 @@ def test_C8_result_is_traceable_repeatable_and_swapped_in_whole(fake, table, tmp
     out = json.loads((p / "results" / "pothole_check.json").read_text())
     for f in ("pothole_labels.parquet", "predictions.parquet", "segments_targets.parquet"):
         assert out["inputs"][f] == hashlib.sha256((p / f).read_bytes()).hexdigest()
-    assert "commit" in out and len(out["rows"]) == 9 and (p / "results" / "pothole_check.md").exists()
+    assert re.fullmatch(r"[0-9a-f]{7,}(-dirty)?", out["commit"])        # the code version, marked when it was uncommitted
+    assert len(out["rows"]) == 9 and (p / "results" / "pothole_check.md").exists()
     pc.main(p)
     again = json.loads((p / "results" / "pothole_check.json").read_text())
     assert {k: v for k, v in again.items() if k != "generated"} == {k: v for k, v in out.items() if k != "generated"}
@@ -144,6 +146,12 @@ def test_C10_sensitivity_row_counts_only_the_state_road_reports(fake, table, tmp
     both, ncdot = pc.check(d, "charlotte", "rating"), pc.check(d, "charlotte", "rating", "ncdot_only")
     assert ncdot["n_reports"] == int(d.n_pothole_ncdot[clt].sum()) < both["n_reports"] == int(d.n_pothole_reports[clt].sum())
     assert ncdot["reports"] == "ncdot_only" and ncdot["n_segments"] == both["n_segments"]
+    f = frame(100)                                       # the lift itself must come from the state-road column
+    f.loc[f.score_rating >= 80, "n_pothole_reports"] = 4
+    f.loc[f.score_rating < 20, ["n_pothole_reports", "n_pothole_ncdot"]] = [1, 3]
+    f.loc[f.score_rating >= 80, "n_pothole_ncdot"] = 1
+    assert pc.check(f, "charlotte", "rating")["adjusted_lift"] == pytest.approx(4.0)
+    assert pc.check(f, "charlotte", "rating", "ncdot_only")["adjusted_lift"] == pytest.approx(1 / 3)
 
 
 def test_C11_no_reports_gives_blank_lifts_without_an_error(fake, table, tmp_path):

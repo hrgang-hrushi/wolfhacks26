@@ -1,7 +1,8 @@
 """Review sheets, crops, and the grades file."""
+import numpy as np
 import pandas as pd
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from src.pipeline import cctv_review as cr
 
@@ -25,6 +26,14 @@ def test_G1_sheet_labels_follow_file_order(fake, tmp_path):
         j = i % 16
         cell = sheet.crop(((j % 4) * 392 + 100, (j // 4) * 220 + 50, (j % 4) * 392 + 300, (j // 4) * 220 + 150))
         assert fake.grey_to_index(cell) == fake.grey_to_index(Image.open(base / f))
+        x, y = (j % 4) * 392, (j // 4) * 220 + 220 - 16  # and the number printed in the cell is that index
+        seen = np.asarray(sheet.crop((x, y, x + 34, y + 16)).convert("L")) > 128
+        match = {}
+        for label in (i, (i + 1) % 1000):
+            want = Image.new("RGB", (34, 16), "black")
+            ImageDraw.Draw(want).text((3, 2), f"{label:03d}", fill="yellow")
+            match[label] = (seen == (np.asarray(want.convert("L")) > 128)).mean()
+        assert match[i] > 0.93 and match[i] > match[(i + 1) % 1000]
     with pytest.raises(ValueError, match="no saved daylight stills"):
         cr.build(base, "another-round")
 

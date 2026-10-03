@@ -136,21 +136,22 @@ def read_log(out_dir):
 
 
 def _save(out_dir, camera_id, when, body, sha1):
-    """Write the still under its image time. An existing file is never replaced."""
+    """Write the still under its image time; returns (path relative to out_dir, whether it wrote).
+    An existing file is never replaced: the same bytes are left alone, different bytes get a suffixed name."""
     d = Path(out_dir) / str(camera_id)
     d.mkdir(parents=True, exist_ok=True)
     f = d / f"{when:%Y%m%dT%H%M%SZ}.jpg"
-    if f.exists():
+    if f.exists() and hashlib.sha1(f.read_bytes()).hexdigest() != sha1:
         f = d / f"{when:%Y%m%dT%H%M%SZ}_{sha1[:8]}.jpg"
-        if f.exists():  # these exact bytes are already on disk
-            return f"{camera_id}/{f.name}"
+    if f.exists():  # these exact bytes were saved in an earlier round
+        return f"{camera_id}/{f.name}", False
     tmp = f.with_name(f.name + ".tmp")
     try:
         tmp.write_bytes(body)
         os.replace(tmp, f)
     finally:
         tmp.unlink(missing_ok=True)
-    return f"{camera_id}/{f.name}"
+    return f"{camera_id}/{f.name}", True
 
 
 def collect_round(cams, out_dir, round_id, *, session=None, pacer=None, now=None, disk_free=None):
@@ -167,64 +168,75 @@ def collect_round(cams, out_dir, round_id, *, session=None, pacer=None, now=None
 
     log = read_log(out_dir)
     last = log[log.status == "ok"].drop_duplicates("camera_id", keep="last").set_index("camera_id").sha1.to_dict()
-    todo = cams[(cams.image_status == "Recent") & cams.image_url.notna()].copy()
+    todo = cams[(cams.image_status == "Recent") & cams.image_url.fillna("").str.startswith("http")].copy()
     todo["host"] = todo.image_url.map(lambda u: urlparse(u).netloc)
     todo = todo.iloc[np.argsort(todo.groupby("host").cumcount().values, kind="stable")]  # take turns between servers
 
     rows, failed, stopped = [], 0, False
-    for c in todo.itertuples():
-        row = dict.fromkeys(LOG_COLS)
-        row.update(camera_id=c.camera_id, round=round_id, dark=False, no_image_time=False)
-        pacer.wait(c.host)
-        row["fetched"] = now()
-        try:
-            r = session.get(c.image_url, headers=UA, timeout=20)
-            body = r.content if r.status_code == 200 else None
-        except requests.RequestException:
-            body = None
-        if body is None:
-            row["status"] = "http_error"
-        else:
-            ok, w, h, luma = check_image(body)
-            when, no_time = image_time(r.headers, row["fetched"])
-            sha1 = hashlib.sha1(body).hexdigest()
-            row.update(bytes=len(body), sha1=sha1, width=w, height=h, mean_luma=luma, image_time=when,
-                       no_image_time=no_time)
-            if not ok:
-                row["status"] = "not_image"
-            elif (row["fetched"] - when).total_seconds() > STALE_S:
-                row["status"] = "stale"
-            elif last.get(c.camera_id) == sha1:
-                row["status"] = "duplicate"
+    try:
+        for c in todo.itertuples():
+            row = dict.fromkeys(LOG_COLS)
+            row.update(camera_id=c.camera_id, round=round_id, dark=False, no_image_time=False)
+            pacer.wait(c.host)
+            row["fetched"] = now()
+            try:
+                r = session.get(c.image_url, headers=UA, timeout=20)
+                body = r.content if r.status_code == 200 else None
+            except requests.RequestException:
+                body = None
+            if body is None:
+                row["status"] = "http_error"
             else:
-                try:
-                    row.update(status="ok", dark=bool(luma < DARK_LUMA),
-                               file=_save(out_dir, c.camera_id, when, body, sha1))
-                except OSError:
-                    row["status"] = "save_error"
-        rows.append(row)
-        failed += row["status"] in ("http_error", "not_image", "save_error")
-        if len(rows) >= BREAKER_MIN and failed / len(rows) > BREAKER_SHARE:
-            stopped = True
-            break
+                ok, w, h, luma = check_image(body)
+                when, no_time = image_time(r.headers, row["fetched"])
+                sha1 = hashlib.sha1(body).hexdigest()
+                row.update(bytes=len(body), sha1=sha1, width=w, height=h, mean_luma=luma, image_time=when,
+                           no_image_time=no_time)
+                if not ok:
+                    row["status"] = "not_image"
+                elif (row["fetched"] - when).total_seconds() > STALE_S:
+                    row["status"] = "stale"
+                elif last.get(c.camera_id) == sha1:
+                    row["status"] = "duplicate"
+                else:
+                    try:
+                        file, wrote = _save(out_dir, c.camera_id, when, body, sha1)
+                    except OSError:
+                        row["status"] = "save_error"
+                    else:
+                        if wrote:
+                            row.update(status="ok", dark=bool(luma < DARK_LUMA), file=file)
+                        else:  # these bytes are already on disk from an earlier round: a repeat, not ours to delete
+                            row["status"] = "duplicate"
+            rows.append(row)
+            failed += row["status"] in ("http_error", "not_image", "save_error")
+            if len(rows) >= BREAKER_MIN and failed / len(rows) > BREAKER_SHARE:
+                stopped = True
+                break
+    finally:  # an interrupted round still logs what it fetched and saved
+        new = _log_round(out_dir, log, rows)
+    print(f"round {round_id}: {new.status.value_counts().to_dict()}, {int(new.dark.sum())} dark", flush=True)
+    if stopped:
+        raise RuntimeError(f"round {round_id} stopped: {failed} of {len(rows)} requests failed; "
+                           "the image servers may be refusing, so try again later")
+    return new
 
+
+def _log_round(out_dir, log, rows):
+    """Drop this round's placeholder cards, then append the round to stills.parquet."""
     new = pd.DataFrame(rows, columns=LOG_COLS)
     for c in ("image_time", "fetched"):
         new[c] = pd.to_datetime(new[c], utc=True)
     for c in ("dark", "no_image_time"):
         new[c] = new[c].astype(bool)
-    saved = new[new.status == "ok"]
-    shared = saved.groupby("sha1").camera_id.nunique()
-    card = new.status.eq("ok") & new.sha1.isin(shared[shared >= PLACEHOLDER_CAMERAS].index)
-    for f in new.loc[card, "file"]:  # only files this round wrote
-        (out_dir / f).unlink(missing_ok=True)
+    image = new.status.isin(["ok", "duplicate"])
+    shared = new[image].groupby("sha1").camera_id.nunique()
+    card = image & new.sha1.isin(shared[shared >= PLACEHOLDER_CAMERAS].index)
+    for f in new.loc[card & new.status.eq("ok"), "file"]:  # an "ok" row is always a file this round wrote
+        (Path(out_dir) / f).unlink(missing_ok=True)
     new.loc[card, ["status", "file"]] = ["placeholder", None]
     full = new if log.empty else pd.concat([log, new], ignore_index=True)
     write_atomic(out_dir / "stills.parquet", full.to_parquet)
-    print(f"round {round_id}: {new.status.value_counts().to_dict()}, {int(new.dark.sum())} dark", flush=True)
-    if stopped:
-        raise RuntimeError(f"round {round_id} stopped: {failed} of {len(rows)} requests failed; "
-                           "the image servers may be refusing, so try again later")
     return new
 
 

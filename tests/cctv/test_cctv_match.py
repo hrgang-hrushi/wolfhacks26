@@ -13,9 +13,10 @@ def test_M1_distances_are_in_metres(fake, segs):
     assert out.seg_id.tolist() == [I40] and 45 < out.seg_dist_m.iloc[0] < 55
 
 
-def test_M2_camera_far_from_every_road_is_left_blank(fake, segs):
+def test_M2_camera_far_from_every_road_is_left_blank(fake, segs, capsys):
     cams = fake.cameras(2, lat=[35.85, 35.80045], lon=[-78.55, -78.605])
     out = cctv.match_cameras(cams, segs)
+    assert "1 matched within 100 m" in capsys.readouterr().out and int(out.seg_id.isna().sum()) == 1   # counted, and kept in the file
     assert out.seg_id.isna().tolist() == [True, False]
     assert out.match_rule.isna().tolist() == [True, False] and out.seg_dist_m.isna().tolist() == [True, False]
 

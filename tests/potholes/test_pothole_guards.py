@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-NEW_MODULES = ["src.pipeline.arcgis_fetch", "src.pipeline.cctv", "src.pipeline.cctv_review", "src.pipeline.pull_potholes",
+NEW_SCRIPTS = ["src.pipeline.cctv", "src.pipeline.cctv_review", "src.pipeline.pull_potholes",
                "src.pipeline.pothole_labels", "src.model.pothole_check", "src.model.pothole_head", "src.model.cctv_check"]
 # owned by other work: the model code and its tests, the earlier pipeline scripts, the project files
 NOT_OURS = ["src/model/common.py", "src/model/train_tabular.py", "src/model/final_ablation.py", "src/model/train_vit.py",
@@ -14,13 +14,19 @@ NOT_OURS = ["src/model/common.py", "src/model/train_tabular.py", "src/model/fina
             "src/pipeline/pull_helene.py", "src/pipeline/terrain_simple.py", "tests/conftest.py", "tests/test_features.py",
             "tests/test_folds.py", "tests/test_oof.py", "tests/test_predictions.py", "tests/test_realdata.py",
             "tests/test_repo_guards.py", "tests/test_scripts.py", "tests/test_targets.py", "pyproject.toml", "uv.lock",
+            "src/pipeline/__init__.py", "src/model/__init__.py", ".gitignore", ".python-version",
             "readme", "README.md", "PLAN.md"]
 
 
-@pytest.mark.parametrize("module", NEW_MODULES)
+@pytest.mark.parametrize("module", NEW_SCRIPTS)
 def test_R1_new_scripts_start(module):
     r = subprocess.run([sys.executable, "-m", module, "--help"], capture_output=True, text=True, timeout=120)
-    assert r.returncode == 0, r.stderr[-500:]
+    assert r.returncode == 0 and "usage:" in r.stdout, r.stderr[-500:]     # a real command line, not a silent import
+
+
+def test_R1_fetch_helper_imports():
+    from src.pipeline import arcgis_fetch                # a library, with no command line of its own
+    assert callable(arcgis_fetch.fetch_all) and callable(arcgis_fetch.count)
 
 
 def test_R2_no_icloud_duplicate_files():

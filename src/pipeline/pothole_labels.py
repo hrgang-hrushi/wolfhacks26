@@ -4,6 +4,7 @@ Usage:  uv run python -m src.pipeline.pothole_labels
 Reads:  data/raw/ncdot_joined.parquet          (seg_id, YEAR_LAST_REHAB, LineString, EPSG:4326)
         data/raw/pothole_reports.parquet, city_limits.parquet, pothole_reports.meta.json
 Writes: data/processed/pothole_labels.parquet  (no geometry; one row per seg_id, same order)
+        data/processed/pothole_labels.meta.json  reports, matched and unmatched per source and type
 
 Columns:
   pothole_city            "charlotte" / "raleigh" when the segment's midpoint is inside the city, else null.
@@ -16,6 +17,8 @@ Columns:
   y_pothole_any           1.0 / 0.0 inside a city with exposure, blank otherwise
 """
 import argparse
+import json
+import os
 from pathlib import Path
 
 import geopandas as gpd
@@ -33,8 +36,9 @@ CRS_M = "EPSG:32119"  # NAD83 / North Carolina (meters)
 # state-road requests sit a median 44 m from the centreline and 30 m kept only 173 of 902 (2026-10-03).
 MATCH_M = {"charlotte": 60, "raleigh": 30}
 M_PER_MILE = 1609.344
-# Charlotte's reports go back to 2016; the pavement surveys are 2023-2025. Raleigh's data starts in May 2025.
-WINDOW_START = {"charlotte": pd.Timestamp("2023-01-01"), "raleigh": pd.Timestamp("2025-05-01")}
+# Charlotte's reports go back to 2016; the pavement surveys are 2023-2025.
+# Raleigh's first pothole report in the layer is dated 2025-06-18, so nothing was being collected before that.
+WINDOW_START = {"charlotte": pd.Timestamp("2023-01-01"), "raleigh": pd.Timestamp("2025-06-18")}
 TYPE_COL = {"CDOT POTHOLE REPAIR": "n_pothole_cdot", "NCDOT POTHOLE REQUEST": "n_pothole_ncdot",
             "Pothole": "n_pothole_raleigh"}
 LABEL_COLS = ["seg_id", "pothole_city", "pothole_exposure_years", "n_pothole_reports", "n_pothole_cdot",
@@ -58,6 +62,14 @@ def match_reports(reports_m, segs_m):
              for source, g in reports_m.groupby("source")]
     j = pd.concat(parts) if parts else pd.DataFrame(columns=["report_id", "seg_id", "dist_m"])
     return j.sort_values(["report_id", "dist_m", "seg_id"]).drop_duplicates("report_id")[["report_id", "seg_id", "dist_m"]]
+
+
+def match_summary(reports, matched):
+    """Reports, matched and unmatched per source and request type."""
+    hit = reports.report_id.isin(matched.report_id)
+    g = reports.assign(hit=hit).groupby(["source", "request_type"]).hit.agg(reports="size", matched="sum").reset_index()
+    g["unmatched"] = g.reports - g.matched
+    return g.astype({"matched": int, "unmatched": int, "reports": int})
 
 
 def exposure_start(city, rehab_year):
@@ -104,17 +116,25 @@ def main(raw=RAW, processed=PROCESSED):
     raw, processed = Path(raw), Path(processed)
     reports, limits, meta = read_bundle(raw)
     segs = gpd.read_parquet(raw / "ncdot_joined.parquet", columns=["seg_id", "YEAR_LAST_REHAB", "geometry"]).to_crs(CRS_M)
+    blank = segs.geometry.isna() | segs.geometry.is_empty
+    if blank.any():  # a segment without a shape has no length, no midpoint and no neighbours
+        raise ValueError(f"{int(blank.sum())} segments have no geometry, e.g. {segs.seg_id[blank].head(3).tolist()}")
     city = assign_city(segs, limits.to_crs(CRS_M))
     matched = match_reports(reports.to_crs(CRS_M), segs)
     print(f"{len(reports):,} located reports, {len(matched):,} matched to a state road within {MATCH_M} m "
           f"({len(matched) / max(len(reports), 1):.1%})")
-    by = reports.merge(matched, on="report_id", how="left").assign(hit=lambda d: d.seg_id.notna())
-    print(by.groupby(["source", "request_type"]).hit.agg(["size", "sum"]).rename(
-        columns={"size": "reports", "sum": "matched"}).to_string())
+    summary = match_summary(reports, matched)
+    print(summary.to_string(index=False))
 
     lab = build_labels(segs, matched, reports, city, meta["pulled_at"])
     processed.mkdir(parents=True, exist_ok=True)
     write_atomic(processed / "pothole_labels.parquet", lab.to_parquet)
+    meta_out = {"pulled_at": meta["pulled_at"], "match_m": MATCH_M, "window_start": {c: str(t.date()) for c, t in WINDOW_START.items()},
+                "reports": int(len(reports)), "matched": int(len(matched)), "unmatched": int(len(reports) - len(matched)),
+                "by_type": summary.to_dict("records")}
+    tmp = processed / "pothole_labels.meta.json.tmp"
+    tmp.write_text(json.dumps(meta_out, indent=1))
+    os.replace(tmp, processed / "pothole_labels.meta.json")
     for c in WINDOW_START:
         z = lab[lab.pothole_city == c]
         print(f"{c}: {len(z):,} segments in the city, {z.y_pothole_any.notna().sum():,} labelled, "
