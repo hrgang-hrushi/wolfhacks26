@@ -1,0 +1,19 @@
+# data (raw pulls and image chips stay local)
+data/raw/*
+!data/raw/.gitkeep
+data/chips/*
+!data/chips/.gitkeep
+# too big for GitHub: statewide rasters (>100 MB each) and the statewide feature table
+data/processed/dem/
+data/processed/segments.parquet
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+logs/
+*.env
+*.env.*
+!.env.example
+

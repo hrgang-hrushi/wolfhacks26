@@ -1,10 +1,10 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
-import { MOCK_ROAD_SEGMENTS } from './data/mockRoads';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { REAL_NC_ROAD_SEGMENTS } from './data/realRoads';
 import type { RoadSegment, ViewFilter } from './types/roadSegment';
 import { CleanSidebar } from './components/CleanSidebar';
 import { CleanMapCard, type CleanMapCardHandle } from './components/CleanMapCard';
 import { CleanLocationCard } from './components/CleanLocationCard';
-import { CleanPhotoCard } from './components/CleanPhotoCard';
+import { GovAnalyticsCard } from './components/GovAnalyticsCard';
 import { CleanTenantsCard } from './components/CleanTenantsCard';
 import { PMTilesArchitectureModal } from './components/PMTilesArchitectureModal';
 import { AboutProjectModal } from './components/AboutProjectModal';
@@ -14,22 +14,44 @@ import './App.css';
 export function App() {
   const mapCardRef = useRef<CleanMapCardHandle>(null);
 
+  const [segments, setSegments] = useState<RoadSegment[]>(REAL_NC_ROAD_SEGMENTS);
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [activeCity, setActiveCity] = useState<'Asheville' | 'Raleigh' | null>('Raleigh');
   const [selectedSegment, setSelectedSegment] = useState<RoadSegment | null>(
-    MOCK_ROAD_SEGMENTS[0] || null
+    REAL_NC_ROAD_SEGMENTS.find(s => s.city === 'Raleigh') || REAL_NC_ROAD_SEGMENTS[0] || null
   );
 
   const [isArchModalOpen, setIsArchModalOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
+  // Background sync with live API if running (http://127.0.0.1:8000)
+  useEffect(() => {
+    let isMounted = true;
+    fetch('http://127.0.0.1:8000/api/segments?limit=2500')
+      .then(res => res.json())
+      .then(data => {
+        if (isMounted && data && Array.isArray(data.segments) && data.segments.length > 0) {
+          console.log(`Live API connected! Loaded ${data.segments.length} real-time statewide NC segments.`);
+          setSegments(data.segments);
+          const firstInCity = data.segments.find((s: RoadSegment) => s.city === 'Raleigh') || data.segments[0];
+          if (firstInCity) {
+            setSelectedSegment(firstInCity);
+          }
+        }
+      })
+      .catch(() => {
+        console.log('Using pre-bundled real NC segments dataset (2,171 statewide segments).');
+      });
+    return () => { isMounted = false; };
+  }, []);
+
   const filteredSegments = useMemo(() => {
     if (viewFilter === 'ncdot') {
-      return MOCK_ROAD_SEGMENTS.filter((s) => s.source === 'ncdot');
+      return segments.filter((s) => s.source === 'ncdot');
     }
-    return MOCK_ROAD_SEGMENTS;
-  }, [viewFilter]);
+    return segments;
+  }, [segments, viewFilter]);
 
   const handleZoomCity = useCallback((city: 'Asheville' | 'Raleigh') => {
     setActiveCity(city);
@@ -76,13 +98,22 @@ export function App() {
         {/* Bottom Row */}
         <div className="fullscreen-bottom-row">
           {/* Card 1: Location */}
-          <CleanLocationCard selectedSegment={selectedSegment} />
+          <CleanLocationCard
+            selectedSegment={selectedSegment}
+            onOpenDetails={() => setIsDetailModalOpen(true)}
+          />
 
-          {/* Card 2: Modern Architecture */}
-          <CleanPhotoCard selectedSegment={selectedSegment} />
+          {/* Card 2: Government DOT Analytics & Infrastructure Forecast */}
+          <GovAnalyticsCard
+            selectedSegment={selectedSegment}
+            onOpenDetails={() => setIsDetailModalOpen(true)}
+          />
 
-          {/* Card 3: Tenants & Donut Gauge */}
-          <CleanTenantsCard selectedSegment={selectedSegment} />
+          {/* Card 3: Agency Operations & Readiness */}
+          <CleanTenantsCard
+            selectedSegment={selectedSegment}
+            onOpenNetworkStats={() => setIsArchModalOpen(true)}
+          />
         </div>
       </main>
 

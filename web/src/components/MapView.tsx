@@ -1,15 +1,17 @@
-import { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
-import * as maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import { useEffect, useLayoutEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
-import { Map as MapIcon, Moon, Globe } from 'lucide-react';
+import { Sun, Globe, Crosshair } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
-import { getScoreRGBA, getConditionInfo } from '../utils/colors';
+import { getScoreRGBA } from '../utils/colors';
+import { MAPBOX_TOKEN, NC_CITY_COORDINATES } from '../config/mapbox';
 
 export interface MapViewHandle {
-  flyToCity: (city: 'Asheville' | 'Raleigh') => void;
+  flyToCity: (city: string) => void;
   flyToSegment: (segment: RoadSegment) => void;
+  flyToCoords: (lng: number, lat: number, zoom?: number) => void;
 }
 
 interface MapViewProps {
@@ -18,60 +20,37 @@ interface MapViewProps {
   onSelectSegment: (segment: RoadSegment) => void;
 }
 
-export type BasemapMode = 'streets' | 'satellite' | 'dark';
-
-const CITY_COORDINATES = {
-  Asheville: {
-    center: [-82.5515, 35.5951] as [number, number],
-    zoom: 13.5,
-    pitch: 35,
-    bearing: -15
+// Focused North Carolina Basemaps (Clean Light NCDOT & High-Res Satellite)
+const NC_BASEMAPS = {
+  light: {
+    label: 'Clean Light',
+    url: 'mapbox://styles/mapbox/light-v11'
   },
-  Raleigh: {
-    center: [-78.6382, 35.7796] as [number, number],
-    zoom: 13.2,
-    pitch: 25,
-    bearing: 0
+  satellite: {
+    label: 'Satellite HD',
+    url: 'mapbox://styles/mapbox/satellite-streets-v12'
   }
 };
 
-// Available basemaps
-const BASEMAP_STYLES: Record<BasemapMode, string | maplibregl.StyleSpecification> = {
-  streets: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
-  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-  satellite: {
-    version: 8,
-    sources: {
-      'esri-satellite': {
-        type: 'raster',
-        tiles: [
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-        ],
-        tileSize: 256,
-        attribution: '&copy; Esri, Maxar, Earthstar Geographics'
-      }
-    },
-    layers: [
-      {
-        id: 'esri-satellite-layer',
-        type: 'raster',
-        source: 'esri-satellite',
-        minzoom: 0,
-        maxzoom: 19
-      }
-    ]
-  }
-};
+type NCBasemapKey = keyof typeof NC_BASEMAPS;
+
+// North Carolina geographic bounds
+const NC_BOUNDS: [mapboxgl.LngLatLike, mapboxgl.LngLatLike] = [
+  [-84.5, 33.7], // Southwest NC / mountains
+  [-75.2, 36.7]  // Northeast NC / Outer Banks
+];
 
 export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   segments,
   selectedSegment,
   onSelectSegment
 }, ref) => {
+  const mapWrapperRef = useRef<HTMLDivElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
-  const [basemapMode, setBasemapMode] = useState<BasemapMode>('streets');
+  const [activeStyleKey, setActiveStyleKey] = useState<NCBasemapKey>('light');
 
   // Hover state for interactive tooltip
   const [hoveredInfo, setHoveredInfo] = useState<{
@@ -79,16 +58,42 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     x: number;
     y: number;
   }>({ segment: null, x: 0, y: 0 });
+  const [tooltipPosition, setTooltipPosition] = useState({ left: 0, top: 0 });
+
+  useLayoutEffect(() => {
+    const wrapper = mapWrapperRef.current;
+    const tooltip = tooltipRef.current;
+    if (!hoveredInfo.segment || !wrapper || !tooltip) return;
+
+    const gap = 16;
+    const edge = 12;
+    const tooltipWidth = tooltip.offsetWidth;
+    const tooltipHeight = tooltip.offsetHeight;
+    const left = hoveredInfo.x + gap + tooltipWidth + edge <= wrapper.clientWidth
+      ? hoveredInfo.x + gap
+      : hoveredInfo.x - tooltipWidth - gap;
+    const top = hoveredInfo.y + gap + tooltipHeight + edge <= wrapper.clientHeight
+      ? hoveredInfo.y + gap
+      : hoveredInfo.y - tooltipHeight - gap;
+
+    setTooltipPosition({
+      left: Math.max(edge, Math.min(left, wrapper.clientWidth - tooltipWidth - edge)),
+      top: Math.max(edge, Math.min(top, wrapper.clientHeight - tooltipHeight - edge))
+    });
+  }, [hoveredInfo]);
 
   const [webGlSupported, setWebGlSupported] = useState(true);
-  const [activeCityFocus, setActiveCityFocus] = useState<'Asheville' | 'Raleigh'>('Raleigh');
+  const [locatingUser, setLocatingUser] = useState(false);
+
+  // Set user's Mapbox access token
+  mapboxgl.accessToken = MAPBOX_TOKEN;
 
   // Expose imperative methods to parent for city navigation and segment zoom
   useImperativeHandle(ref, () => ({
-    flyToCity: (city: 'Asheville' | 'Raleigh') => {
-      setActiveCityFocus(city);
+    flyToCity: (city: string) => {
       if (!mapRef.current) return;
-      const target = CITY_COORDINATES[city];
+      const target = NC_CITY_COORDINATES[city] || NC_CITY_COORDINATES['Statewide'];
+      if (!target) return;
       mapRef.current.flyTo({
         center: target.center,
         zoom: target.zoom,
@@ -99,51 +104,118 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       });
     },
     flyToSegment: (segment: RoadSegment) => {
-      setActiveCityFocus(segment.city);
       if (!mapRef.current || !segment.path || segment.path.length === 0) return;
       const midIdx = Math.floor(segment.path.length / 2);
       const [lng, lat] = segment.path[midIdx];
       mapRef.current.flyTo({
         center: [lng, lat],
-        zoom: 15.6,
-        pitch: 40,
+        zoom: 15.2,
+        pitch: 35,
+        bearing: 0,
         duration: 1400,
+        essential: true
+      });
+    },
+    flyToCoords: (lng: number, lat: number, zoom: number = 14.5) => {
+      if (!mapRef.current) return;
+      mapRef.current.flyTo({
+        center: [lng, lat],
+        zoom,
+        pitch: 30,
+        duration: 1500,
         essential: true
       });
     }
   }));
 
   // Switch basemap style
-  const handleSwitchBasemap = (mode: BasemapMode) => {
-    setBasemapMode(mode);
+  const handleSwitchBasemap = (key: NCBasemapKey) => {
+    setActiveStyleKey(key);
     if (!mapRef.current) return;
-    mapRef.current.setStyle(BASEMAP_STYLES[mode]);
+    mapRef.current.setStyle(NC_BASEMAPS[key].url);
   };
 
-  // Initialize MapLibre GL map
+  // Current Location handler
+  const handleCurrentLocation = () => {
+    setLocatingUser(true);
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLocatingUser(false);
+          const { longitude, latitude } = pos.coords;
+          // Check if within NC bounds, otherwise center on Raleigh Capital District
+          if (longitude >= -84.5 && longitude <= -75.0 && latitude >= 33.7 && latitude <= 36.7) {
+            mapRef.current?.flyTo({
+              center: [longitude, latitude],
+              zoom: 15,
+              pitch: 35,
+              duration: 1600,
+              essential: true
+            });
+          } else {
+            // Default to Fitts-Woolard Hall / NC State Centennial Campus
+            mapRef.current?.flyTo({
+              center: [-78.6748, 35.7725],
+              zoom: 15.2,
+              pitch: 35,
+              duration: 1600,
+              essential: true
+            });
+          }
+        },
+        () => {
+          setLocatingUser(false);
+          // Default to Fitts-Woolard Hall / NC State Centennial Campus
+          mapRef.current?.flyTo({
+            center: [-78.6748, 35.7725],
+            zoom: 15.2,
+            pitch: 35,
+            duration: 1600,
+            essential: true
+          });
+        },
+        { timeout: 5000, enableHighAccuracy: true }
+      );
+    } else {
+      setLocatingUser(false);
+      mapRef.current?.flyTo({
+        center: [-78.6748, 35.7725],
+        zoom: 15.2,
+        pitch: 35,
+        duration: 1600,
+        essential: true
+      });
+    }
+  };
+
+  // Initialize Mapbox GL map constrained strictly to North Carolina
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     try {
-      const mapInstance = new maplibregl.Map({
+      const mapInstance = new mapboxgl.Map({
         container: mapContainerRef.current,
-        style: BASEMAP_STYLES[basemapMode],
-        center: CITY_COORDINATES.Raleigh.center,
-        zoom: CITY_COORDINATES.Raleigh.zoom,
-        pitch: CITY_COORDINATES.Raleigh.pitch,
-        bearing: CITY_COORDINATES.Raleigh.bearing,
-        attributionControl: false
+        style: NC_BASEMAPS[activeStyleKey].url,
+        center: NC_CITY_COORDINATES.Raleigh.center,
+        zoom: NC_CITY_COORDINATES.Raleigh.zoom,
+        pitch: NC_CITY_COORDINATES.Raleigh.pitch,
+        bearing: NC_CITY_COORDINATES.Raleigh.bearing,
+        maxBounds: NC_BOUNDS,
+        attributionControl: false,
+        antialias: true
       });
 
-      mapInstance.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-      mapInstance.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
+      // Controls
+      mapInstance.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right');
+      mapInstance.addControl(new mapboxgl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
 
+      // Deck.gl overlay
       const overlayInstance = new MapboxOverlay({
         interleaved: false,
         layers: []
       });
 
-      mapInstance.addControl(overlayInstance as unknown as maplibregl.IControl);
+      mapInstance.addControl(overlayInstance as unknown as mapboxgl.IControl);
 
       mapRef.current = mapInstance;
       overlayRef.current = overlayInstance;
@@ -163,31 +235,30 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         overlayRef.current = null;
       };
     } catch (e) {
-      console.warn('WebGL is unavailable in this environment, using vector rendering fallback', e);
+      console.warn('Mapbox GL WebGL error, using fallback:', e);
       setWebGlSupported(false);
     }
   }, []);
 
-  // Update deck.gl PathLayer whenever segments or selection changes
+  // Update deck.gl PathLayer with crisp, uncluttered styling
   useEffect(() => {
     if (!overlayRef.current) return;
 
     const layers = [];
 
-    // Transparent wide hit-detection layer for effortless clicking
+    // 1. Transparent wide hit-detection layer for effortless clicking
     layers.push(
       new PathLayer<RoadSegment>({
         id: 'road-segments-hit-area',
         data: segments,
         pickable: true,
         widthScale: 1,
-        widthMinPixels: 20,
-        rounded: true,
+        widthMinPixels: 18,
         capRounded: true,
         jointRounded: true,
         getPath: (d) => d.path,
-        getColor: [0, 0, 0, 0], // completely transparent
-        getWidth: 18,
+        getColor: [0, 0, 0, 0],
+        getWidth: 16,
         onClick: (info) => {
           if (info.object) {
             onSelectSegment(info.object as RoadSegment);
@@ -207,24 +278,23 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       })
     );
 
-    // Dark casing shadow under all segments for high contrast on any basemap
+    // 2. Slender subtle shadow casing under all segments (prevents clumsiness while maintaining contrast)
     layers.push(
       new PathLayer<RoadSegment>({
         id: 'road-segments-casing',
         data: segments,
         pickable: false,
         widthScale: 1,
-        widthMinPixels: 9,
-        rounded: true,
+        widthMinPixels: 3.5,
         capRounded: true,
         jointRounded: true,
         getPath: (d) => d.path,
-        getColor: [15, 23, 42, 220],
-        getWidth: 9
+        getColor: [15, 23, 42, 120],
+        getWidth: 3.5
       })
     );
 
-    // Radiant cyan halo under selected segment
+    // 3. Radiant cyan halo ONLY under the currently selected segment
     if (selectedSegment) {
       layers.push(
         new PathLayer<RoadSegment>({
@@ -232,40 +302,39 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
           data: [selectedSegment],
           pickable: false,
           widthScale: 1,
-          widthMinPixels: 14,
-          rounded: true,
+          widthMinPixels: 9,
           capRounded: true,
           jointRounded: true,
           getPath: (d) => d.path,
           getColor: [56, 189, 248, 255],
-          getWidth: 16
+          getWidth: 10
         })
       );
     }
 
-    // Main colored road segment layer
+    // 4. Main clean colored road segment lines
     layers.push(
       new PathLayer<RoadSegment>({
         id: 'road-segments-core',
         data: segments,
         pickable: true,
         widthScale: 1,
-        widthMinPixels: 6,
-        rounded: true,
+        widthMinPixels: 2.5,
         capRounded: true,
         jointRounded: true,
         getPath: (d) => d.path,
         getColor: (d) => {
           if (selectedSegment && selectedSegment.seg_id === d.seg_id) {
-            return [255, 255, 255, 255]; // Crisp white core on selection
+            return [255, 255, 255, 255]; // Crisp white highlight when selected
           }
-          return getScoreRGBA(d.score, 245);
+          const sScore = typeof d.score === 'number' && !isNaN(d.score) ? d.score : (d.pv_rating ? d.pv_rating / 100 : 0.75);
+          return getScoreRGBA(sScore, 245);
         },
         getWidth: (d) => {
           if (selectedSegment && selectedSegment.seg_id === d.seg_id) {
-            return 10;
+            return 6;
           }
-          return 6;
+          return 2.8;
         },
         updateTriggers: {
           getColor: [selectedSegment?.seg_id],
@@ -279,9 +348,12 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       })
     );
 
-    // Glowing Concentric Amber Halo Pins (matching reference image)
-    const pinSegments = segments.filter((_, idx) => idx % 6 === 0 || (selectedSegment && selectedSegment.seg_id === _.seg_id));
-    const pinData = pinSegments.map(s => {
+    // 5. Warning Beacon Pins: ONLY on Critical/High-Hazard segments (no clutter on normal roads)
+    const hazardSegments = segments.filter(
+      (s) => (s.score < 0.45) || (s.pred_crack && s.pred_crack > 0.4) || (selectedSegment && selectedSegment.seg_id === s.seg_id)
+    );
+
+    const pinData = hazardSegments.map(s => {
       const midIdx = Math.floor(s.path.length / 2);
       return {
         segment: s,
@@ -290,191 +362,119 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       };
     });
 
-    // Amber Outer Translucent Halo Disk
-    layers.push(
-      new ScatterplotLayer({
-        id: 'amber-pins-halo',
-        data: pinData,
-        getPosition: (d) => d.pos,
-        getRadius: (d) => d.isSelected ? 26 : 18,
-        radiusUnits: 'pixels',
-        getFillColor: [245, 158, 11, 65],
-        pickable: false,
-        updateTriggers: {
-          getRadius: [selectedSegment?.seg_id]
-        }
-      })
-    );
-
-    // Amber Inner Solid Core with White Border
-    layers.push(
-      new ScatterplotLayer({
-        id: 'amber-pins-core',
-        data: pinData,
-        getPosition: (d) => d.pos,
-        getRadius: (d) => d.isSelected ? 7 : 5,
-        radiusUnits: 'pixels',
-        getFillColor: [245, 158, 11, 255],
-        stroked: true,
-        getLineColor: [255, 255, 255, 230],
-        lineWidthUnits: 'pixels',
-        lineWidthMinPixels: 1.5,
-        pickable: true,
-        onClick: (info) => {
-          if (info.object && info.object.segment) {
-            onSelectSegment(info.object.segment);
+    if (pinData.length > 0) {
+      // Outer translucent amber warning pulse
+      layers.push(
+        new ScatterplotLayer({
+          id: 'hazard-pins-pulse',
+          data: pinData,
+          getPosition: (d) => d.pos,
+          getRadius: (d) => d.isSelected ? 18 : 12,
+          radiusUnits: 'pixels',
+          getFillColor: [245, 158, 11, 55],
+          pickable: false,
+          updateTriggers: {
+            getRadius: [selectedSegment?.seg_id]
           }
-        },
-        updateTriggers: {
-          getRadius: [selectedSegment?.seg_id]
-        }
-      })
-    );
+        })
+      );
+
+      // Inner solid core dot
+      layers.push(
+        new ScatterplotLayer({
+          id: 'hazard-pins-dot',
+          data: pinData,
+          getPosition: (d) => d.pos,
+          getRadius: (d) => d.isSelected ? 5.5 : 4,
+          radiusUnits: 'pixels',
+          getFillColor: [245, 158, 11, 255],
+          stroked: true,
+          getLineColor: [255, 255, 255, 240],
+          lineWidthUnits: 'pixels',
+          lineWidthMinPixels: 1.5,
+          pickable: true,
+          onClick: (info) => {
+            if (info.object && info.object.segment) {
+              onSelectSegment(info.object.segment);
+            }
+          },
+          updateTriggers: {
+            getRadius: [selectedSegment?.seg_id]
+          }
+        })
+      );
+    }
 
     overlayRef.current.setProps({ layers });
   }, [segments, selectedSegment, onSelectSegment]);
 
   return (
-    <div className="map-view-wrapper">
+    <div className="map-view-wrapper" ref={mapWrapperRef}>
       {!webGlSupported ? (
         <div className="vector-fallback-map">
-          {/* High-fidelity Vector SVG Map matching reference look and feel */}
           <svg className="vector-map-svg" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice">
-            {/* Soft background & waterways matching reference */}
             <rect width="1000" height="600" fill="#edece8" />
             <path d="M 0,280 C 150,290 300,340 450,420 C 580,500 700,560 850,600 L 0,600 Z" fill="#c3e4e1" />
-            <path d="M 680,0 C 720,120 780,240 850,300 C 920,360 980,400 1000,420 L 1000,0 Z" fill="#c3e4e1" opacity="0.6" />
-            
-            {/* Subtle background street grid lines */}
-            <g stroke="#ffffff" strokeWidth="3" opacity="0.7">
-              <line x1="100" y1="0" x2="100" y2="600" />
-              <line x1="220" y1="0" x2="220" y2="600" />
-              <line x1="340" y1="0" x2="340" y2="600" />
-              <line x1="480" y1="0" x2="480" y2="600" />
-              <line x1="620" y1="0" x2="620" y2="600" />
-              <line x1="780" y1="0" x2="780" y2="600" />
-              <line x1="0" y1="120" x2="1000" y2="120" />
-              <line x1="0" y1="240" x2="1000" y2="240" />
-              <line x1="0" y1="360" x2="1000" y2="360" />
-              <line x1="0" y1="480" x2="1000" y2="480" />
-            </g>
-
-            {/* City place labels matching reference */}
-            <text x="240" y="240" fill="#718096" fontSize="13" fontWeight="600" letterSpacing="0.05em">
-              {activeCityFocus === 'Raleigh' ? 'Hillsborough St' : 'Patton Ave'}
-            </text>
-            <text x="460" y="320" fill="#4a5568" fontSize="16" fontWeight="700">
-              {activeCityFocus === 'Raleigh' ? 'Capital Blvd' : 'Biltmore Village'}
-            </text>
-            <text x="680" y="220" fill="#718096" fontSize="13" fontWeight="600">
-              {activeCityFocus === 'Raleigh' ? 'Western Blvd' : 'Blue Ridge Pkwy'}
-            </text>
-            <text x="280" y="440" fill="#2b6cb0" fontSize="14" fontWeight="600">
-              {activeCityFocus === 'Raleigh' ? 'Neuse River Basin' : 'French Broad River'}
-            </text>
-
-            {/* Projected Road Segments */}
-            {segments.map((seg) => {
-              const pts = seg.path.map(([lng, lat]) => {
-                const origin = activeCityFocus === 'Asheville' ? [-82.55, 35.59] : [-78.64, 35.78];
-                const x = 500 + (lng - origin[0]) * 7500;
-                const y = 300 - (lat - origin[1]) * 7500;
-                return `${x.toFixed(1)},${y.toFixed(1)}`;
-              }).join(' ');
-
-              const isSel = selectedSegment?.seg_id === seg.seg_id;
-              const col = seg.score < 0.4 ? '#ef4444' : seg.score < 0.7 ? '#f59e0b' : '#10b981';
-
-              return (
-                <g key={seg.seg_id} onClick={() => onSelectSegment(seg)} style={{ cursor: 'pointer' }}>
-                  {isSel && (
-                    <polyline
-                      points={pts}
-                      fill="none"
-                      stroke="#38bdf8"
-                      strokeWidth="14"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  )}
-                  <polyline
-                    points={pts}
-                    fill="none"
-                    stroke="#1e293b"
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <polyline
-                    points={pts}
-                    fill="none"
-                    stroke={isSel ? '#ffffff' : col}
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </g>
-              );
-            })}
-
-            {/* Glowing Concentric Amber Halo Pins (matching reference image) */}
-            {segments.filter((_, idx) => idx % 6 === 0 || selectedSegment?.seg_id === _.seg_id).map((seg) => {
-              const origin = activeCityFocus === 'Asheville' ? [-82.55, 35.59] : [-78.64, 35.78];
-              const mid = seg.path[Math.floor(seg.path.length / 2)] || seg.path[0];
-              const cx = 500 + (mid[0] - origin[0]) * 7500;
-              const cy = 300 - (mid[1] - origin[1]) * 7500;
-              const isSel = selectedSegment?.seg_id === seg.seg_id;
-
-              return (
-                <g key={'pin-' + seg.seg_id} onClick={() => onSelectSegment(seg)} style={{ cursor: 'pointer' }}>
-                  <circle cx={cx} cy={cy} r={isSel ? 26 : 18} fill="#f59e0b" fillOpacity="0.25" />
-                  <circle cx={cx} cy={cy} r={isSel ? 7 : 5} fill="#f59e0b" stroke="#ffffff" strokeWidth="2" />
-                </g>
-              );
-            })}
+            <text x="240" y="240" fill="#718096" fontSize="13" fontWeight="600">Hillsborough St, Raleigh, NC</text>
+            <text x="460" y="320" fill="#4a5568" fontSize="16" fontWeight="700">Capital Blvd Corridor</text>
           </svg>
         </div>
       ) : (
         <div ref={mapContainerRef} className="map-container" />
       )}
 
-      {/* Basemap Switcher Controls */}
-      <div className="basemap-switcher" aria-label="Select Basemap Cartography">
+      {/* Real-time Mapbox Telemetry Badge */}
+      <div className="mapbox-live-badge">
+        <span className="live-dot" />
+        <span className="live-label">NCDOT Highway Network</span>
+        <span className="live-count">{segments.length} NC Segments</span>
+      </div>
+
+      {/* Floating Bottom-Right Toolbar: Current Location + Basemap Switcher */}
+      <div className="map-bottom-right-toolbar">
+        {/* Current Location Button */}
         <button
           type="button"
-          className={`basemap-btn ${basemapMode === 'streets' ? 'active' : ''}`}
-          onClick={() => handleSwitchBasemap('streets')}
-          title="Street Map with City Labels"
+          className={`current-location-btn ${locatingUser ? 'active' : ''}`}
+          onClick={handleCurrentLocation}
+          title="Zoom to current location (NC State Centennial Campus, Raleigh)"
+          aria-label="Current location"
         >
-          <MapIcon size={13} />
-          <span>Streets</span>
+          <Crosshair size={13} className={locatingUser ? 'animate-spin' : ''} />
+          <span>Current Location</span>
         </button>
-        <button
-          type="button"
-          className={`basemap-btn ${basemapMode === 'satellite' ? 'active' : ''}`}
-          onClick={() => handleSwitchBasemap('satellite')}
-          title="High-Res Aerial Satellite Imagery"
-        >
-          <Globe size={13} />
-          <span>Satellite</span>
-        </button>
-        <button
-          type="button"
-          className={`basemap-btn ${basemapMode === 'dark' ? 'active' : ''}`}
-          onClick={() => handleSwitchBasemap('dark')}
-          title="Dark Night Mode"
-        >
-          <Moon size={13} />
-          <span>Dark</span>
-        </button>
+
+        {/* Clean NC Basemap Switcher */}
+        <div className="basemap-switcher" aria-label="Select Basemap Cartography">
+          <button
+            type="button"
+            className={`basemap-btn ${activeStyleKey === 'light' ? 'active' : ''}`}
+            onClick={() => handleSwitchBasemap('light')}
+            title="Clean Light Map (Matches Executive UI)"
+          >
+            <Sun size={12} />
+            <span>Clean Light</span>
+          </button>
+          <button
+            type="button"
+            className={`basemap-btn ${activeStyleKey === 'satellite' ? 'active' : ''}`}
+            onClick={() => handleSwitchBasemap('satellite')}
+            title="High-Res Aerial Satellite Imagery"
+          >
+            <Globe size={12} />
+            <span>Satellite</span>
+          </button>
+        </div>
       </div>
 
       {/* Floating Hover Tooltip */}
       {hoveredInfo.segment && (
         <div
           className="map-tooltip"
+          ref={tooltipRef}
           style={{
-            transform: `translate(${hoveredInfo.x + 16}px, ${hoveredInfo.y + 16}px)`
+            left: tooltipPosition.left,
+            top: tooltipPosition.top
           }}
         >
           <div className="tooltip-header">
@@ -487,14 +487,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
           <div className="tooltip-stats">
             <div className="tooltip-stat">
               <span className="tooltip-stat-label">Rating</span>
-              <span className="tooltip-stat-val" style={{ color: getConditionInfo(hoveredInfo.segment.score).color }}>
-                {hoveredInfo.segment.pv_rating} / 100
-              </span>
-            </div>
-            <div className="tooltip-stat">
-              <span className="tooltip-stat-label">Score</span>
               <span className="tooltip-stat-val">
-                {(hoveredInfo.segment.score * 100).toFixed(0)}%
+                {hoveredInfo.segment.pv_rating} / 100
               </span>
             </div>
             <div className="tooltip-stat">
@@ -503,8 +497,14 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
                 {hoveredInfo.segment.years_to_poor}y
               </span>
             </div>
+            <div className="tooltip-stat">
+              <span className="tooltip-stat-label">Degradation</span>
+              <span className="tooltip-stat-val text-amber-300">
+                -{hoveredInfo.segment.pred_rate || 1.2}/yr
+              </span>
+            </div>
           </div>
-          <div className="tooltip-hint">Click segment to open full predictions</div>
+          <div className="tooltip-hint">Click segment to inspect NCDOT forecast</div>
         </div>
       )}
     </div>

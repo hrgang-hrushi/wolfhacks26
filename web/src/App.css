@@ -181,24 +181,207 @@ html, body, #root {
 /* Top Floating Controls Bar on Map */
 .pixel-map-top-bar {
   position: absolute;
-  top: 8px;
-  left: 14px;
-  right: 14px;
-  height: 44px;
+  top: 10px;
+  left: 16px;
+  right: 16px;
+  height: 42px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  pointer-events: none;
-  z-index: 10;
+  gap: 12px;
+  pointer-events: auto;
+  z-index: 20;
+}
+
+.pixel-search-container {
+  flex: 1.2;
+  min-width: 220px;
+  max-width: 460px;
+  position: relative;
 }
 
 .pixel-search-form {
-  width: 44%;
-  min-width: 240px;
-  max-width: 560px;
-  height: 44px;
-  pointer-events: auto;
-  position: relative;
+  width: 100%;
+  height: 42px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pixel-search-form:focus-within {
+  border-color: rgba(15, 23, 42, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.search-clear-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+
+.search-clear-btn:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+.pixel-search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 8px 6px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: fadeIn 0.15s ease;
+}
+
+.search-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.search-section:not(:first-child) {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 6px;
+  margin-top: 4px;
+}
+
+.search-section-header {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px 2px;
+}
+
+.search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  font-family: var(--font-family);
+}
+
+.search-item:hover {
+  background: #f8fafc;
+}
+
+.search-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.search-item-icon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.search-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-item-sub {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.search-item-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.pill-city-tag {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.pill-gis-tag {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.search-no-results {
+  padding: 12px 14px;
+  font-size: 12.5px;
+  color: #64748b;
+  text-align: center;
+}
+
+/* Weather Pill in Top Bar */
+.weather-top-pill {
+  height: 42px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  border-radius: 12px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.weather-top-pill:hover {
+  background-color: #f8fafc;
+  border-color: rgba(0, 0, 0, 0.14);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
+}
+
+.pixel-search-icon {
+  color: #64748b;
+  margin-right: 10px;
+  flex-shrink: 0;
 }
 
 .pixel-search-input {
@@ -207,18 +390,21 @@ html, body, #root {
   background: transparent;
   border: none;
   outline: none;
-  padding-left: 50px;
-  font-size: 14px;
+  font-size: 13.5px;
   font-family: var(--font-family);
   color: #111827;
   cursor: text;
 }
 
+.pixel-search-input::placeholder {
+  color: #64748b;
+  font-weight: 400;
+}
+
 .pixel-filters-cluster {
   display: flex;
   align-items: center;
-  gap: 8px;
-  pointer-events: auto;
+  gap: 10px;
 }
 
 .pixel-filter-wrap {
@@ -226,60 +412,86 @@ html, body, #root {
 }
 
 .pixel-filter-btn {
-  height: 44px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
+  height: 42px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.09);
   border-radius: 12px;
-  transition: background-color 0.15s ease;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-family);
+  color: #1e293b;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .pixel-filter-btn:hover {
-  background-color: rgba(0, 0, 0, 0.04);
+  background-color: #f8fafc;
+  border-color: rgba(0, 0, 0, 0.14);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.06);
 }
 
-.pixel-filter-wrap:nth-child(1) .pixel-filter-btn { width: 165px; }
-.pixel-filter-wrap:nth-child(2) .pixel-filter-btn { width: 155px; }
-.pixel-filter-wrap:nth-child(3) .pixel-filter-btn { width: 170px; }
-.pixel-filter-wrap:nth-child(4) .pixel-filter-btn { width: 54px; }
+.pixel-filter-btn.active {
+  border-color: rgba(0, 0, 0, 0.22);
+  background-color: #f8fafc;
+}
+
+.pixel-filter-chevron {
+  color: #64748b;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.pixel-filter-btn.active .pixel-filter-chevron {
+  transform: rotate(180deg);
+}
 
 /* Dropdown Menu */
 .pixel-dropdown-menu {
   position: absolute;
-  top: 50px;
+  top: calc(100% + 6px);
   left: 0;
   background: #ffffff;
-  border-radius: 14px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.06);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  padding: 8px;
-  min-width: 220px;
-  z-index: 30;
+  padding: 6px;
+  min-width: 200px;
+  z-index: 50;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .pixel-dropdown-item {
   display: flex;
   align-items: center;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
   width: 100%;
-  font-size: 14px;
-  color: #111827;
-  font-family: var(--font-family);
   text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: var(--font-family);
+  color: #334155;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .pixel-dropdown-item:hover {
-  background: #f3f4f6;
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
-/* Floating 3 Black Cards Hotspot Group */
+/* Floating 3 Frosted Glass Telemetry Cards */
 .pixel-black-cards-group {
   position: absolute;
   top: 36%;
@@ -287,27 +499,62 @@ html, body, #root {
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   pointer-events: auto;
   z-index: 10;
 }
 
-.pixel-black-card-hotspot {
-  width: 98px;
+.pixel-black-cards-group.gis-mode {
+  pointer-events: auto;
+}
+
+.gis-telemetry-chip {
+  min-width: 98px;
   height: 86px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  border-radius: 18px;
-  transition: transform 0.15s ease;
+  background: rgba(30, 30, 30, 0.25) !important;
+  backdrop-filter: blur(30px) brightness(0.87) !important;
+  -webkit-backdrop-filter: blur(30px) brightness(0.87) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  border-radius: 18px !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  text-align: center;
+  user-select: none;
+  box-sizing: border-box;
+  transform: none !important;
+  transition: none !important;
+  cursor: default !important;
 }
 
-.pixel-black-card-hotspot:hover {
-  transform: translateY(-2px);
+.gis-telemetry-chip:hover {
+  transform: none !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  cursor: default !important;
 }
 
-.pixel-black-card-hotspot.hotspot-wide {
-  width: 180px;
+.gis-telemetry-chip.chip-wide {
+  min-width: 175px;
+}
+
+.gis-telemetry-chip .telemetry-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff !important;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.gis-telemetry-chip .telemetry-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.82) !important;
+  margin-top: 4px;
+  text-transform: capitalize;
+  letter-spacing: 0.01em;
 }
 
 /* Amber Map Pin Hotspots */
@@ -350,120 +597,761 @@ html, body, #root {
 }
 
 /* ==========================================================================
-   Bottom Row (~43% of vertical viewport)
+   Bottom Row (~43% of vertical viewport) - Auto-Adjusting & Scrollable
    ========================================================================== */
 .fullscreen-bottom-row {
   flex: 1.0;
   min-height: 0;
   width: 100%;
   display: flex;
-  gap: 10px;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fullscreen-bottom-row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.fullscreen-bottom-row::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 999px;
+}
+
+.fullscreen-bottom-row::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* Card 1: Location */
 .pixel-location-card {
-  flex: 1.68;
+  flex: 1.15 1 0px;
+  min-width: 320px;
   height: 100%;
-  min-width: 0;
   border-radius: 20px;
   position: relative;
   overflow: hidden;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
   user-select: none;
   background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
 }
 
-.pixel-location-card .card-crop-img {
+.loc-card-inner {
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  object-position: center;
-  display: block;
-  opacity: 1;
-  background: #ffffff;
+  padding: 16px 20px 14px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
 }
 
-.heart-interactive-overlay {
-  position: absolute;
-  top: 14px;
-  right: 18px;
-  width: 36px;
-  height: 36px;
+.loc-main-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.loc-main-title h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+  letter-spacing: -0.015em;
+  font-family: var(--font-family);
+}
+
+.heart-btn {
   background: transparent;
   border: none;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
   border-radius: 50%;
+  transition: transform 0.15s ease;
 }
 
-.subcards-overlay-container {
-  position: absolute;
-  bottom: 12px;
-  left: 14px;
-  right: 14px;
-  height: 60%;
+.heart-btn:hover {
+  transform: scale(1.18);
+}
+
+.loc-address-text {
+  font-size: 13px;
+  color: #475569;
+  margin-top: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-family);
+}
+
+.loc-tags-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
+  font-family: var(--font-family);
+}
+
+.loc-tag {
+  background: #f1f5f9;
+  color: #475569;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.loc-pods-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.subcard-clickable-area {
-  cursor: pointer;
-  border-radius: 14px;
-  transition: background-color 0.15s ease;
+.loc-pod {
+  background: #f0f4f4;
+  border-radius: 16px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 105px;
+  box-sizing: border-box;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.subcard-clickable-area:hover {
-  background-color: rgba(0, 0, 0, 0.03);
+.loc-pod:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-/* Card 2: Photo */
-.pixel-photo-card {
-  flex: 1.01;
+.pod-icon-chip {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.pod-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.pod-label {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+  font-family: var(--font-family);
+}
+
+.pod-val {
+  font-size: 26px;
+  font-weight: 600;
+  color: #111827;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin-top: 2px;
+  font-family: var(--font-family);
+}
+
+/* ==========================================================================
+   Bklit UI Dark Cards (Matching Screenshot 2 & 3 Exactly)
+   ========================================================================== */
+.bklit-dark-card {
   height: 100%;
-  min-width: 0;
-  border-radius: 20px;
+  border-radius: 16px;
   position: relative;
   overflow: hidden;
-  cursor: pointer;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
-  background: #000000;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  user-select: none;
+  background: #0c0d0e;
+  border: 1px solid #1f2023;
+  box-sizing: border-box;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.photo-zoom-img {
+.bklit-dark-card:hover {
+  border-color: #2e3035;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+}
+
+.bklit-dark-card.gov-card {
+  flex: 1.45 1 0px;
+  min-width: 420px;
+}
+
+.bklit-dark-card.gauge-card {
+  flex: 1.15 1 0px;
+  min-width: 340px;
+}
+
+.bklit-card-inner {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center;
-  display: block;
-  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  opacity: 1;
+  padding: 22px 24px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
 }
 
-.pixel-photo-card:hover .photo-zoom-img {
-  transform: scale(1.06);
+.bklit-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-/* Card 3: Tenants */
-.pixel-tenants-card {
-  flex: 0.98;
-  height: 100%;
+.bklit-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   min-width: 0;
+}
+
+.bklit-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.015em;
+  margin: 0;
+  line-height: 1.25;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.bklit-subtitle {
+  font-size: 13.5px;
+  color: #a1a1aa;
+  margin: 0;
+  line-height: 1.4;
+  font-weight: 400;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.bklit-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bklit-copy-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #a1a1aa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bklit-copy-btn:hover {
+  background: #18181b;
+  border-color: #27272a;
+  color: #ffffff;
+}
+
+.bklit-view-code-btn {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #e4e4e7;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.bklit-view-code-btn:hover {
+  background: #27272a;
+  color: #ffffff;
+  border-color: #3f3f46;
+}
+
+.bklit-footer-text {
+  font-size: 13.5px;
+  color: #a1a1aa;
+  margin: 0;
+  line-height: 1.4;
+  font-weight: 400;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Card 2: Government Analytics & Deterioration Forecast */
+.pixel-gov-analytics-card {
+  flex: 1.45 1 0px;
+  min-width: 380px;
+  height: 100%;
   border-radius: 20px;
   position: relative;
   overflow: hidden;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
   user-select: none;
   background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
 }
 
-.pixel-tenants-card .card-crop-img {
+.gov-card-inner {
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  object-position: center;
-  display: block;
-  opacity: 1;
+  padding: 14px 18px 12px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.gov-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gov-title-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gov-title-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.gov-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #059669;
+  background: #ecfdf5;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid #d1fae5;
+}
+
+.gov-jurisdiction-label {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.gov-main-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.015em;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.gov-subtitle {
+  font-size: 11.5px;
+  color: #64748b;
+  margin: 2px 0 0 0;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.gov-tabs-cluster {
+  display: flex;
+  background: #f1f5f9;
+  padding: 2px;
+  border-radius: 9px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.gov-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.gov-tab-btn.active {
   background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.gov-chart-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 0;
+  flex: 1;
+  min-height: 0;
+  justify-content: space-between;
+}
+
+.gov-recharts-container {
+  width: 100%;
+  height: 120px;
+  flex: 1 1 auto;
+  min-height: 100px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(12px);
+}
+
+.gov-chart-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 14px;
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 500;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 14px;
+  height: 2.5px;
+  border-radius: 2px;
+}
+
+.legend-base {
+  background: #ef4444;
+}
+
+.legend-proactive {
+  background: #10b981;
+}
+
+.legend-pill-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ecfdf5;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #d1fae5;
+  color: #059669;
+  font-weight: 600;
+  font-size: 9.5px;
+}
+
+.gov-svg-container {
+  width: 100%;
+  flex: 1;
+  min-height: 110px;
+  max-height: 145px;
+  display: flex;
+  align-items: center;
+}
+
+.gov-trend-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.gov-budget-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.budget-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.budget-kpi-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.budget-kpi-card.highlight-card {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.budget-kpi-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.budget-kpi-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-top: 2px;
+}
+
+.budget-unit {
+  font-size: 11px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.budget-kpi-sub {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gov-footer-telemetry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.gov-footer-note,
+.agency-footer-note {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.gov-footer-note strong,
+.agency-footer-note strong {
+  color: #059669;
+}
+
+.gov-footer-rating,
+.agency-footer-readiness {
+  font-size: 11px;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.agency-footer-readiness strong {
+  color: #059669;
+}
+
+.gov-meter-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.meter-label {
+  color: #64748b;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.meter-bar-track {
+  width: 52px;
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meter-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.fill-amber {
+  background: #f59e0b;
+}
+
+.fill-blue {
+  background: #3b82f6;
+}
+
+.meter-val {
+  font-weight: 700;
+  color: #1e293b;
+  font-size: 10.5px;
+}
+
+.gov-action-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #059669;
+  background: #ecfdf5;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #d1fae5;
+  white-space: nowrap;
+}
+
+/* Card 3: Agency Operations */
+.pixel-tenants-card {
+  flex: 1.05 1 0px;
+  min-width: 310px;
+  height: 100%;
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
+  user-select: none;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-sizing: border-box;
+}
+
+.tenants-card-inner {
+  width: 100%;
+  height: 100%;
+  padding: 14px 18px 12px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.tenants-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tenants-title-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tenants-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  margin-bottom: 2px;
+}
+
+.agency-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid #dbeafe;
+  white-space: nowrap;
+}
+
+.agency-division-label {
+  font-size: 11px;
+  color: #2563eb;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.tenants-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.015em;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.tenants-subtitle {
+  font-size: 11.5px;
+  color: #64748b;
+  margin: 2px 0 0 0;
+  line-height: 1.35;
+}
+
+.tenants-gauge-area {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 0;
+}
+
+.agency-footer-telemetry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.agency-footer-note {
+  line-height: 1.35;
+}
+
+.agency-footer-readiness {
+  text-align: right;
+  white-space: nowrap;
 }
 
 /* ==========================================================================
@@ -741,4 +1629,278 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+/* ==========================================================================
+   Live Vector GIS MapView & Mapbox Styles
+   ========================================================================== */
+.map-view-wrapper {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.map-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+.vector-fallback-map {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+}
+
+.vector-map-svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Mapbox Live Telemetry Badge */
+.mapbox-live-badge {
+  position: absolute;
+  bottom: 16px;
+  left: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  border-radius: 999px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 15;
+  pointer-events: auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+  animation: pulseLiveDot 2s infinite ease-in-out;
+}
+
+@keyframes pulseLiveDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+.live-label {
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+.live-count {
+  color: #64748b;
+  font-weight: 500;
+  border-left: 1px solid #cbd5e1;
+  padding-left: 8px;
+}
+
+/* Map Floating Bottom-Right Toolbar (Current Location + Basemap Switcher) */
+.map-bottom-right-toolbar {
+  position: absolute;
+  bottom: 16px;
+  right: 68px; /* Beside the question help button */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 15;
+  pointer-events: auto;
+}
+
+.current-location-btn {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #0f172a;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.current-location-btn:hover {
+  background: #ffffff;
+  color: #2563eb;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.16);
+  transform: translateY(-1px);
+}
+
+.current-location-btn.active {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #93c5fd;
+}
+
+.basemap-switcher {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  border-radius: 999px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.basemap-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.basemap-btn:hover {
+  color: #0f172a;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.basemap-btn.active {
+  background: #0f172a;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
+}
+
+/* Map Interactive Hover Tooltip */
+.map-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 40;
+  background: rgba(30, 30, 30, 0.25);
+  backdrop-filter: blur(30px) brightness(0.87);
+  -webkit-backdrop-filter: blur(30px) brightness(0.87);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  padding: 12px 14px;
+  color: #ffffff;
+  min-width: 210px;
+  max-width: calc(100% - 24px);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.tooltip-id {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: rgba(255, 255, 255, 0.76);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tooltip-pill {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pill-ncdot {
+  background: rgba(255, 255, 255, 0.13);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.pill-city {
+  background: rgba(255, 255, 255, 0.13);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.tooltip-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tooltip-stats {
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  padding-top: 8px;
+  margin-bottom: 6px;
+}
+
+.tooltip-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.tooltip-stat-label {
+  font-size: 9.5px;
+  color: rgba(255, 255, 255, 0.72);
+  text-transform: uppercase;
+}
+
+.tooltip-stat-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.tooltip-hint {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.84);
+  font-weight: 500;
+}
+
+/* Mapbox navigation control positioning */
+.mapboxgl-ctrl-bottom-right {
+  bottom: 56px !important;
+  right: 14px !important;
+}
+
+.mapboxgl-ctrl-group {
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
 }

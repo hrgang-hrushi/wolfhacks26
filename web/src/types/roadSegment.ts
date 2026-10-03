@@ -18,6 +18,12 @@ export interface RoadSegment {
   // Helpful metadata for display and navigation
   name: string;
   city: 'Raleigh' | 'Asheville';
+
+  // Real pipeline prediction fields from handoff/predictions_geo.parquet
+  pred_rate?: number;
+  pred_crack?: number;
+  pred_flood?: number;
+  in_helene_zone?: boolean;
 }
 
 export type ViewFilter = 'all' | 'ncdot'; // 'what we predict' (all) vs 'what the state surveys' (ncdot)

@@ -1,0 +1,6 @@
+model,n_rate,rate_mae,rate_spearman,crack_aucpr,crack_prevalence,n_flood_zone,flood_p50,flood_aucpr
+ALL: baseline,81191,0.781,0.5028,0.7062,0.4135,32558,0.26,0.111
+ALL: + terrain,81191,0.7651,0.5329,0.7308,0.4135,32558,0.36,0.2056
+CHIPPED: baseline,8534,0.7323,0.5837,0.6504,0.3375,14,0.0,0.0
+CHIPPED: + terrain,8534,0.7356,0.5848,0.6434,0.3375,14,0.0,0.0
+CHIPPED: + frozen DINOv2,8534,0.7456,0.5866,0.663,0.3375,14,0.0,0.0

@@ -5,8 +5,9 @@
  * 1.0 = Optimal / Excellent New Pavement (Emerald)
  */
 
-export function getScoreRGB(score: number): [number, number, number] {
-  const s = Math.max(0, Math.min(1, score));
+export function getScoreRGB(score?: number): [number, number, number] {
+  const safeScore = (typeof score === 'number' && !isNaN(score)) ? score : 0.75;
+  const s = Math.max(0, Math.min(1, safeScore));
   
   if (s < 0.25) {
     // Red [239, 68, 68] to Orange-Red [249, 115, 22]
