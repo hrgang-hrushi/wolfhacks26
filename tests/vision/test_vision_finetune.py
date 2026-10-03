@@ -504,6 +504,10 @@ def test_report_refuses_stale_damaged_or_missing_inputs(tmp_path):
     table.to_parquet(parquet, index=False)
     expect_refusal()
     parquet.write_bytes(good_file)
+    for malformed in ("[1, 2, 3]", "{ not json", '"just a string"'):  # a record that is not even a record
+        done.write_text(malformed)
+        expect_refusal("rerun that job, or delete the record")
+    done.write_text(good_record)
     Ft.main(base + ["--report"], net_factory=tiny_net_factory, log=QUIET)  # restored: accepted again
 
     _, seed1 = Ft.job_paths(out, "none", 1, 0)  # a stale seed-1 record must not feed the seed spread

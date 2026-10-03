@@ -269,7 +269,11 @@ def _last_json(text: str):
 
 
 def instances():
-    data = _last_json(vast("show", "instances-v1", "--raw"))
+    out = vast("show", "instances-v1", "--raw")
+    try:
+        data = _last_json(out)
+    except ValueError as e:
+        raise BoxError(f"the instance listing could not be read: {(out or '').strip()[-200:] or 'empty output'}") from e
     return data.get("instances", data) if isinstance(data, dict) else data
 
 
@@ -330,7 +334,7 @@ def destroy(instance_id, sleep=time.sleep) -> None:
 
 def abandon(reason: str, now=None, sleep=time.sleep) -> None:
     """Destroy the current box and book its cost. For failure paths where the box holds nothing of value."""
-    state = load_state()
+    state = sync_billing(now)
     if not state:
         return
     destroy(state["instance_id"], sleep=sleep)
@@ -524,9 +528,17 @@ def watchdog_alive() -> bool:
 def arm_watchdog() -> None:
     """Make sure the watcher is running. The start-up script launches it; this covers the case where it did not."""
     state = load_state()
-    if not watchdog_alive():
-        ssh("cat > /root/watchdog.sh", input=watchdog_script(state["deadline_epoch"]))
+    script = watchdog_script(state["deadline_epoch"])
+    want = hashlib.sha256(script.encode()).hexdigest()
+    # The script on the box must be the text meant, byte for byte: it reaches the box inside the
+    # start-up command, and a mangled copy would run happily and never be able to stop the box.
+    have = (ssh("sha256sum /root/watchdog.sh 2>/dev/null | cut -d' ' -f1", check=False).stdout or "").strip()
+    if have != want or not watchdog_alive():
+        ssh("kill $(cat /root/watchdog.pid 2>/dev/null) 2>/dev/null; cat > /root/watchdog.sh", input=script)
         ssh(WATCHDOG_LAUNCH, retries=1)
+        have = (ssh("sha256sum /root/watchdog.sh 2>/dev/null | cut -d' ' -f1", check=False).stdout or "").strip()
+        if have != want:
+            raise BoxError("the deadline watcher script on the box is not the one that was sent")
         if not watchdog_alive():
             raise BoxError("the deadline watcher did not start")
     state["watchdog_armed"] = True
@@ -585,6 +597,32 @@ def selfstop_test(sleep=time.sleep):
     return load_state()
 
 
+def sync_billing(now=None):
+    """Book a stop the driver did not make itself. Returns the current state.
+
+    When the watcher stops the box at the deadline, the books still show it running. Left alone they
+    would bill a stopped box at the full price, overstate the spend and, in time, refuse even the
+    20 minutes needed to copy results off. So: if the instance is not running while the last interval
+    is at the running price, that interval ends at the deadline (or now, if earlier) and storage
+    billing starts there.
+    """
+    state = load_state()
+    if not state:
+        return state
+    now = _now() if now is None else now
+    last = state["intervals"][-1]
+    if last["end"] is None and last["rate"] == state["dph"]:
+        try:
+            inst = instance(state["instance_id"])
+        except BoxError:
+            return state  # cannot tell; leave the books as they are
+        if inst is not None and inst.get("actual_status") != "running":
+            switch_rate(state, state["storage_rate"], max(last["start"], min(now, state["deadline_epoch"])))
+            state["watchdog_armed"] = False
+            save_state(state)
+    return state
+
+
 def stop(now=None, sleep=time.sleep) -> None:
     state = load_state()
     vast("stop", "instance", str(state["instance_id"]))
@@ -598,7 +636,7 @@ def stop(now=None, sleep=time.sleep) -> None:
 def start(now=None, sleep=time.sleep, grace=False) -> None:
     """Start a stopped box. Past its deadline this is refused, except with grace: the watcher then
     gives it GRACE_MIN minutes, enough to copy results off, before stopping it again."""
-    state = load_state()
+    state = sync_billing()
     at = _now() if now is None else now
     if at >= state["deadline_epoch"]:
         if not grace:
@@ -609,6 +647,11 @@ def start(now=None, sleep=time.sleep, grace=False) -> None:
     vast("start", "instance", str(state["instance_id"]))
     inst = wait_status(state["instance_id"], True, 600, sleep=sleep)
     if inst is None:
+        if grace or state["jobs"]:
+            # A stopped box is not guaranteed its GPU back. It may hold results nobody has copied yet,
+            # so it is left stopped (storage billing only) rather than destroyed.
+            raise BoxError("the box did not come up within 10 minutes and is still stopped (storage billing only); "
+                           "try `start` again later, or `teardown --force-discard` to give up what is on it")
         abandon("restart failed", sleep=sleep)
         raise BoxError("the box could not restart within 10 minutes; destroyed")
     switch_rate(state, state["dph"], _now() if now is None else now)
@@ -645,9 +688,9 @@ _SECRET_VALUE = r"[A-Za-z0-9_\-/+=.]{12,}"
 _KEY_TEXT = re.compile("|".join([
     # a quoted value: API_KEY = "...", {"apiKey": "..."}
     _SECRET_WORD + r"""["']?\s*[:=]\s*["']""" + _SECRET_VALUE + r"""["']""",
-    # or a bare value that is the whole rest of the line: SECRET_ACCESS_KEY=..., to-ken=... in a csv.
-    # (`token = get_token(...)` is ordinary code and does not match: it does not end the line there.)
-    r"^[^\n=:]*" + _SECRET_WORD + r"\w*\s*[:=]\s*" + _SECRET_VALUE + r"\s*$",
+    # or a bare value that ends at a delimiter: SECRET_ACCESS_KEY=... in a shell line, ?api_key=...& in a URL.
+    # (`token = get_token(...)` is ordinary code and does not match: its value runs into a bracket.)
+    _SECRET_WORD + r"\w*\s*[:=]\s*" + _SECRET_VALUE + r"""(?=$|[\s;&#,'"])""",
     "BEGIN [A-Z ]*PRIVATE" + " KEY",
     "gh[pousr]_" + "[A-Za-z0-9]{30,}",
     "AKIA" + "[0-9A-Z]{16}",
@@ -796,9 +839,10 @@ def job_status(name: str):
 
 def _probe(job: str):
     """(exit code or None, whether the job's process is still alive, last lines of its log)."""
+    # alive = the recorded pid exists AND its command line names this job (after a restart a pid can be reused)
     r = ssh(f"cd {REMOTE} && echo RC=$(cat logs/{job}.rc 2>/dev/null) && "
-            f"(kill -0 $(cat logs/{job}.pid 2>/dev/null) 2>/dev/null && echo JOB_ALIVE || echo JOB_GONE) && "
-            f"tail -n 4 logs/{job}.log", check=False)
+            f"(p=$(cat logs/{job}.pid 2>/dev/null); test -n \"$p\" && grep -qa {job} /proc/$p/cmdline 2>/dev/null "
+            f"&& echo JOB_ALIVE || echo JOB_GONE) && tail -n 4 logs/{job}.log", check=False)
     out = r.stdout or ""
     m = re.search(r"^RC=(-?\d+)\s*$", out, re.M)
     tail = "\n".join(ln for ln in out.splitlines()[1:] if ln not in ("JOB_ALIVE", "JOB_GONE"))
@@ -1110,7 +1154,7 @@ def county_chips(counties=("092-Wake", "011-Buncombe")) -> int:
 
 def status(now=None) -> dict:
     now = _now() if now is None else now
-    state = load_state()
+    state = sync_billing(now)
     out = {"spent_total": round(spent_total(now), 2), "cap_left": round(cap_left(now), 2)}
     if state:
         out.update(instance_id=state["instance_id"], dph=state["dph"],
@@ -1144,7 +1188,7 @@ def results_safe() -> None:
 
 
 def teardown(force_discard=False, now=None, sleep=time.sleep) -> float:
-    state = load_state()
+    state = sync_billing(now)
     if not state:
         raise BoxError("no box is rented")
     if not force_discard:
@@ -1164,7 +1208,9 @@ def main(argv=None) -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("rent")
     p.add_argument("--offer", type=int, default=None, help="default: first that passes")
-    for name in ("offers", "selfstop-test", "push", "setup", "memcheck", "identity", "trial", "census", "county-chips",
+    sub.add_parser("trial").add_argument("--seed-base", type=int, default=0,
+                                         help="use other sample seeds after a partial attempt (e.g. 10 gives 11, 12, 13)")
+    for name in ("offers", "selfstop-test", "push", "setup", "memcheck", "identity", "census", "county-chips",
                  "stop", "status"):
         sub.add_parser(name)
     sub.add_parser("start").add_argument("--grace", action="store_true",
@@ -1206,7 +1252,8 @@ def main(argv=None) -> None:
     elif a.cmd == "identity":
         print(f"{identity_check()} photos identical on both machines")
     elif a.cmd == "trial":
-        print(json.dumps(speed_trial()))
+        seeds = [a.seed_base + i for i in (1, 2, 3)]
+        print(json.dumps(speed_trial(settings=tuple(zip(seeds, (32, 64, 128))))))
     elif a.cmd == "census":
         print(json.dumps(fetch_census()))
     elif a.cmd == "county-chips":

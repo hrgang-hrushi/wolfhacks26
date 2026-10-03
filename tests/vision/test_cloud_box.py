@@ -56,6 +56,9 @@ class Fake:
         self.trials_done = set()
         self.corrupt_pull = False
         self.on_call = None
+        self.wd_text = None                # the watcher script as it sits on the box
+        self.mangle_onstart = False        # the platform alters the start-up script's backslashes
+        self.wd_locked = False             # and the box refuses to take a corrected copy
 
     # ------------------------------------------------------------ dispatch
     def __call__(self, args, timeout=600, input=None, stdin=None, stdout=None):
@@ -102,6 +105,10 @@ class Fake:
             new = self.add(a[a.index("--label") + 1] if "--label" in a else None, self.create_status)
             self.instances[new].update(onstart=a[a.index("--onstart-cmd") + 1], disk=a[a.index("--disk") + 1],
                                        dph_total=self.instance_dph, hidden_polls=self.listing_lag)
+            onstart = self.instances[new]["onstart"]
+            self.wd_text = onstart.split("<<'WATCHDOG_EOF'\n", 1)[1].split("WATCHDOG_EOF\n", 1)[0]
+            if self.mangle_onstart:
+                self.wd_text = self.wd_text.replace("\\", "")
             if self.create_garbled:
                 return reply(out="Started. (output format changed)")
             return reply(out=self.warning + raw({"success": True, "new_contract": new}))
@@ -142,6 +149,12 @@ class Fake:
             return reply()
         if "echo ALIVE" in cmd:
             return reply(out="ALIVE\n") if self.watchdog else reply(rc=1)
+        if cmd.startswith("sha256sum /root/watchdog.sh"):
+            return reply(out=hashlib.sha256((self.wd_text or "").encode()).hexdigest() + "\n")
+        if cmd.endswith("cat > /root/watchdog.sh"):
+            if not self.wd_locked:
+                self.wd_text = input
+            return reply()
         if "echo LAUNCHED" in cmd:
             return reply(out="LAUNCHED\n") if self.launch_ok else reply(rc=1)
         if "echo RC=" in cmd:
@@ -843,7 +856,7 @@ def test_c23g_the_watcher_is_started_over_ssh_when_the_start_up_script_did_not(b
     fake.ssh = ssh
     box.arm_watchdog()
     sent = [c[-1] for c in fake.calls if c[0] == "ssh"]
-    assert "cat > /root/watchdog.sh" in sent and box.WATCHDOG_LAUNCH in sent
+    assert any(c.endswith("cat > /root/watchdog.sh") for c in sent) and box.WATCHDOG_LAUNCH in sent
     assert box.load_state()["watchdog_armed"] is True
 
 
@@ -926,6 +939,27 @@ def test_c17c_a_command_with_quotes_reaches_the_box_intact(box, fake):
     launch = [c[-1] for c in fake.calls if c[0] == "ssh" and job in c[-1] and "setsid" in c[-1]][0]
     inner = launch.split("sh -c ", 1)[1].split(f" > logs/{job}.log")[0]
     assert shlex.split(inner)[0].startswith("""python -c 'print("a b")' && echo "$HOME" """)
+
+
+def test_c23i_a_watcher_script_that_arrived_altered_is_replaced_or_the_box_is_not_kept(box, fake):
+    fake.mangle_onstart = True  # the start-up command reached the box with its backslashes stripped
+    state = rented(box, fake)
+    assert fake.wd_text == box.watchdog_script(state["deadline_epoch"])  # rent noticed and sent the right text
+    sent = [c[-1] for c in fake.calls if c[0] == "ssh"]
+    assert any(c.endswith("cat > /root/watchdog.sh") for c in sent) and box.WATCHDOG_LAUNCH in sent
+    box.abandon("test", sleep=NOSLEEP)
+    fake.wd_locked = True  # and if the corrected copy does not take, a watcher that cannot work is not trusted
+    with pytest.raises(box.BoxError, match="is not the one that was sent"):
+        rented(box, fake, now=3000.0)
+    assert not fake.instances and box.load_state() is None
+
+
+def test_c16c_a_reused_pid_does_not_make_a_dead_job_look_alive(box, fake):
+    rented(box, fake)
+    job = box.run("grid", "true", sleep=NOSLEEP)
+    box.job_state("grid")
+    probe = [c[-1] for c in fake.calls if c[0] == "ssh" and "echo RC=" in c[-1]][-1]
+    assert f"grep -qa {job} /proc/$p/cmdline" in probe and "kill -0" not in probe  # the pid must BE this job
 
 
 def test_wait_times_out_on_a_job_that_never_finishes(box, fake):
@@ -1035,6 +1069,19 @@ def test_c11_a_bundle_that_looks_like_it_holds_a_key_is_refused(box, tmp_path, r
     files = sorted(set(box.bundle_files(tmp_path)) | {rel})
     with pytest.raises(box.BoxError, match="look like they hold a key"):
         box.scan_for_keys(files, tmp_path)
+
+
+@pytest.mark.parametrize("text", [
+    "VAST_API" + "_KEY=0123456789abcdef0123 vastai show instances\n",                 # a value followed by more shell
+    'url = "https://example.org/data?api' + '_key=0123456789abcdef0123&format=json"\n',  # inside a URL
+    "export SECRET_ACCESS" + "_KEY=abcdefghijklmnop; echo done\n",
+    "pass" + "word: correcthorsebatterystaple  # prod\n",
+])
+def test_c11d_a_bare_secret_followed_by_more_text_is_still_refused(box, tmp_path, text):
+    make_project(tmp_path)
+    put(tmp_path, "src/notes.sh", text)
+    with pytest.raises(box.BoxError, match="look like they hold a key"):
+        box.scan_for_keys(box.bundle_files(tmp_path), tmp_path)
 
 
 def test_c11c_ordinary_code_that_mentions_tokens_or_keys_is_not_refused(box, tmp_path):
@@ -1220,6 +1267,62 @@ def test_c15c_the_speed_trial_limits_every_run_and_picks_the_fastest(box, fake):
 
 
 # ---------------------------------------------------------------- status and the command line
+
+def test_c9f_a_grace_start_that_does_not_come_up_keeps_the_stopped_box_and_its_results(box, fake):
+    state = rented(box, fake, now=0.0, dph_total=1.0)
+    finished_job(box, fake, "grid")
+    put(fake.remote, "data/processed/vision/frozen/metrics.json", '{"a": 1}')  # results nobody has copied yet
+    ours(box, fake)["actual_status"] = "exited"  # the watcher stopped it at the deadline
+    fake.now = state["deadline_epoch"] + 600
+    fake.start_works = False  # the GPU was taken while the box was stopped
+    with pytest.raises(box.BoxError, match="still stopped"):
+        box.start(sleep=NOSLEEP, grace=True)
+    assert state["instance_id"] in fake.instances and box.load_state() is not None and box.load_history() == []
+    fake.start_works = True
+    box.start(sleep=NOSLEEP, grace=True)  # a later attempt works and the results are still there
+    box.pull("data/processed/vision", box.ROOT / "data/processed/vision")
+    box.teardown(sleep=NOSLEEP)
+    assert not fake.instances
+
+
+def test_c9g_a_stop_made_by_the_watcher_is_booked_at_the_deadline(box, fake):
+    state = rented(box, fake, now=0.0, dph_total=1.0, storage_cost=0.073)  # $0.01 an hour when stopped
+    finished_job(box, fake, "grid")
+    put(fake.remote, "data/processed/vision/frozen/metrics.json", '{"a": 1}')
+    ours(box, fake)["actual_status"] = "exited"
+    deadline = state["deadline_epoch"]
+    assert deadline == 8 * 3600
+    fake.now = deadline + 10 * 3600  # the next morning
+    s = box.status()
+    assert s["spent_total"] == pytest.approx(8 * 1.0 + 10 * 0.01, abs=0.01)  # not 18 hours at the running price
+    assert s["cap_left"] > 6.8 and s["watchdog_armed"] is False
+    rates = [(iv["rate"], iv["end"]) for iv in box.load_state()["intervals"]]
+    assert rates[0] == (1.0, deadline) and rates[1][0] == pytest.approx(0.01)
+    box.start(sleep=NOSLEEP, grace=True)  # so the 20 minutes to copy results off are still affordable
+    assert ours(box, fake)["actual_status"] == "running"
+    box.pull("data/processed/vision", box.ROOT / "data/processed/vision")
+    total = box.teardown(sleep=NOSLEEP)
+    assert total == pytest.approx(8.1, abs=0.02)
+
+
+def test_an_unreadable_instance_listing_is_a_plain_error_and_changes_nothing(box, fake):
+    state = rented(box, fake)
+    fake.poll_errors = 5  # the API answers with an error page; the CLI prints nothing usable and exits 0
+    with pytest.raises(box.BoxError, match="instance listing could not be read"):
+        box.teardown(sleep=NOSLEEP)
+    assert state["instance_id"] in fake.instances and box.load_state()["instance_id"] == state["instance_id"]
+
+
+def test_the_speed_trial_can_be_rerun_with_other_seeds_after_a_partial_attempt(box, fake, capsys):
+    rented(box, fake)
+    fake.trials_done = {1, 2}  # a first attempt got through two of its three runs before the connection dropped
+    with pytest.raises(box.BoxError, match="measured nothing"):
+        box.main(["trial"])
+    capsys.readouterr()
+    box.main(["trial", "--seed-base", "10"])
+    got = json.loads(capsys.readouterr().out)
+    assert got["best_workers"] == 64 and fake.trials_done == {1, 2, 11, 12, 13} and fake.instances
+
 
 def test_status_reports_spend_and_time_left(box, fake):
     rented(box, fake, now=0.0, dph_total=1.0)

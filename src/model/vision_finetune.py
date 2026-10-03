@@ -206,10 +206,10 @@ def validated(ctx, arm, seed, fold, epochs=EPOCHS, batch_size=BATCH, control=Fal
         why = ""
         try:  # say which fingerprint differs, when that is the reason
             M.compare(json.loads(done.read_text()), {"hashes": ctx["hashes"]})
-        except ValueError as e:
+        except (ValueError, AttributeError, TypeError) as e:  # including a record that is not even a JSON object
             why = f" ({e})" if "not comparable" in str(e) else ""
         raise ValueError(f"{done.relative_to(Path(ctx['out_root']))} does not match the current code, labels, roads or "
-                         f"settings, or its result file is damaged{why}; rerun that job")
+                         f"settings, or its result file is damaged{why}; rerun that job, or delete the record")
     return json.loads(done.read_text())
 
 
