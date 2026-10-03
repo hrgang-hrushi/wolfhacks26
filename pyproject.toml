@@ -18,6 +18,9 @@ dependencies = [
     "requests",
     "tqdm",
     "numpy<2.4",  # pysheds 0.5 calls np.in1d, removed in numpy 2.4
+    "scipy>=1.17.1",
+    "torch>=2.14.1",
+    "timm>=1.0.30",
 ]
 
 [build-system]
