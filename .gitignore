@@ -12,8 +12,11 @@ data/processed/segments.parquet
 __pycache__/
 *.py[cod]
 *.egg-info/
+.DS_Store
+data/processed/
 logs/
+
+# environment & secrets
 *.env
 *.env.*
 !.env.example
-
