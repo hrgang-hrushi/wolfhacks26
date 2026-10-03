@@ -138,7 +138,7 @@ def terrain(dem_path: Path, workers: int) -> float:
         ProcessPoolExecutor(workers) as pool,
     ):
         n_sinks = 0
-        for row, col, slope, acc, sinks in tqdm(pool.map(_terrain_tile, jobs), total=len(jobs), desc="terrain tiles"):
+        for row, col, slope, acc, sinks in tqdm((map(_terrain_tile, jobs) if workers == 1 else pool.map(_terrain_tile, jobs)), total=len(jobs), desc="terrain tiles"):
             win = Window(col, row, slope.shape[1], slope.shape[0])
             slope_ds.write(slope, 1, window=win)
             acc_ds.write(acc, 1, window=win)
