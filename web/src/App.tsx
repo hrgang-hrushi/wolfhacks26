@@ -1,18 +1,21 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { MOCK_ROAD_SEGMENTS } from './data/mockRoads';
 import type { RoadSegment, ViewFilter } from './types/roadSegment';
-import { MapView, type MapViewHandle } from './components/MapView';
-import { Header } from './components/Header';
-import { DetailPanel } from './components/DetailPanel';
-import { Legend } from './components/Legend';
-import { StatsOverlay } from './components/StatsOverlay';
+import { SidebarRail } from './components/SidebarRail';
+import { TopNavbar } from './components/TopNavbar';
+import { SubHeaderRow } from './components/SubHeaderRow';
+import { KpiMetricsRow } from './components/KpiMetricsRow';
+import { MainMapCard, type MainMapCardHandle } from './components/MainMapCard';
+import { RevenueBarChartCard } from './components/RevenueBarChartCard';
+import { DonutChartCard } from './components/DonutChartCard';
+import { RegionCapsuleBarsCard } from './components/RegionCapsuleBarsCard';
+import { SegmentDetailModal } from './components/SegmentDetailModal';
 import { PMTilesArchitectureModal } from './components/PMTilesArchitectureModal';
-import { SegmentListDrawer } from './components/SegmentListDrawer';
 import { AboutProjectModal } from './components/AboutProjectModal';
 import './App.css';
 
 export function App() {
-  const mapViewRef = useRef<MapViewHandle>(null);
+  const mapCardRef = useRef<MainMapCardHandle>(null);
 
   // Filter mode: 'ncdot' (state roads only) vs 'all' (every street)
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
@@ -20,13 +23,12 @@ export function App() {
   // Currently focused city: Raleigh (default) or Asheville
   const [activeCity, setActiveCity] = useState<'Asheville' | 'Raleigh' | null>('Raleigh');
 
-  // Currently selected segment for deep inspection panel (default to first segment so panel is immediately functional)
-  const [selectedSegment, setSelectedSegment] = useState<RoadSegment | null>(MOCK_ROAD_SEGMENTS[0] || null);
+  // Currently selected segment for deep inspection panel
+  const [selectedSegment, setSelectedSegment] = useState<RoadSegment | null>(null);
 
-  // Modal and drawer visibility states
+  // Modals visibility
   const [isArchModalOpen, setIsArchModalOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Filter road segments based on viewFilter toggle
   const filteredSegments = useMemo(() => {
@@ -39,83 +41,112 @@ export function App() {
   // Handle city zoom
   const handleZoomCity = useCallback((city: 'Asheville' | 'Raleigh') => {
     setActiveCity(city);
-    mapViewRef.current?.flyToCity(city);
+    mapCardRef.current?.flyToCity(city);
   }, []);
 
   // Handle segment selection
   const handleSelectSegment = useCallback((segment: RoadSegment) => {
     setSelectedSegment(segment);
     setActiveCity(segment.city);
-    mapViewRef.current?.flyToSegment(segment);
+    mapCardRef.current?.flyToSegment(segment);
   }, []);
 
   // Handle fly to segment
   const handleFlyToSegment = useCallback((segment: RoadSegment) => {
-    mapViewRef.current?.flyToSegment(segment);
+    mapCardRef.current?.flyToSegment(segment);
   }, []);
 
-  // Handle close detail panel
-  const handleClosePanel = useCallback(() => {
-    setSelectedSegment(null);
-  }, []);
+  // Handle export data
+  const handleExportData = useCallback(() => {
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(filteredSegments, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `nc_road_predictions_${viewFilter}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  }, [filteredSegments, viewFilter]);
 
   return (
-    <div className="app-container">
-      {/* Top Application Header */}
-      <Header
-        viewFilter={viewFilter}
-        onToggleFilter={setViewFilter}
-        onZoomCity={handleZoomCity}
-        activeCity={activeCity}
-        totalSegmentsCount={MOCK_ROAD_SEGMENTS.length}
-        visibleSegmentsCount={filteredSegments.length}
-        onOpenArchitectureModal={() => setIsArchModalOpen(true)}
-        isDrawerOpen={isDrawerOpen}
-        onToggleDrawer={() => setIsDrawerOpen((prev) => !prev)}
-        onOpenAboutModal={() => setIsAboutModalOpen(true)}
-      />
+    <div className="canvas-frame-container">
+      {/* Outer Studio Backdrop Grid matching frame 7 */}
+      <div className="studio-canvas-backdrop" />
 
-      {/* Main Map Canvas Area */}
-      <main className="main-content">
-        <MapView
-          ref={mapViewRef}
-          segments={filteredSegments}
-          selectedSegment={selectedSegment}
-          onSelectSegment={handleSelectSegment}
+      {/* Main White App Window (1404px x 936px canvas matching frame 7) */}
+      <div className="app-window-card">
+        {/* Left Vertical Navigation Rail */}
+        <SidebarRail
+          onOpenAbout={() => setIsAboutModalOpen(true)}
+          onOpenArchRoadmap={() => setIsArchModalOpen(true)}
         />
 
-        {/* Aggregate Network Metrics Overlay */}
-        <StatsOverlay segments={filteredSegments} />
+        {/* Main Content Pane */}
+        <div className="app-main-pane">
+          {/* Top Navbar */}
+          <TopNavbar
+            onSearchClick={() => {
+              if (filteredSegments[0]) handleSelectSegment(filteredSegments[0]);
+            }}
+          />
 
-        {/* Continuous Color Scale Legend */}
-        <Legend />
+          {/* Scrollable Dashboard Body */}
+          <div className="dashboard-content-scroll">
+            {/* Sub-Header Greeting & Action Controls */}
+            <SubHeaderRow
+              viewFilter={viewFilter}
+              onToggleFilter={setViewFilter}
+              activeCity={activeCity}
+              onZoomCity={handleZoomCity}
+              onExportData={handleExportData}
+            />
 
-        {/* Left Side: Road Segments Directory Drawer */}
-        <SegmentListDrawer
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-          segments={filteredSegments}
-          selectedSegment={selectedSegment}
-          onSelectSegment={handleSelectSegment}
-        />
+            {/* Top 4 KPI Metrics Row */}
+            <KpiMetricsRow segments={filteredSegments} />
 
-        {/* Right Side: Selected Road Segment Detail Panel */}
+            {/* Main 2-Column Analytics Grid */}
+            <div className="main-analytics-grid">
+              {/* Left Column: Underperforming Areas Map & 4 Radial Gauges */}
+              <div className="analytics-left-col">
+                <MainMapCard
+                  ref={mapCardRef}
+                  segments={filteredSegments}
+                  selectedSegment={selectedSegment}
+                  onSelectSegment={handleSelectSegment}
+                />
+              </div>
+
+              {/* Right Column: Charts Stack */}
+              <div className="analytics-right-col">
+                {/* CY Revenue vs PY Revenue Bar Chart */}
+                <RevenueBarChartCard />
+
+                {/* Bottom Row: Donut Chart & Capsule Bars */}
+                <div className="bottom-charts-row">
+                  <DonutChartCard />
+                  <RegionCapsuleBarsCard />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Road Segment Detail Inspection Slide-Over */}
         {selectedSegment && (
-          <DetailPanel
+          <SegmentDetailModal
             segment={selectedSegment}
-            onClose={handleClosePanel}
+            onClose={() => setSelectedSegment(null)}
             onFlyTo={handleFlyToSegment}
           />
         )}
-      </main>
+      </div>
 
-      {/* 112k+ PMTiles Scalability Blueprint Modal */}
+      {/* PMTiles Architecture Blueprint Modal */}
       <PMTilesArchitectureModal
         isOpen={isArchModalOpen}
         onClose={() => setIsArchModalOpen(false)}
       />
 
-      {/* "What is this Project?" Mission & Guide Modal */}
+      {/* About Project Mission Modal */}
       <AboutProjectModal
         isOpen={isAboutModalOpen}
         onClose={() => setIsAboutModalOpen(false)}
