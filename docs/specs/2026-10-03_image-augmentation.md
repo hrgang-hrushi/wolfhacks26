@@ -1,6 +1,6 @@
 # Run spec: image augmentation for the vision path (2026-10-03)
 
-Status: in execution. Code and tests are written and committed on branch `image-augmentation`; the stages that need the rented GPU box have not run (the venue network blocks the box's SSH port; see Results). Plan: `docs/reports/2026-10-03_image-augmentation-plan.md`. Plan reviewed by Codex 2026-10-03: thirteen findings, all accepted (D7, D10, D11, D12, D13, D15, D15a changed; tests D21, E12 to E15, F16 to F19, C16 to C22 added; A8, A29, F13, F15, C14 tightened).
+Status: closed without a result (2026-10-03). The code, tests and docs are written and merged into `main`; the comparison itself was never run and was dropped for the hackathon (see "Closed" at the end). Neither rented-box stages nor the Colab run happened (the venue network blocks the box's SSH port; see Results). Plan: `docs/reports/2026-10-03_image-augmentation-plan.md`. Plan reviewed by Codex 2026-10-03: thirteen findings, all accepted (D7, D10, D11, D12, D13, D15, D15a changed; tests D21, E12 to E15, F16 to F19, C16 to C22 added; A8, A29, F13, F15, C14 tightened).
 
 ## History
 
@@ -189,6 +189,19 @@ A20b; D21b and the chip-index test; E7c; F4b, F18b, the control-labels test, the
 ### Still to come
 
 **Status at the time the docs were committed (2026-10-03): no comparison has run, so there are no result numbers.** The code, the tests and the Colab package are complete. The Colab run is optional and separate from the merge; if it runs, its numbers land in a later commit. AC2 to AC7 and AC9 are not met until then, and the Codex audit has not been run.
+
+Nothing in this section was done; see "Closed" below.
+
+### Closed (2026-10-03, evening)
+
+**The comparison was dropped for the hackathon and never ran. There is no answer to "does augmentation help", in either direction.** The coordination chat relayed Nathan's words from about 21:35, "i don't think aug is necesary"; this was not said in the image-augmentation chat itself. Earlier in that chat he had agreed to try the free Colab run on the terms that it is simply not used if it does not finish.
+
+- **Met:** AC1 (329 passed, 2 skipped, on the tip) and AC8 in the sense that this change added new files only. The branch is merged into `main` (`03a1e99` is contained in `main` and `origin/main`).
+- **Not met, because nothing ran:** AC2 (box test gate), AC3 and AC4 (photo fetch and identity), AC5 and AC9 (frozen table and by-products), AC6 (fine-tune table). No `vit_frozen_statewide.parquet` was produced. AC8's `pull_ncdot --join-only` check was not run.
+- **Spend (AC7):** $0.06 in total, for the one box that could not be reached. `vastai show instances-v1` at close: no instances.
+- **Review:** four rounds of the adversarial Claude critique, ending Acceptable, with no held-out leakage or parity finding in any round. **The Codex audit was not run**: it grades results that do not exist, and its quota is shared with the chats doing demo work. To run it later: `bash ~/.claude/review-audit.sh docs/specs/2026-10-03_image-augmentation.md`.
+- **Never exercised on a GPU:** the fine-tune loop's gradient scaler, the two GPU-only tests, and everything in the cloud driver past `rent`. The first-box checks listed above remain open.
+- **To pick this up later:** `python scripts/colab/build_package.py`, then follow "Google Colab instead of a box" in `docs/features/IMAGE_AUGMENTATION.md` (about 2.5 hours on a free T4), or use `scripts/cloud/box.py` from a network that allows high-numbered ports. A package built on 2026-10-03 is in `data/processed/vision/colab/` (not in the repository); rebuild it if any `.py` file has changed since, because the code fingerprint will differ.
 
 First, on the first box that can be reached, before the self-stop test, because none of it can be exercised from here: the watcher is running straight after `rent`; what `vastai create` and `vastai stop` print and return on that box; whether vast.ai runs the start-up script on every start; LightGBM and PyTorch load together under `memcheck` (the merged `train_vit.py` imports both).
 
