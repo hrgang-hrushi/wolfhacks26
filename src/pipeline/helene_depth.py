@@ -62,7 +62,7 @@ SETTINGS = {
     "SIDE_CAP_M": 300.0,  # a road point farther than this from a stream line is not assessed
     "REACH_M": 1000.0,  # nor one whose nearest mark is farther than this along the line
     "MAX_LIFT_M": 2.0,  # nor one where the drawn level is more than this from the nearer mark's own level
-    "HIGH_CONF_M": 250.0,  # nearest mark within this along the line: high confidence
+    "HIGH_CONF_M": 250.0,  # nearest mark within this (along the line, then across to the point): high confidence
     "END_CAP_M": 100.0,  # past the last mark of a line, a level is given only this close to it
     "MERGE_M": 1.0,  # marks closer than this become one point of the line
     "BRIDGE_M": 60.0,  # road points this close to a listed bridge are set aside
@@ -337,7 +337,11 @@ def _locate(P, lines, px, py, chunk=500) -> pd.DataFrame:
 
 
 def locate(lines, px, py, chunk=500) -> pd.DataFrame:
-    """For each point: is it assessed, the water level, and how far the nearest mark is along the line."""
+    """For each point: is it assessed, the water level, and how far it is from the nearest mark.
+
+    `along_m` is that distance: along the line to the spot beside the point, then across to the point
+    (so on a mark's own cross-line it is the straight line to the mark). `side_m` is the across part alone.
+    """
     return _locate(_pieces(lines), lines, px, py, chunk)
 
 
