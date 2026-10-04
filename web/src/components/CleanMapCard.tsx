@@ -1,6 +1,7 @@
 import { useState, useImperativeHandle, forwardRef, useEffect, useRef, useMemo } from 'react';
-import { Search, ChevronDown, X, MapPin, Compass, Thermometer, CloudRain, Sun, Navigation, Check } from 'lucide-react';
+import { Search, ChevronDown, X, MapPin, Compass, Thermometer, CloudRain, Sun, Navigation, Check, ShieldCheck } from 'lucide-react';
 import type { RoadSegment, ViewFilter } from '../types/roadSegment';
+import type { RoutePreviewState } from '../types/safeRoute';
 import { MapView, type MapViewHandle, type ConditionColorFilter } from './MapView';
 import { fetchWeatherByCity, type WeatherData } from '../services/weatherService';
 import { MAPBOX_TOKEN } from '../config/mapbox';
@@ -10,6 +11,7 @@ export interface CleanMapCardHandle {
   flyToCity: (city: string) => void;
   flyToSegment: (segment: RoadSegment) => void;
   flyToCoords: (lng: number, lat: number, zoom?: number) => void;
+  flyToRouteCorridor?: (center: [number, number], zoom: number) => void;
 }
 
 interface CleanMapCardProps {
@@ -24,6 +26,9 @@ interface CleanMapCardProps {
   onBboxChange?: (bbox: [number, number, number, number]) => void;
   conditionColorFilter?: ConditionColorFilter;
   onConditionColorFilterChange?: (filter: ConditionColorFilter) => void;
+  onOpenSafeRoute?: () => void;
+  routePreview?: RoutePreviewState | null;
+  onClearRoutePreview?: () => void;
 }
 
 interface GeocodedPlace {
@@ -44,7 +49,10 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
   onOpenHelp,
   onBboxChange,
   conditionColorFilter = 'all',
-  onConditionColorFilterChange
+  onConditionColorFilterChange,
+  onOpenSafeRoute,
+  routePreview,
+  onClearRoutePreview
 }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -132,6 +140,9 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
     },
     flyToCoords: (lng: number, lat: number, zoom?: number) => {
       gisMapRef.current?.flyToCoords(lng, lat, zoom);
+    },
+    flyToRouteCorridor: (center: [number, number], zoom: number) => {
+      gisMapRef.current?.flyToRouteCorridor?.(center, zoom);
     }
   }));
 
@@ -213,8 +224,29 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           onSelectSegment={onSelectSegment}
           onBboxChange={onBboxChange}
           conditionColorFilter={conditionColorFilter}
+          routePreview={routePreview}
         />
       </div>
+
+      {/* Floating Active Route Preview Banner */}
+      {routePreview && (
+        <div className="map-route-active-banner">
+          <span className="banner-pulse-dot" />
+          <span className="banner-corridor-name">{routePreview.corridor.name.split(' (')[0]}</span>
+          <span className={`banner-option-pill ${routePreview.selectedOption}`}>
+            {routePreview.selectedOption === 'both' ? 'Both Routes' : `${routePreview.selectedOption} Route`}
+          </span>
+          <button
+            type="button"
+            className="banner-exit-btn"
+            onClick={onClearRoutePreview}
+            title="Exit Route Preview"
+          >
+            <X size={12} />
+            <span>Exit Route</span>
+          </button>
+        </div>
+      )}
 
       {/* Top Floating Controls Bar */}
       <div className="pixel-map-top-bar" ref={topBarRef}>
@@ -672,6 +704,18 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
               </div>
             )}
           </div>
+
+          {/* 6. Safest Route Navigator Button (Pillar 1) */}
+          <button
+            type="button"
+            className={`safe-route-nav-btn ${routePreview ? 'is-active-route' : ''}`}
+            onClick={onOpenSafeRoute}
+            title="Safe Route Navigator: Compare Fastest Route (Google Maps) vs. Safest Alternative (RoadSense AI)"
+            aria-label="Safe Route Navigator"
+          >
+            <ShieldCheck size={14} />
+            <span>{routePreview ? 'Route Active' : 'Safest Route'}</span>
+          </button>
         </div>
       </div>
 

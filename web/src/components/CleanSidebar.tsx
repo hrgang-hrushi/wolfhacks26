@@ -1,8 +1,9 @@
 import type { FC } from 'react';
-import { Plus, Calendar, MessageSquare, Ticket, Settings } from 'lucide-react';
+import { Plus, Calendar, MessageSquare, Ticket, Settings, Navigation } from 'lucide-react';
 
 interface CleanSidebarProps {
   onHomeClick?: () => void;
+  onRouteClick?: () => void;
   onPlusClick?: () => void;
   onDocsClick?: () => void;
   onChatClick?: () => void;
@@ -12,6 +13,7 @@ interface CleanSidebarProps {
 
 export const CleanSidebar: FC<CleanSidebarProps> = ({
   onHomeClick,
+  onRouteClick,
   onPlusClick,
   onDocsClick,
   onChatClick,
@@ -43,6 +45,16 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
           aria-label="Home"
         >
           <img src="/assets/reference/icon_home.webp" alt="Home" className="sidebar-icon-img home-active-icon" />
+        </button>
+
+        <button
+          type="button"
+          className="sidebar-icon-btn svg-nav-btn hotspot-route"
+          onClick={onRouteClick}
+          title="Safe Route Navigator"
+          aria-label="Safe Route"
+        >
+          <Navigation size={21} className="nav-svg-icon text-emerald-400" />
         </button>
 
         <button

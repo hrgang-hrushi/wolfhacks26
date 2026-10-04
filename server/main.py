@@ -281,14 +281,177 @@ app.add_middleware(
 )
 
 
+ROUTE_CORRIDORS = {
+    "asheville-helene": {
+        "id": "asheville-helene",
+        "name": "Asheville Mountain Pass (Helene Corridor)",
+        "region": "Western NC / Blue Ridge",
+        "badge": "Helene Impact Zone",
+        "center": [-82.445, 35.602],
+        "zoom": 11.8,
+        "origin": "Asheville River Arts District (US-25)",
+        "destination": "Black Mountain / Swannanoa (I-40 East)",
+        "fastest": {
+            "label": "Fastest Route (Google Maps Baseline)",
+            "travel_time_min": 19,
+            "distance_miles": 14.2,
+            "pci_score": 41,
+            "flood_risk_pct": 92.0,
+            "severe_potholes": 8,
+            "road_name": "Swannanoa River Rd (US-70 Lowland)",
+            "critical_hazards": [
+                "Swannanoa River Lowland Washout (92% flood failure hazard)",
+                "Severe Sub-base Structural Collapses (8 axle-strike potholes)",
+            ],
+            "geometry": [
+                [-82.565, 35.585], [-82.551, 35.589], [-82.535, 35.592], [-82.518, 35.595],
+                [-82.498, 35.599], [-82.475, 35.604], [-82.451, 35.607], [-82.430, 35.611],
+                [-82.405, 35.614], [-82.378, 35.616], [-82.350, 35.617], [-82.321, 35.618]
+            ]
+        },
+        "safest": {
+            "label": "Safest Route (RoadSense AI Hazard-Penalized)",
+            "travel_time_min": 22,
+            "distance_miles": 16.5,
+            "pci_score": 89,
+            "flood_risk_pct": 0.0,
+            "severe_potholes": 0,
+            "road_name": "I-40 Ridge High Ground & Blue Ridge Pass",
+            "critical_hazards": [],
+            "geometry": [
+                [-82.565, 35.585], [-82.560, 35.568], [-82.542, 35.558], [-82.515, 35.552],
+                [-82.485, 35.559], [-82.450, 35.572], [-82.420, 35.588], [-82.390, 35.602],
+                [-82.360, 35.612], [-82.335, 35.616], [-82.321, 35.618]
+            ]
+        },
+        "hazards_avoided": {"potholes": 8, "flood_zones": 2, "time_delta_min": 3},
+        "ai_rationale": "RoadSense AI penalizes the Google Maps default (US-70) due to 92% flood vulnerability along the Swannanoa riverbed and 8 unpatched severe potholes. Rerouting via the I-40 Ridge adds only 3 minutes to travel time while eliminating 100% of flood hazard and boosting Pavement Condition Index from 41 to 89."
+    },
+    "raleigh-capital": {
+        "id": "raleigh-capital",
+        "name": "Raleigh Capital Corridor (Crabtree Creek Lowland)",
+        "region": "Central NC / Research Triangle",
+        "badge": "Capital District",
+        "center": [-78.658, 35.807],
+        "zoom": 12.4,
+        "origin": "NC State Centennial Campus (Fitts-Woolard Hall)",
+        "destination": "North Hills / Midtown Raleigh (Six Forks Rd)",
+        "fastest": {
+            "label": "Fastest Route (Google Maps Baseline)",
+            "travel_time_min": 14,
+            "distance_miles": 8.1,
+            "pci_score": 56,
+            "flood_risk_pct": 68.0,
+            "severe_potholes": 4,
+            "road_name": "Glenwood Ave & Crabtree Floodplain",
+            "critical_hazards": [
+                "Crabtree Creek Flash Floodway (68% high water surge danger)",
+                "Glenwood Ave Rutting & Pothole Clusters (4 tire-puncture risks)",
+            ],
+            "geometry": [
+                [-78.6748, 35.7725], [-78.6720, 35.7850], [-78.6650, 35.7980], [-78.6610, 35.8110],
+                [-78.6570, 35.8230], [-78.6520, 35.8340], [-78.6410, 35.8420]
+            ]
+        },
+        "safest": {
+            "label": "Safest Route (RoadSense AI Hazard-Penalized)",
+            "travel_time_min": 16,
+            "distance_miles": 9.4,
+            "pci_score": 92,
+            "flood_risk_pct": 2.0,
+            "severe_potholes": 0,
+            "road_name": "I-440 Beltline High Elevation Flyover",
+            "critical_hazards": [],
+            "geometry": [
+                [-78.6748, 35.7725], [-78.6850, 35.7800], [-78.6920, 35.7950], [-78.6880, 35.8150],
+                [-78.6750, 35.8310], [-78.6580, 35.8400], [-78.6410, 35.8420]
+            ]
+        },
+        "hazards_avoided": {"potholes": 4, "flood_zones": 1, "time_delta_min": 2},
+        "ai_rationale": "RoadSense AI detects high vulnerability in the Crabtree Creek basin. By shifting the vehicle path to the I-440 elevated flyover, drivers avoid 4 severe potholes and 1 critical flood entrapment hazard for a minor 2-minute delta, raising road quality from 56 to 92 PCI."
+    },
+    "outer-banks-coast": {
+        "id": "outer-banks-coast",
+        "name": "Outer Banks Coastal Corridor (NC 12 Dune Overwash)",
+        "region": "Eastern NC / Cape Hatteras Coast",
+        "badge": "Atlantic Surge Zone",
+        "center": [-75.535, 35.773],
+        "zoom": 10.4,
+        "origin": "Nags Head Beachfront (US-158)",
+        "destination": "Rodanthe / Hatteras Island (NC-12 South)",
+        "fastest": {
+            "label": "Fastest Route (Google Maps Baseline)",
+            "travel_time_min": 32,
+            "distance_miles": 25.1,
+            "pci_score": 48,
+            "flood_risk_pct": 84.0,
+            "severe_potholes": 6,
+            "road_name": "NC 12 Dune Overwash Section",
+            "critical_hazards": [
+                "Pea Island Ocean Dune Breach (84% ocean overwash hazard)",
+                "Saltwater Ponding & Undermined Asphalt Shoulders",
+            ],
+            "geometry": [
+                [-75.602, 35.952], [-75.589, 35.910], [-75.578, 35.865], [-75.565, 35.815],
+                [-75.548, 35.760], [-75.525, 35.700], [-75.495, 35.645], [-75.468, 35.594]
+            ]
+        },
+        "safest": {
+            "label": "Safest Route (RoadSense AI Hazard-Penalized)",
+            "travel_time_min": 35,
+            "distance_miles": 27.2,
+            "pci_score": 95,
+            "flood_risk_pct": 4.0,
+            "severe_potholes": 0,
+            "road_name": "Jug Handle Bridge Bypass & High Causeway",
+            "critical_hazards": [],
+            "geometry": [
+                [-75.602, 35.952], [-75.592, 35.910], [-75.582, 35.865], [-75.572, 35.815],
+                [-75.560, 35.760], [-75.545, 35.695], [-75.510, 35.635], [-75.480, 35.608],
+                [-75.468, 35.594]
+            ]
+        },
+        "hazards_avoided": {"potholes": 6, "flood_zones": 2, "time_delta_min": 3},
+        "ai_rationale": "RoadSense AI detects high-tide overwash risks along NC-12 barrier dunes. Directing drivers onto the Jug Handle Bridge structure avoids the notorious S-curves dune breach zone, ensuring 100% passability and protecting vehicle undercarriages from corrosive saltwater."
+    }
+}
+
+
 @app.get("/")
 @app.get("/api")
 def root():
     return {
         "service": "RoadSense AI API",
         "status": "online",
-        "endpoints": ["/api/health", "/api/stats", "/api/segments", "/api/segments/bbox", "/api/segments/{seg_id}"],
+        "endpoints": [
+            "/api/health",
+            "/api/stats",
+            "/api/segments",
+            "/api/segments/bbox",
+            "/api/segments/{seg_id}",
+            "/api/routes/corridors",
+            "/api/routes/safe-route",
+        ],
     }
+
+
+@app.get("/routes/corridors")
+@app.get("/api/routes/corridors")
+def list_route_corridors():
+    return {"total": len(ROUTE_CORRIDORS), "corridors": list(ROUTE_CORRIDORS.values())}
+
+
+@app.get("/routes/safe-route")
+@app.get("/api/routes/safe-route")
+def get_safe_route(
+    corridor: str = Query("asheville-helene", description="Corridor ID: asheville-helene, raleigh-capital, or outer-banks-coast")
+):
+    if corridor not in ROUTE_CORRIDORS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Corridor '{corridor}' not found. Available corridors: {list(ROUTE_CORRIDORS.keys())}"
+        )
+    return ROUTE_CORRIDORS[corridor]
 
 
 @app.get("/health")

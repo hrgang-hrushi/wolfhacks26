@@ -5,6 +5,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
 import { Sun, Globe, Crosshair } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
+import type { RoutePreviewState } from '../types/safeRoute';
 import { getScoreRGBA } from '../utils/colors';
 import { MAPBOX_TOKEN, NC_CITY_COORDINATES, CARTO_LIGHT_STYLE, CARTO_DARK_STYLE } from '../config/mapbox';
 
@@ -12,6 +13,7 @@ export interface MapViewHandle {
   flyToCity: (city: string) => void;
   flyToSegment: (segment: RoadSegment) => void;
   flyToCoords: (lng: number, lat: number, zoom?: number) => void;
+  flyToRouteCorridor?: (center: [number, number], zoom: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
   fitStatewide: () => void;
@@ -39,6 +41,7 @@ interface MapViewProps {
   onSelectSegment: (segment: RoadSegment) => void;
   onBboxChange?: (bbox: [number, number, number, number]) => void;
   conditionColorFilter?: ConditionColorFilter;
+  routePreview?: RoutePreviewState | null;
 }
 
 // Focused North Carolina Basemaps with automatic fallback
@@ -68,7 +71,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   selectedSegment,
   onSelectSegment,
   onBboxChange,
-  conditionColorFilter = 'all'
+  conditionColorFilter = 'all',
+  routePreview
 }, ref) => {
   const mapWrapperRef = useRef<HTMLDivElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -154,6 +158,17 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         zoom,
         pitch: 30,
         duration: 1500,
+        essential: true
+      });
+    },
+    flyToRouteCorridor: (center: [number, number], zoom: number) => {
+      if (!mapRef.current) return;
+      mapRef.current.flyTo({
+        center,
+        zoom,
+        pitch: 32,
+        bearing: -8,
+        duration: 1800,
         essential: true
       });
     },
@@ -616,8 +631,99 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       );
     }
 
+    // 6. Safe Route Navigator Preview Layers (Pillar 1 Driver Alternative)
+    if (routePreview && routePreview.corridor) {
+      const c = routePreview.corridor;
+      const opt = routePreview.selectedOption;
+
+      // A. Fastest Path (Google Maps Baseline - Amber / Danger Red)
+      if ((opt === 'fastest' || opt === 'both') && c.fastest.geometry.length > 0) {
+        layers.push(
+          new PathLayer({
+            id: 'safe-route-fastest-glow',
+            data: [{ path: c.fastest.geometry }],
+            pickable: false,
+            widthScale: 1,
+            widthMinPixels: 8,
+            capRounded: true,
+            jointRounded: true,
+            getPath: (d: any) => d.path,
+            getColor: [239, 68, 68, 140],
+            getWidth: 9
+          }),
+          new PathLayer({
+            id: 'safe-route-fastest-core',
+            data: [{ path: c.fastest.geometry }],
+            pickable: true,
+            widthScale: 1,
+            widthMinPixels: 4,
+            capRounded: true,
+            jointRounded: true,
+            getPath: (d: any) => d.path,
+            getColor: [249, 115, 22, 255],
+            getWidth: 4.5
+          })
+        );
+      }
+
+      // B. Safest Path (RoadSense AI - Emerald High-Ground Aura)
+      if ((opt === 'safest' || opt === 'both') && c.safest.geometry.length > 0) {
+        layers.push(
+          new PathLayer({
+            id: 'safe-route-safest-aura',
+            data: [{ path: c.safest.geometry }],
+            pickable: false,
+            widthScale: 1,
+            widthMinPixels: 10,
+            capRounded: true,
+            jointRounded: true,
+            getPath: (d: any) => d.path,
+            getColor: [16, 185, 129, 180],
+            getWidth: 12
+          }),
+          new PathLayer({
+            id: 'safe-route-safest-core',
+            data: [{ path: c.safest.geometry }],
+            pickable: true,
+            widthScale: 1,
+            widthMinPixels: 5,
+            capRounded: true,
+            jointRounded: true,
+            getPath: (d: any) => d.path,
+            getColor: [52, 211, 153, 255],
+            getWidth: 6
+          })
+        );
+      }
+
+      // C. Origin & Destination Waypoint Pins
+      const startCoord = c.safest.geometry[0] || c.fastest.geometry[0];
+      const endCoord = c.safest.geometry[c.safest.geometry.length - 1] || c.fastest.geometry[c.fastest.geometry.length - 1];
+
+      if (startCoord && endCoord) {
+        layers.push(
+          new ScatterplotLayer({
+            id: 'safe-route-waypoints',
+            data: [
+              { pos: startCoord, label: 'Origin', color: [16, 185, 129, 255], radius: 8 },
+              { pos: endCoord, label: 'Destination', color: [56, 189, 248, 255], radius: 8 }
+            ],
+            getPosition: (d: any) => d.pos,
+            getRadius: (d: any) => d.radius,
+            radiusUnits: 'pixels',
+            getFillColor: (d: any) => d.color,
+            stroked: true,
+            getLineColor: [255, 255, 255, 255],
+            lineWidthUnits: 'pixels',
+            lineWidthMinPixels: 2.5,
+            pickable: false
+          })
+        );
+      }
+    }
+
     overlayRef.current.setProps({ layers });
-  }, [segments, selectedSegment, onSelectSegment, conditionColorFilter]);
+  }, [segments, selectedSegment, onSelectSegment, conditionColorFilter, routePreview]);
 
   return (
     <div className="map-view-wrapper" ref={mapWrapperRef}>

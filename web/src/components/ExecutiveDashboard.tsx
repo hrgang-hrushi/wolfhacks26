@@ -10,6 +10,8 @@ import { CleanTenantsCard } from './CleanTenantsCard';
 import { PMTilesArchitectureModal } from './PMTilesArchitectureModal';
 import { AboutProjectModal } from './AboutProjectModal';
 import { SegmentDetailModal } from './SegmentDetailModal';
+import { SafeRouteModal } from './SafeRouteModal';
+import type { RouteCorridor, RoutePreviewState } from '../types/safeRoute';
 import '../App.css';
 
 function resolveCity(rawCity: string | undefined, lng: number, lat: number): string {
@@ -153,6 +155,8 @@ export function ExecutiveDashboard() {
   const [isArchModalOpen, setIsArchModalOpen] = useState(false);
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isSafeRouteModalOpen, setIsSafeRouteModalOpen] = useState(false);
+  const [activeRoutePreview, setActiveRoutePreview] = useState<RoutePreviewState | null>(null);
 
   // ── Entire NC: stats + statewide bbox streaming ──
   const [, setNcStats] = useState<any>(null);
@@ -267,6 +271,15 @@ export function ExecutiveDashboard() {
     mapCardRef.current?.flyToSegment(segment);
   }, []);
 
+  const handlePreviewRouteOnMap = useCallback((corridor: RouteCorridor, option: 'fastest' | 'safest' | 'both') => {
+    setActiveRoutePreview({ corridor, selectedOption: option });
+    mapCardRef.current?.flyToRouteCorridor?.(corridor.center, corridor.zoom);
+  }, []);
+
+  const handleClearRoutePreview = useCallback(() => {
+    setActiveRoutePreview(null);
+  }, []);
+
   // Compute subtle U-shape ambient glow rating: Green (Safe), Yellow (Caution), Red (Danger), Blue (Flood)
   const ratingStatus: 'safe' | 'caution' | 'danger' | 'blue' = useMemo(() => {
     if (conditionColorFilter === 'green') return 'safe';
@@ -298,6 +311,7 @@ export function ExecutiveDashboard() {
       {/* Left Vertical Navigation Rail */}
       <CleanSidebar
         onHomeClick={() => handleZoomCity('Raleigh')}
+        onRouteClick={() => setIsSafeRouteModalOpen(true)}
         onPlusClick={() => setIsDetailModalOpen(true)}
         onDocsClick={() => setIsAboutModalOpen(true)}
         onChatClick={() => setIsArchModalOpen(true)}
@@ -328,6 +342,9 @@ export function ExecutiveDashboard() {
           onBboxChange={handleBboxChange}
           conditionColorFilter={conditionColorFilter}
           onConditionColorFilterChange={setConditionColorFilter}
+          onOpenSafeRoute={() => setIsSafeRouteModalOpen(true)}
+          routePreview={activeRoutePreview}
+          onClearRoutePreview={handleClearRoutePreview}
         />
 
         {/* Bottom Row */}
@@ -351,6 +368,13 @@ export function ExecutiveDashboard() {
           />
         </div>
       </main>
+
+      {/* Safe Route Navigator Modal (Pillar 1 Driver Intelligence) */}
+      <SafeRouteModal
+        isOpen={isSafeRouteModalOpen}
+        onClose={() => setIsSafeRouteModalOpen(false)}
+        onPreviewOnMap={handlePreviewRouteOnMap}
+      />
 
       {/* Deep Road Segment Drilldown Modal */}
       {isDetailModalOpen && selectedSegment && (
