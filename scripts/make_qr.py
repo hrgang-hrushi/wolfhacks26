@@ -16,6 +16,7 @@ import io
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
+from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "web" / "public" / "qr"
@@ -56,7 +57,7 @@ def main() -> None:
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h + pad}" viewBox="0 0 {w} {h + pad}">'
         f'<rect width="{w}" height="{h + pad}" fill="#fff"/>{inner}'
         f'<text x="{w / 2}" y="{h + 14}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" '
-        f'font-size="22" font-weight="700" fill="#111">{label}</text></svg>\n'
+        f'font-size="22" font-weight="700" fill="#111">{escape(label)}</text></svg>\n'
     )
 
     # PNG: same layout, drawn with Pillow.

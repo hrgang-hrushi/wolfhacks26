@@ -11,7 +11,8 @@ this machine, three files that are not committed:
     handoff/traffic_crash.parquet    traffic count or estimate (committed)
     data/raw/helene_labels.parquet   what Helene actually damaged (for the backtest)
 
-Writes web/public/data/ (git-ignored, regenerate before deploying):
+Writes web/public/data/ (committed, so a host that builds from the repo ships it; rerun and commit when the
+predictions change):
 
     stats.json          statewide counts, tier counts, county table, shard index
     overview.json       the ~5,000 highest-priority roads, for zoomed-out views
@@ -240,9 +241,10 @@ def detail_fields(r) -> dict:
         "bmp": num(r.BEG_MP, 3), "emp": num(r.END_MP, 3), "len": num(r.LENGTH, 3),
         "fr": r.FROM_DESC if isinstance(r.FROM_DESC, str) else None,
         "to": r.TO_DESC if isinstance(r.TO_DESC, str) else None,
-        "rtg": num(r.RTG_NBR, 1), "sy": int(r.PCS_SRVY_YR),
+        # A rating or lane count of 0 is NCDOT's blank, not a measurement (web/tiger/build.py treats it the same way).
+        "rtg": num(r.RTG_NBR, 1) if r.RTG_NBR > 0 else None, "sy": int(r.PCS_SRVY_YR),
         "ry": None if pd.isna(r.YEAR_LAST_REHAB) else int(r.YEAR_LAST_REHAB),
-        "ln": int(r.NUMBER_OF_LANES),
+        "ln": int(r.NUMBER_OF_LANES) if r.NUMBER_OF_LANES > 0 else None,
         "trt": r.PMS_TREATMENT_NAME if isinstance(r.PMS_TREATMENT_NAME, str) else None,
         "cost": None if pd.isna(r.TREATMENT_COST) else int(round(r.TREATMENT_COST)),
     }
@@ -557,7 +559,8 @@ def main() -> None:
     # The alert sliders count from these histograms; make sure they agree with a direct count.
     assert sum(stats["hist"]["ytp"]["counts"][:3]) == int((g.pred_years_to_poor <= 1).sum())
     assert sum(stats["hist"]["crack"]["counts"][60:]) == int((g.pred_crack >= 0.6).sum())
-    assert sum(stats["hist"]["flood_zone"]["counts"][50:]) == stats["helene"]["high_flood"]
+    flood_bin = int(round(cfg["tiers"]["fix_now"]["flood_min"] / 0.01))    # follows priority.json, not a fixed 0.5
+    assert sum(stats["hist"]["flood_zone"]["counts"][flood_bin:]) == stats["helene"]["high_flood"]
     raw, gz = dump(out / "stats.json", stats)
     print(f"stats.json: {raw/1e3:.0f} KB raw, {gz/1e3:.0f} KB gzip")
 
