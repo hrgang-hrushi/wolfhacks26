@@ -28,11 +28,16 @@ if (page === 'm') {
   void loadStats().catch(() => undefined);
 }
 
-const Page = lazy(() => {
-  if (page === 'gov') return import('./gov/GovApp');
-  if (page === 'm') return import('./mobile/MobileApp');
-  return import('./components/ExecutiveDashboard');
-});
+// One loader per page, each in its own function. With all three import() calls in a single
+// function, the production build attaches only the dashboard's stylesheet list to them, so
+// /gov and /m ship without their CSS (the dev server is unaffected).
+const loaders = {
+  gov: () => import('./gov/GovApp'),
+  m: () => import('./mobile/MobileApp'),
+  dashboard: () => import('./components/ExecutiveDashboard'),
+};
+
+const Page = lazy(loaders[page]);
 
 export function App() {
   return (
