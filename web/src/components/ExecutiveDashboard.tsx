@@ -267,8 +267,79 @@ export function ExecutiveDashboard() {
     mapCardRef.current?.flyToSegment(segment);
   }, []);
 
+  // Compute subtle U-shape ambient glow rating: Green (Safe), Yellow (Caution), Red (Danger), Blue (Flood)
+  const ratingStatus: 'safe' | 'caution' | 'danger' | 'blue' = useMemo(() => {
+    if (conditionColorFilter === 'green') return 'safe';
+    if (conditionColorFilter === 'yellow') return 'caution';
+    if (conditionColorFilter === 'red') return 'danger';
+    if (conditionColorFilter === 'blue') return 'blue';
+
+    if (selectedSegment) {
+      if (selectedSegment.in_helene_zone || (selectedSegment.pred_flood && selectedSegment.pred_flood > 0.15)) {
+        return 'blue';
+      }
+      const score = typeof selectedSegment.score === 'number' && !isNaN(selectedSegment.score)
+        ? selectedSegment.score
+        : (selectedSegment.pv_rating ? selectedSegment.pv_rating / 100 : 0.75);
+      if (score < 0.45 || (selectedSegment.pred_crack && selectedSegment.pred_crack > 0.4)) {
+        return 'danger';
+      }
+      if (score < 0.70) {
+        return 'caution';
+      }
+      return 'safe';
+    }
+
+    return 'safe';
+  }, [conditionColorFilter, selectedSegment]);
+
+  const notchColor = useMemo(() => {
+    switch (ratingStatus) {
+      case 'safe': return '#22c55e';
+      case 'caution': return '#eab308';
+      case 'danger': return '#ef4444';
+      case 'blue': return '#0ea5e9';
+      default: return '#22c55e';
+    }
+  }, [ratingStatus]);
+
+  // Main background U glow — same 264° sweep as Gauge, dynamically matching rating condition
+  const pageGlowNotches = useMemo(() => {
+    const cx = 500;
+    const cy = 460;
+    const outerR = 420;
+    const total = 84;
+    const start = 138;
+    const end = 402;
+    const sweep = end - start;
+    const step = sweep / (total - 1);
+    const notchW = 7;
+    const notchLen = 22;
+    const active = ratingStatus === 'safe' ? 68 : ratingStatus === 'caution' ? 46 : ratingStatus === 'blue' ? 56 : 28;
+    const arr: React.ReactNode[] = [];
+    for (let i = 0; i < total; i++) {
+      const ang = start + i * step;
+      const isActive = i < active;
+      arr.push(
+        <rect
+          key={i}
+          x={cx - notchW / 2}
+          y={cy - outerR}
+          width={notchW}
+          height={notchLen}
+          rx={1.6}
+          ry={1.6}
+          fill={isActive ? notchColor : '#e2e8f0'}
+          opacity={isActive ? 0.88 : 0.28}
+          transform={`rotate(${ang + 90} ${cx} ${cy})`}
+        />
+      );
+    }
+    return arr;
+  }, [notchColor, ratingStatus]);
+
   return (
-    <div className="fullscreen-dashboard-root">
+    <div className={`fullscreen-dashboard-root page-rating-${ratingStatus}`}>
       {/* Left Vertical Navigation Rail */}
       <CleanSidebar
         onHomeClick={() => handleZoomCity('Raleigh')}
@@ -281,6 +352,16 @@ export function ExecutiveDashboard() {
 
       {/* Main Workspace (Full Screen) */}
       <main className="fullscreen-main-pane">
+        {/* Page-level Ambient U-Shape Rating Glow (Bottom-Left, Bottom, Bottom-Right) */}
+        <div className={`page-u-frame-glow rating-${ratingStatus}`} aria-hidden="true" />
+
+        {/* Main background U glow — behind all widgets, same U as gauge */}
+        <div className={`page-u-glow rating-${ratingStatus}`} aria-hidden="true">
+          <div className="page-u-glow-blur" />
+          <svg className="page-u-glow-svg" viewBox="0 0 1000 420" preserveAspectRatio="xMidYMid meet">
+            <g>{pageGlowNotches}</g>
+          </svg>
+        </div>
         {/* Top Map Card — entire NC bbox streaming */}
         <CleanMapCard
           ref={mapCardRef}

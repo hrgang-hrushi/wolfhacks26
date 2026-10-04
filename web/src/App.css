@@ -67,6 +67,50 @@ html, body, #root {
   flex-direction: row;
   background: var(--bg-dashboard);
   overflow: hidden;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Main background U glow — behind entire dashboard on fullscreen background */
+.page-u-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0;
+  opacity: 1;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.page-u-glow-svg {
+  width: 96%;
+  height: 44%;
+  max-width: 1800px;
+  max-height: 420px;
+  min-width: 900px;
+  overflow: visible;
+  display: block;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 22px var(--glow-svg-drop, rgba(34, 197, 94, 0.24))) drop-shadow(0 0 44px var(--glow-svg-drop, rgba(34, 197, 94, 0.14))) drop-shadow(0 0 90px var(--glow-svg-drop, rgba(34, 197, 94, 0.08)));
+  transition: filter 0.5s ease-in-out;
+}
+
+.page-u-glow-blur {
+  position: absolute;
+  left: -10vw;
+  right: -10vw;
+  bottom: -8vh;
+  height: 48%;
+  background:
+    radial-gradient(ellipse 78% 88% at 50% 108%, var(--glow-blur-1, rgba(34, 197, 94, 0.15)) 0%, var(--glow-blur-2, rgba(74, 222, 128, 0.08)) 28%, var(--glow-blur-3, rgba(134, 239, 172, 0.03)) 52%, transparent 72%),
+    linear-gradient(to top, var(--glow-blur-linear, rgba(34, 197, 94, 0.07)) 0%, transparent 65%);
+  filter: blur(28px);
+  pointer-events: none;
+  transition: background 0.5s ease-in-out;
 }
 
 /* ==========================================================================
@@ -181,6 +225,14 @@ html, body, #root {
   box-sizing: border-box;
   overflow: hidden;
   background: var(--bg-pane);
+  position: relative;
+  isolation: isolate;
+}
+
+.fullscreen-main-pane > .pixel-map-card,
+.fullscreen-main-pane > .fullscreen-bottom-row {
+  position: relative;
+  z-index: 1;
 }
 
 /* ==========================================================================
@@ -589,85 +641,115 @@ html, body, #root {
 }
 
 /* ==========================================================================
-   Subtle U-Shape Ambient Glow (Bottom-Left, Bottom, Bottom-Right)
-   Indicates Pavement Rating: Green (Safe), Yellow (Caution), Red (Danger)
+   Page-Level U-Shape Ambient Glow (Bottom-Left, Bottom, Bottom-Right)
+   Indicates Pavement Rating Under Entire Page:
+   Green (Safe), Yellow (Caution), Red (Danger), Blue (Helene Flood Hazard)
    ========================================================================== */
-.map-rating-u-glow {
+.page-u-frame-glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  border-radius: 20px;
-  z-index: 6;
+  z-index: 4;
   overflow: hidden;
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.map-rating-u-glow::before {
+.page-u-frame-glow::before {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 55%;
+  height: 62%;
   pointer-events: none;
-  border-bottom-left-radius: 20px;
-  border-bottom-right-radius: 20px;
-  border-left: 2px solid var(--glow-border, rgba(34, 197, 94, 0.45));
-  border-right: 2px solid var(--glow-border, rgba(34, 197, 94, 0.45));
-  border-bottom: 2px solid var(--glow-border, rgba(34, 197, 94, 0.45));
+  border-left: 2px solid var(--page-glow-border, rgba(34, 197, 94, 0.55));
+  border-right: 2px solid var(--page-glow-border, rgba(34, 197, 94, 0.55));
+  border-bottom: 2px solid var(--page-glow-border, rgba(34, 197, 94, 0.55));
   border-top: none;
   box-shadow:
-    inset 16px 0 28px -6px var(--glow-color, rgba(34, 197, 94, 0.35)),
-    inset -16px 0 28px -6px var(--glow-color, rgba(34, 197, 94, 0.35)),
-    inset 0 -24px 36px -6px var(--glow-color, rgba(34, 197, 94, 0.45)),
-    0 0 24px var(--glow-ambient, rgba(34, 197, 94, 0.25));
-  mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.75) 45%, rgba(0, 0, 0, 0) 100%);
-  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.75) 45%, rgba(0, 0, 0, 0) 100%);
+    inset 24px 0 42px -6px var(--page-glow-color, rgba(34, 197, 94, 0.35)),
+    inset -24px 0 42px -6px var(--page-glow-color, rgba(34, 197, 94, 0.35)),
+    inset 0 -32px 54px -6px var(--page-glow-color, rgba(34, 197, 94, 0.44)),
+    0 0 32px var(--page-glow-ambient, rgba(34, 197, 94, 0.25));
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.65) 45%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.65) 45%, rgba(0, 0, 0, 0) 100%);
   transition: all 0.5s ease-in-out;
 }
 
-.map-rating-u-glow::after {
+.page-u-frame-glow::after {
   content: '';
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 40%;
+  height: 48%;
   pointer-events: none;
-  background: radial-gradient(ellipse 90% 45% at 50% 100%, var(--glow-radial, rgba(34, 197, 94, 0.12)) 0%, transparent 80%);
+  background: radial-gradient(ellipse 90% 50% at 50% 100%, var(--page-glow-radial, rgba(34, 197, 94, 0.14)) 0%, transparent 80%);
   transition: all 0.5s ease-in-out;
 }
 
 /* Green: Safe Condition */
-.map-rating-u-glow.rating-safe {
-  --glow-border: rgba(34, 197, 94, 0.55);
-  --glow-color: rgba(34, 197, 94, 0.42);
-  --glow-ambient: rgba(34, 197, 94, 0.26);
-  --glow-radial: rgba(34, 197, 94, 0.14);
+.rating-safe,
+.page-u-frame-glow.rating-safe,
+.page-u-glow.rating-safe,
+.page-rating-safe {
+  --page-glow-border: rgba(34, 197, 94, 0.60);
+  --page-glow-color: rgba(34, 197, 94, 0.40);
+  --page-glow-ambient: rgba(34, 197, 94, 0.25);
+  --page-glow-radial: rgba(34, 197, 94, 0.15);
+  --glow-svg-drop: rgba(34, 197, 94, 0.26);
+  --glow-blur-1: rgba(34, 197, 94, 0.15);
+  --glow-blur-2: rgba(74, 222, 128, 0.08);
+  --glow-blur-3: rgba(134, 239, 172, 0.03);
+  --glow-blur-linear: rgba(34, 197, 94, 0.07);
 }
 
 /* Yellow: Caution Condition */
-.map-rating-u-glow.rating-caution {
-  --glow-border: rgba(234, 179, 8, 0.58);
-  --glow-color: rgba(234, 179, 8, 0.46);
-  --glow-ambient: rgba(234, 179, 8, 0.30);
-  --glow-radial: rgba(234, 179, 8, 0.16);
+.rating-caution,
+.page-u-frame-glow.rating-caution,
+.page-u-glow.rating-caution,
+.page-rating-caution {
+  --page-glow-border: rgba(234, 179, 8, 0.62);
+  --page-glow-color: rgba(234, 179, 8, 0.44);
+  --page-glow-ambient: rgba(234, 179, 8, 0.28);
+  --page-glow-radial: rgba(234, 179, 8, 0.17);
+  --glow-svg-drop: rgba(234, 179, 8, 0.28);
+  --glow-blur-1: rgba(234, 179, 8, 0.16);
+  --glow-blur-2: rgba(250, 204, 21, 0.09);
+  --glow-blur-3: rgba(253, 224, 71, 0.03);
+  --glow-blur-linear: rgba(234, 179, 8, 0.08);
 }
 
 /* Red: Danger Condition */
-.map-rating-u-glow.rating-danger {
-  --glow-border: rgba(239, 68, 68, 0.65);
-  --glow-color: rgba(239, 68, 68, 0.52);
-  --glow-ambient: rgba(239, 68, 68, 0.34);
-  --glow-radial: rgba(239, 68, 68, 0.18);
+.rating-danger,
+.page-u-frame-glow.rating-danger,
+.page-u-glow.rating-danger,
+.page-rating-danger {
+  --page-glow-border: rgba(239, 68, 68, 0.70);
+  --page-glow-color: rgba(239, 68, 68, 0.50);
+  --page-glow-ambient: rgba(239, 68, 68, 0.32);
+  --page-glow-radial: rgba(239, 68, 68, 0.19);
+  --glow-svg-drop: rgba(239, 68, 68, 0.32);
+  --glow-blur-1: rgba(239, 68, 68, 0.17);
+  --glow-blur-2: rgba(248, 113, 113, 0.09);
+  --glow-blur-3: rgba(252, 165, 165, 0.03);
+  --glow-blur-linear: rgba(239, 68, 68, 0.08);
 }
 
 /* Blue: Helene / Flood Hazard Zone */
-.map-rating-u-glow.rating-blue {
-  --glow-border: rgba(56, 189, 248, 0.58);
-  --glow-color: rgba(56, 189, 248, 0.46);
-  --glow-ambient: rgba(56, 189, 248, 0.28);
-  --glow-radial: rgba(56, 189, 248, 0.16);
+.rating-blue,
+.page-u-frame-glow.rating-blue,
+.page-u-glow.rating-blue,
+.page-rating-blue {
+  --page-glow-border: rgba(14, 165, 233, 0.62);
+  --page-glow-color: rgba(14, 165, 233, 0.44);
+  --page-glow-ambient: rgba(14, 165, 233, 0.28);
+  --page-glow-radial: rgba(14, 165, 233, 0.17);
+  --glow-svg-drop: rgba(14, 165, 233, 0.28);
+  --glow-blur-1: rgba(14, 165, 233, 0.16);
+  --glow-blur-2: rgba(56, 189, 248, 0.09);
+  --glow-blur-3: rgba(125, 211, 252, 0.03);
+  --glow-blur-linear: rgba(14, 165, 233, 0.08);
 }
 
 /* ==========================================================================

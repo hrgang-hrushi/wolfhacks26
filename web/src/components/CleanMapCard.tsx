@@ -199,32 +199,6 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
     setOpenDropdown(prev => (prev === name ? null : name));
   };
 
-  // Compute subtle U-shape ambient glow rating: Green (Safe), Yellow (Caution), Red (Danger), Blue (Flood)
-  const ratingStatus: 'safe' | 'caution' | 'danger' | 'blue' = useMemo(() => {
-    if (conditionColorFilter === 'green') return 'safe';
-    if (conditionColorFilter === 'yellow') return 'caution';
-    if (conditionColorFilter === 'red') return 'danger';
-    if (conditionColorFilter === 'blue') return 'blue';
-
-    if (selectedSegment) {
-      if (selectedSegment.in_helene_zone || (selectedSegment.pred_flood && selectedSegment.pred_flood > 0.15)) {
-        return 'blue';
-      }
-      const score = typeof selectedSegment.score === 'number' && !isNaN(selectedSegment.score)
-        ? selectedSegment.score
-        : (selectedSegment.pv_rating ? selectedSegment.pv_rating / 100 : 0.75);
-      if (score < 0.45 || (selectedSegment.pred_crack && selectedSegment.pred_crack > 0.4)) {
-        return 'danger';
-      }
-      if (score < 0.70) {
-        return 'caution';
-      }
-      return 'safe';
-    }
-
-    return 'safe';
-  }, [conditionColorFilter, selectedSegment]);
-
   const showSuggestions = isSearchFocused && searchQuery.trim().length > 0;
   const isRaining = weather?.condition.toLowerCase().includes('rain') || (weather?.rain1h && weather.rain1h > 0);
 
@@ -241,9 +215,6 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           conditionColorFilter={conditionColorFilter}
         />
       </div>
-
-      {/* Subtle U-Shaped Rating Ambient Glow (Bottom-Left, Bottom, Bottom-Right) */}
-      <div className={`map-rating-u-glow rating-${ratingStatus}`} aria-hidden="true" />
 
       {/* Top Floating Controls Bar */}
       <div className="pixel-map-top-bar" ref={topBarRef}>
