@@ -2,7 +2,7 @@
 name = "hack-ncsu"
 version = "0.1.0"
 description = "NC pavement condition pipeline: NCDOT PCS + 3DEP terrain + NAIP chips"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.11"
 dependencies = [
     "geopandas",
     "pyarrow",

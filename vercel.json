@@ -2,9 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
     "app": {
-      "root": ".",
+      "root": "server",
       "runtime": "python",
-      "entrypoint": "src/api.py"
+      "entrypoint": "main.py"
     },
     "web": {
       "root": "web",

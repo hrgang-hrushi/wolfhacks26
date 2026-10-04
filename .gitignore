@@ -12,6 +12,7 @@ data/processed/segments.parquet
 __pycache__/
 *.py[cod]
 *.egg-info/
+uv.lock
 .DS_Store
 data/processed/
 logs/
