@@ -8,6 +8,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 from psycopg import sql
+from psycopg.types.json import Jsonb
 
 from web.service import app as service
 from web.tiger import build, config, load, replay, schema, verify
@@ -355,6 +356,20 @@ def test_D13_compression_is_real_and_changes_no_answer(db_url, empty_schema, fix
     assert (in_db[0], in_db[1]) == (stats["sensor_levels"]["compressed_chunks"], stats["sensor_levels"]["bytes_before"])
 
 
+def test_D13_the_check_fails_when_the_load_record_lacks_the_version_or_the_sizes(db_url, fresh_schema, fixture_root, run, dash):
+    q = run(fresh_schema)
+    with dash.sunnyday_out(fixture_root):
+        before = {c.name: c for c in verify.run(db_url, fresh_schema, fixture_root)}
+    assert before["load record holds the version and the measured sizes"].ok
+    saved = q("SELECT timescaledb_version, compression FROM load_manifest ORDER BY id DESC LIMIT 1")[0]
+    for blanked in ("compression = NULL", "timescaledb_version = NULL", "compression = '{\"sensor_levels\": {}}'::jsonb"):
+        q(f"UPDATE load_manifest SET {blanked} RETURNING 1")
+        with dash.sunnyday_out(fixture_root):
+            after = {c.name: c for c in verify.run(db_url, fresh_schema, fixture_root)}
+        assert not after["load record holds the version and the measured sizes"].ok, blanked
+        q("UPDATE load_manifest SET timescaledb_version = %s, compression = %s RETURNING 1", [saved[0], Jsonb(saved[1])])
+
+
 def test_D13_the_load_record_keeps_the_measured_sizes(loaded_schema, run):
     comp, status = run(loaded_schema)("SELECT compression, status FROM load_manifest ORDER BY id DESC LIMIT 1")[0]
     assert status == "complete" and set(comp) == set(schema.HYPERTABLES)
@@ -480,7 +495,18 @@ def test_the_files_for_tigers_browser_console_load_the_same_data(db_url, empty_s
             assert conn.execute("SELECT status FROM load_manifest ORDER BY id DESC LIMIT 1").fetchone() == ("loaded",)
         for line in (tmp_path / "after_load.sql").read_text().splitlines():
             conn.execute(line)
-        assert conn.execute("SELECT status FROM load_manifest ORDER BY id DESC LIMIT 1").fetchone() == ("complete",)
+        record = conn.execute("SELECT status, timescaledb_version, compression, sources, row_counts, finished_at "
+                              "FROM load_manifest ORDER BY id DESC LIMIT 1").fetchone()
+        assert record[0] == "complete" and record[5] is not None
+        assert record[1] == conn.execute("SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'").fetchone()[0]
+        assert record[3] == built.fingerprints and record[4] == built.counts
+        measured = load.compression_stats(conn)                              # what a direct load would have recorded
+        assert set(record[2]) == set(schema.HYPERTABLES)
+        for table, want in measured.items():
+            got = record[2][table]
+            assert {k: got[k] for k in ("chunks", "compressed_chunks", "bytes_before", "bytes_after")} == \
+                   {k: want[k] for k in ("chunks", "compressed_chunks", "bytes_before", "bytes_after")}, table
+            assert want["compressed_chunks"] >= 1 and abs(float(got["ratio"]) - want["ratio"]) < 0.011, table
     finally:
         conn.close()
     with dash.sunnyday_out(fixture_root):

@@ -154,7 +154,7 @@ The venue network blocks the port Tiger services listen on. In order: test the p
 | Build the tables from the files | 3.1 s |
 | Copy into the database | 4.9 s |
 | Whole load, with summaries and compression | 8.4 s |
-| Check command | 15 of 15 checks passed, 4.4 s |
+| Check command | 16 of 16 checks passed, about 4 s |
 | Database size | 122 MB (`roads` 53 MB, `road_shapes` 41 MB) |
 | Service replies | 4 to 81 ms per route; the 20 MB download in 1.5 s |
 
@@ -168,4 +168,4 @@ Compression, read from the database after the load:
 
 These tables are small, so the saving is a few megabytes; the 112,443 roads and their shapes are ordinary tables and are not compressed. The figures for the real Tiger service will be recorded here when it is loaded.
 
-Tests: 334 in `tests/dashboard`. 206 need no database and pass. 123 need the local database and pass. 5 need the real service; they run only with `TIGER_LIVE_TESTS=1` and have not been run.
+Tests: 335 in `tests/dashboard`. 206 need no database and pass. 124 need the local database and pass. 5 need the real service; they run only with `TIGER_LIVE_TESTS=1` and have not been run.

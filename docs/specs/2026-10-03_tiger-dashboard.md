@@ -168,7 +168,7 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 - Alerts: as of 2026-09-27 15:30 UTC, 7 camera flags and 6 sensor alerts. With no time given, 7 flags, all from NCDOT stills labelled known dry.
 - Replay of the peak hour: the alert read as live from the first batch; clearing it restored the original rows and the check command passed again.
 
-**Tests**: 334 in `tests/dashboard` after the critique fixes (206 without a database, all passing; 123 with the local database; 5 that need the real service and run only with `TIGER_LIVE_TESTS=1`). P2 estimated about 67; the larger number comes from the plan review's additions and from one test per case where P2 listed one per failure.
+**Tests**: 335 in `tests/dashboard` after the critique and audit fixes (206 without a database and 124 with the local database, all passing; 5 that need the real service, which run only with `TIGER_LIVE_TESTS=1` and have not been run). P2 estimated about 67; the larger number comes from the plan review's additions and from one test per case where P2 listed one per failure.
 
 ## Deviations from the plan
 
@@ -187,6 +187,8 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 12. **The console files** empty the tables and write a `loaded` record in `setup.sql`, and `after_load.sql` sets it to `complete`, so D11's "loading" rule also holds for a load done by hand.
 13. **A held table lock answers "loading".** While a load's copy step holds the tables, a data route used to wait for its lock time limit and answer "database unavailable".
 14. **The replay reports rows it left out.** A replayed row that would land exactly on an existing row's key is not inserted (the real row is never written over); the command prints how many.
+
+15. **`README.md`.** This change's commits do not touch it (D19). The branch does contain a README edit, commit `684145b`: the coordination chat changed the status row on `main`, using wording this chat suggested when asked, and `main` was then merged in.
 
 ## Paragraph for the README (for the user to paste; this change does not edit the README)
 
@@ -237,5 +239,16 @@ Left as they are, and why: X2's "shows without a refresh" cannot be told apart f
 
 ### After the drive came back (22:30)
 
-On the final code: 123 `db` tests passed; 206 tests that need no database passed; the base suite gave 204 passed and 1 skipped; a fresh load of the real files into the local database took 5.8 s and the check command passed 15 of 15. AC3 is the only acceptance criterion still open: the real service was not loaded, because the connection setting was never on the machine and the venue network blocks the port again.
+On the code as it was then: 123 `db` tests passed; 206 tests that need no database passed; the base suite gave 204 passed and 1 skipped; a fresh load of the real files into the local database took 5.8 s and the check command passed 15 of 15. Two acceptance criteria are still open: AC3 and the real-service half of AC5. The real service was not loaded, because the connection setting was never on the machine and the venue network blocks the port again.
+
+### Codex audit, round 1 (`18e3988`): Overall Fail
+
+Scorecard: Plan adherence **Fail**; Scope discipline Acceptable; Test coverage **Fail**; Review compliance Acceptable; Freeze integrity Acceptable; Regression check Acceptable; Documentation Acceptable. The audit file is `docs/specs/2026-10-03_tiger-dashboard-audit.md`.
+
+1. The console files wrote a load record without the TimescaleDB version and never saved the compression figures (D10, D11), and neither the test nor the check command looked. Fixed: `setup.sql` records the version from the database, `after_load.sql` records the same figures a direct load reads, the console test compares them with a direct measurement, and the check command gained a sixteenth check that fails when the record lacks the version or the sizes (with a test that blanks each).
+2. AC3 and the real-service half of AC5 are unmet. Not fixable here: it needs the connection setting and a network that allows the port. This is the reason the overall grade stays Fail.
+3. `README.md` changed in commit `684145b` while D19 says this change does not edit it. Recorded as Deviations 15: that commit is the coordination chat's, on `main`.
+4. The auditor could not re-run the file-writing and database tests in its read-only sandbox; no action.
+
+After the fixes: 124 `db` tests passed, 206 without a database passed, and the check command passed 16 of 16 on a fresh local load.
 
