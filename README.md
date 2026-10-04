@@ -16,7 +16,7 @@ Our idea: learn from the inspected roads what age, traffic and the shape of the 
 
 ## End goals
 
-What this project is meant to become. The predictions exist today. The dashboard and the data feed are not built yet.
+What this project is meant to become. The predictions exist today and a web dashboard is in `web/`. The data feed for map companies is not built yet.
 
 | Goal | What it does | Where it stands |
 |---|---|---|
@@ -24,10 +24,10 @@ What this project is meant to become. The predictions exist today. The dashboard
 | **Safer-route data for map companies** | A per-road risk file that navigation apps can read, so drivers are routed around rough pavement and flood-prone roads. | The held-out prediction file with road shapes exists (`handoff/predictions_geo.parquet`). No export format or routing yet. |
 | **Budget planner** | Ranks repairs by benefit per dollar and shows what waiting costs. | NCDOT's data carries a recommended treatment and a cost estimate per road. Not built. |
 | **Storm readiness** | Before a forecast storm, lists the roads most likely to wash out, so crews can stage equipment and plan detours. | The flood model found 18 damaged roads among its 50 riskiest in the Helene zone, against about 2 by chance. |
-| **Live confirmation from cameras** | Uses public traffic cameras to confirm water on the road or visible damage, so an alert rests on more than a prediction. | In progress: camera stills are being matched to roads and a first flood reader is being tested. |
+| **Live confirmation from cameras** | Uses public traffic cameras to confirm water on the road or visible damage, so an alert rests on more than a prediction. | One round of stills from about 1,000 NCDOT cameras is matched to roads, and a flood reader trained on coastal roadside cameras has been tested (see below). It is not running live yet. |
 | **Scores for streets nobody inspects** | A first estimate for city streets, where no public survey exists. | Not built. Only state roads are scored so far. |
 
-Also planned: resident pothole reports as a check on the predictions, and ranking by who relies on the road (trucks, school routes, ambulance routes).
+Also planned: ranking by who relies on the road (trucks, school routes, ambulance routes).
 
 ## Follow one road through the model
 
@@ -71,16 +71,31 @@ We tested every prediction the same way as the road above: on roads the model ha
 
 Knowing the shape of the land barely changes the wear estimate. It clearly helps find cracked roads, and it helps most with flood damage.
 
+**Checked against real potholes.** Charlotte and Raleigh publish located pothole reports, and we matched 3,610 of them to state road segments. In Charlotte, roads our model's held-out predictions rank worst draw about three times the pothole reports per mile of the roads it ranks best, comparing roads with similar traffic (wear: 3.3, 95% range 1.6 to 6.7; cracking: 3.8, range 2.3 to 6.7). NCDOT's own rating, which is never an input to the model, gives 7.7 (range 4.8 to 12.6). Most of those reports are city-street repairs beside a state road; using only the 190 requests filed against state roads gives the same picture with wider ranges. Raleigh has 84 usable reports: its ranges are wide and the wear prediction shows no lift there. A separate pothole model trained on Charlotte did no better than a model that knows only traffic and segment length. We also graded 141 clear NCDOT traffic-camera stills; none showed an open pothole, and once interstates are set apart the camera evidence is too thin (about 20 cameras per group) to count as more than weak support.
+
+**Reading floods from cameras.** A second model looks at one roadside-camera photo and says whether the road is flooded and how deep the water is. It learned from 1,902 photos from ten coastal camera sites, each paired with a water-level sensor reading; 418 show a flooded road.
+
+| Test | Flood calls that were right | Flooded photos caught | Depth miss on flooded photos |
+|---|---|---|---|
+| A camera it has never seen, pretrained reader | 65% | 86% | 8.7 cm |
+| A camera it has never seen, fine-tuned | 85% | 91% | 9.7 cm |
+| A known camera on a new day, fine-tuned | 95% | 89% | 4.8 cm |
+
+Fine-tuning makes the flooded-or-not call clearly better and leaves the depth estimate about the same. On 1,191 NCDOT traffic-camera stills from a rainy day with no floods, the fine-tuned reader wrongly flagged 9. The two fine-tuned rows were trained with different settings (the new-day row at a larger image size and more passes), so compare them with care.
+
 ## What is being built right now
 
-Status on October 3, 2026.
+Status on the evening of October 3, 2026.
 
 | Track | Status | What it is |
 |---|---|---|
-| Corrected labels and honest map predictions | Done | Age is counted to the inspection year, a road counts as cracked only above 10%, and every road's score on the map comes from a model that never saw that road. 89 tests guard it. |
+| Corrected labels and honest map predictions | Done | Age is counted to the inspection year, a road counts as cracked only above 10%, and every road's score on the map comes from a model that never saw that road. |
 | Do the aerial photos help? | Code written, not yet run | A test on all 112,443 photos: one view of each against eight turned and flipped views, and training with and without those changes. |
-| Real pothole evidence | Planned | 24,824 pothole reports from Charlotte and 435 from Raleigh, matched to roads, to check whether the roads we rank worst get more reports. Plus still images from public NCDOT cameras. |
-| Flood depth from cameras | Collecting photos | Photos of flooded coastal roads from late September 2026, each with a measured water level, to teach a model to read how deep the water is. |
+| Real pothole evidence | Done | Pothole reports from Charlotte and Raleigh matched to roads, plus graded stills from public NCDOT cameras. In Charlotte the roads we rank worst draw about three times the reports of the best. Results are under "Does it work?". |
+| Flood depth from cameras | Done, first version | A reader trained on photos of flooded coastal roads from late September 2026, each with a measured water level. On a camera it has never seen it catches 91% of flooded photos. Results are under "Does it work?". |
+| Crash counts and estimated traffic | Done | Added for every road, for the repair ranking (`handoff/traffic_crash.parquet`). They did not improve the wear, cracking or flood predictions, so the model is unchanged. |
+| Dashboards | In progress | An agency view and a phone view on the real predictions, and a database-backed service with a work list, alerts and a downloadable risk file. |
+| Helene flood depth map | In progress | Water depth along roads in the Helene area, from high-water marks and finer terrain. |
 
 ## What we cannot claim
 
@@ -89,6 +104,7 @@ Status on October 3, 2026.
 - **City streets are not scored yet.** Only state roads have ratings to learn from, so a city-street score would be borrowed from state roads and could not be checked the same way.
 - **Traffic counts are thin.** About 48% of roads have a real count.
 - **The photos are older than the inspections.** They are from 2022; most inspections are from 2025.
+- **A camera flag is not a confirmed flood.** The flood reader learned from ten coastal camera sites and wrongly flagged 9 of 1,191 dry stills. Traffic cameras also pan and zoom, so a view changes between photos.
 
 The technical detail behind each of these is in [Limitations](#limitations) below.
 
