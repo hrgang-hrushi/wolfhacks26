@@ -41,3 +41,7 @@ markers = [
     "realdata: needs data/processed/segments.parquet on this machine",
     "network: needs internet access",
 ]
+
+[tool.vercel]
+entrypoint = "src.api:app"
+
