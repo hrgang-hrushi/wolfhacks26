@@ -252,3 +252,11 @@ Scorecard: Plan adherence **Fail**; Scope discipline Acceptable; Test coverage *
 
 After the fixes: 124 `db` tests passed, 206 without a database passed, and the check command passed 16 of 16 on a fresh local load.
 
+### Codex audit, round 2 (the commit after `18e3988`): Overall Fail, on the real service only
+
+Scorecard: Plan adherence Acceptable; Scope discipline Acceptable; Test coverage **Fail**; Review compliance Acceptable; Freeze integrity Acceptable; Regression check Acceptable; Documentation Acceptable.
+
+One finding causes the Fail: the real Tiger service remains unloaded, so AC3 and the real-service half of AC5 are unmet. The round-1 code finding is confirmed fixed. The auditor's sandbox could not open sockets or temporary folders, so it could not reproduce the recorded test counts; it calls that an environment limit, not a regression.
+
+What closes the last finding: put `TIGER_DATABASE_URL` in `data/raw/tiger.env`, get on a network that allows the service's port, then `py -m web.tiger.config --check`, `py -m web.tiger.load`, `py -m web.tiger.verify`, `TIGER_LIVE_TESTS=1 py -m pytest tests/dashboard -q -m network`, and record the storage and compression figures here and in the feature doc.
+
