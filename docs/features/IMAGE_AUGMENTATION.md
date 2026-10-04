@@ -68,4 +68,4 @@ Colab's free machine holds about 40,000 photos, so this is a random sample of th
 
 ## Results
 
-None yet. The first comparison's numbers will be recorded in the run spec and summarised here.
+None. The comparison was built and tested but never run: it was dropped for the hackathon on 2026-10-03, so there is no evidence either way on whether augmentation helps. The fine-tune loop has not been exercised on a GPU. To run it, use the Colab steps above or the cloud box; the run spec (`docs/specs/2026-10-03_image-augmentation.md`, "Closed") lists what is still open.
