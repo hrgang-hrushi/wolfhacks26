@@ -2,7 +2,27 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
-      "source": "/(gov|m|dashboard)(.*)",
+      "source": "/gov",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/gov/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/m",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/m/(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard/(.*)",
       "destination": "/index.html"
     }
   ]

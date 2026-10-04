@@ -27,7 +27,42 @@
       }
     },
     {
-      "source": "/(gov|m|dashboard)(.*)",
+      "source": "/gov",
+      "destination": {
+        "service": "web",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/gov/(.*)",
+      "destination": {
+        "service": "web",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/m",
+      "destination": {
+        "service": "web",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/m/(.*)",
+      "destination": {
+        "service": "web",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/dashboard",
+      "destination": {
+        "service": "web",
+        "path": "/index.html"
+      }
+    },
+    {
+      "source": "/dashboard/(.*)",
       "destination": {
         "service": "web",
         "path": "/index.html"
