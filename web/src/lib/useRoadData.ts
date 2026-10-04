@@ -2,16 +2,32 @@ import { useEffect, useMemo, useState } from 'react';
 import { cellsForBounds, loadOverview, loadShard, loadStats, type Shard, type Stats } from './data';
 import type { MapView } from './mapTypes';
 
+const STATS_RETRY_MS = [1500, 4000, 9000];
+
+/** stats.json, with a few retries: one dropped request on venue wifi should not leave the page empty. */
 export function useStats(): { stats: Stats | null; error: string | null } {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    loadStats()
-      .then((s) => live && setStats(s))
-      .catch((e: unknown) => live && setError(e instanceof Error ? e.message : String(e)));
+    let timer = 0;
+    const attempt = (n: number) => {
+      loadStats()
+        .then((s) => {
+          if (!live) return;
+          setStats(s);
+          setError(null);
+        })
+        .catch((e: unknown) => {
+          if (!live) return;
+          setError(e instanceof Error ? e.message : String(e));
+          if (n < STATS_RETRY_MS.length) timer = window.setTimeout(() => attempt(n + 1), STATS_RETRY_MS[n]);
+        });
+    };
+    attempt(0);
     return () => {
       live = false;
+      window.clearTimeout(timer);
     };
   }, []);
   return { stats, error };

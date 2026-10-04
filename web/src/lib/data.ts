@@ -552,6 +552,9 @@ function toShard(cell: string, raws: RawSeg[]): Shard {
 let dataVersion = '';
 
 async function getJson<T>(path: string): Promise<T> {
+  // Every file but stats.json waits for the build version. The service worker keeps versioned
+  // files for good, so a request sent before the version is known must never be the cached one.
+  if (path !== 'stats.json') await loadStats().catch(() => undefined);
   const url = `${DATA_BASE}/${path}${dataVersion ? `?v=${dataVersion}` : ''}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
@@ -564,6 +567,8 @@ export function loadStats(): Promise<Stats> {
     dataVersion = s.version;
     return s;
   });
+  // A failed load is not remembered, so the next caller tries again.
+  statsPromise.catch(() => (statsPromise = null));
   return statsPromise;
 }
 

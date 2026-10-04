@@ -1,4 +1,5 @@
-import { MapPin, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { Check, Link2, MapPin, Plus } from 'lucide-react';
 import {
   CLASS_LABEL,
   HO_CRACK,
@@ -295,7 +296,32 @@ export function SegmentPanel({
         <button type="button" className="g-btn" onClick={() => onZoom(seg)}>
           Zoom to road
         </button>
+        <CopyLink />
       </div>
     </div>
+  );
+}
+
+/** The address bar already holds a link to the selected road (GovApp keeps it there); this copies it. */
+function CopyLink() {
+  const [copied, setCopied] = useState(false);
+  if (!navigator.clipboard) return null;
+  return (
+    <button
+      type="button"
+      className="g-btn"
+      title="Copy a link that reopens this road"
+      onClick={() => {
+        void navigator.clipboard
+          .writeText(window.location.href)
+          .then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1600);
+          })
+          .catch(() => undefined);
+      }}
+    >
+      {copied ? <Check size={14} /> : <Link2 size={14} />} {copied ? 'Copied' : 'Copy link'}
+    </button>
   );
 }

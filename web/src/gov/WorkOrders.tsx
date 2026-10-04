@@ -85,7 +85,15 @@ export function WorkOrdersTable({
               const t = TIERS[orderTier(o)];
               const cost = orderCost(o);
               return (
-                <tr key={o.id} className={o.id === activeId ? 'sel' : ''} onClick={() => onOpen(o.id)}>
+                <tr
+                  key={o.id}
+                  className={o.id === activeId ? 'sel' : ''}
+                  tabIndex={0}
+                  onClick={() => onOpen(o.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && e.target === e.currentTarget) onOpen(o.id);
+                  }}
+                >
                   <td>
                     <strong>{o.id}</strong>
                   </td>

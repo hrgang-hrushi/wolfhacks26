@@ -4,6 +4,7 @@
  * - Road data (/data/...) and built assets (/assets/...) are cache-first. Data URLs carry
  *   ?v=<build version> and asset names carry a hash, so a new deploy is never masked.
  * - stats.json and page loads are network-first, falling back to the cached copy offline.
+ * - Data from an older build is dropped as soon as a newer build's data is requested.
  * - Carto basemap files are cached as they are used, so a map already seen still draws offline.
  */
 const VERSION = 'unwatched-roads-v1';
@@ -71,7 +72,34 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirst(request, url.origin + url.pathname));
     return;
   }
-  if (url.pathname.includes('/data/') || url.pathname.includes('/assets/')) {
+  if (url.pathname.includes('/data/')) {
+    // Only a versioned copy is safe to keep for good; one without ?v= could outlive a deploy.
+    const v = url.searchParams.get('v');
+    if (!v) {
+      event.respondWith(networkFirst(request, url.origin + url.pathname));
+      return;
+    }
+    event.respondWith(cacheFirst(request, STATIC));
+    event.waitUntil(dropOtherDataVersions(v));
+    return;
+  }
+  if (url.pathname.includes('/assets/')) {
     event.respondWith(cacheFirst(request, STATIC));
   }
 });
+
+// Each deploy's road data is about 50 MB. Once a newer version is in use, drop the older copies.
+let prunedFor = '';
+async function dropOtherDataVersions(version) {
+  if (prunedFor === version) return;
+  prunedFor = version;
+  const cache = await caches.open(STATIC);
+  const keys = await cache.keys();
+  await Promise.all(
+    keys.map((req) => {
+      const u = new URL(req.url);
+      const v = u.searchParams.get('v');
+      return u.pathname.includes('/data/') && v && v !== version ? cache.delete(req) : undefined;
+    }),
+  );
+}

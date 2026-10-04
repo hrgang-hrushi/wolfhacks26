@@ -227,7 +227,10 @@ export function DisplayMenu({
             </div>
           </fieldset>
 
-          <p className="fine">Drag the dividers between the map and the panels to resize them. Double-click a divider to put it back. Saved in this browser.</p>
+          <p className="fine">
+            Drag the dividers between the map and the panels to resize them; double-click a divider to put it back. Keys: <kbd>/</kbd> search,{' '}
+            <kbd>1</kbd>–<kbd>4</kbd> map colouring, <kbd>Esc</kbd> clear the selection. Saved in this browser.
+          </p>
           <button type="button" className="g-btn" disabled={!changed} onClick={onReset}>
             <RotateCcw size={14} /> Reset layout
           </button>

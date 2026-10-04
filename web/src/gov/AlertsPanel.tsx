@@ -96,7 +96,7 @@ export function AlertsPanel({
           </thead>
           <tbody>
             {list.slice(0, 200).map((r) => (
-              <tr key={r.id} onClick={() => onPick(r)}>
+              <tr key={r.id} tabIndex={0} onClick={() => onPick(r)} onKeyDown={(e) => e.key === 'Enter' && onPick(r)}>
                 <td>
                   <strong>{routeName(r.id)}</strong>
                 </td>

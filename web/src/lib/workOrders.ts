@@ -80,6 +80,13 @@ function commit(next: State): void {
   listeners.forEach((l) => l());
 }
 
+// Another tab of this site changed the orders: show the same list here.
+window.addEventListener('storage', (e) => {
+  if (e.key !== KEY) return;
+  state = read();
+  listeners.forEach((l) => l());
+});
+
 function subscribe(l: () => void): () => void {
   listeners.add(l);
   return () => listeners.delete(l);

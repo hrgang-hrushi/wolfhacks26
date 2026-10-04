@@ -41,14 +41,28 @@ export function SearchBox({
   message,
   choices,
   onChoose,
+  inputRef,
+  routeActive,
 }: {
   onSearch: (q: string) => void;
   message: string | null;
   /** County choices when an SR number exists in several counties. */
   choices: { code: string; name: string }[] | null;
   onChoose: (code: string) => void;
+  inputRef?: React.Ref<HTMLInputElement>;
+  /** A route filter is on. When it is cleared elsewhere (a chip), the box empties too. */
+  routeActive: boolean;
 }) {
   const [q, setQ] = useState('');
+  const [hadRoute, setHadRoute] = useState(routeActive);
+  if (hadRoute !== routeActive) {
+    setHadRoute(routeActive);
+    if (!routeActive) setQ('');
+  }
+  const clear = () => {
+    setQ('');
+    onSearch('');
+  };
   return (
     <div className="g-search-wrap">
       <form
@@ -59,7 +73,24 @@ export function SearchBox({
         }}
       >
         <Search size={15} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a route: NC 12, I-40, SR 2748" aria-label="Find a route or county" />
+        <input
+          ref={inputRef}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              clear();
+              e.currentTarget.blur();
+            }
+          }}
+          placeholder="Find a route: NC 12, I-40, SR 2748"
+          aria-label="Find a route or county (press / to focus)"
+        />
+        {(q || message || choices) && (
+          <button type="button" className="g-x" aria-label="Clear the search" title="Clear the search" onClick={clear}>
+            <X size={14} />
+          </button>
+        )}
       </form>
       {(message || choices) && (
         <div className="g-pop g-search-pop">
@@ -91,8 +122,15 @@ export function FilterButton({ filters, onChange, mode }: { filters: Filters; on
     const close = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', esc);
+    };
   }, [open]);
 
   return (
@@ -171,6 +209,11 @@ export function FilterChips({ filters, onChange, stats }: { filters: Filters; on
           {c.label} <X size={12} />
         </button>
       ))}
+      {chips.length > 1 && (
+        <button type="button" className="g-chip g-chip-ghost" onClick={() => onChange(DEFAULT_FILTERS)}>
+          Clear all
+        </button>
+      )}
     </div>
   );
 }

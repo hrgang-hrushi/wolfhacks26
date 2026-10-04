@@ -54,26 +54,27 @@
   color-scheme: light;
 }
 :root[data-theme='dark'] .g-root {
-  --bg: #0b1220;
-  --card: #111a2c;
-  --card-sub: #1c2740;
-  --fg: #e6eaf2;
-  --fg-2: #b6c0d1;
-  --muted: #8e9bb1;
-  --faint: #64748b;
+  /* Neutral black and greys, no blue tint. */
+  --bg: #000000;
+  --card: #0f0f0f;
+  --card-sub: #1c1c1c;
+  --fg: #ededed;
+  --fg-2: #c2c2c2;
+  --muted: #999999;
+  --faint: #6e6e6e;
   --line: rgba(255, 255, 255, 0.09);
   --line-soft: rgba(255, 255, 255, 0.05);
-  --rail: #0e1627;
-  --rail-line: rgba(255, 255, 255, 0.07);
-  --ink: #e6eaf2;
-  --ink-fg: #0b1220;
-  --ctl: #18233a;
+  --rail: #080808;
+  --rail-line: rgba(255, 255, 255, 0.08);
+  --ink: #f2f2f2;
+  --ink-fg: #0a0a0a;
+  --ctl: #171717;
   --ctl-line: rgba(255, 255, 255, 0.14);
-  --ctl-hover: #1f2c47;
+  --ctl-hover: #232323;
   --ctl-line-hover: rgba(255, 255, 255, 0.28);
-  --seg-on: #2b3a59;
-  --pop: #162036;
-  --glass: rgba(17, 26, 44, 0.92);
+  --seg-on: #303030;
+  --pop: #171717;
+  --glass: rgba(15, 15, 15, 0.92);
   --hover: rgba(255, 255, 255, 0.045);
   --amber-soft: rgba(245, 158, 11, 0.15);
   --amber-ink: #fbbf24;
@@ -84,15 +85,15 @@
   --danger-ink: #fecaca;
   --storm: #dc2626;
   --box: #60a5fa;
-  --axis: #3b4a66;
+  --axis: #444444;
   --st-dispatched-bg: rgba(59, 130, 246, 0.22);
   --st-dispatched-fg: #93c5fd;
   --st-progress-bg: rgba(245, 158, 11, 0.2);
   --st-progress-fg: #fcd34d;
   --st-done-bg: rgba(34, 197, 94, 0.2);
   --st-done-fg: #86efac;
-  --shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
-  --pop-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+  --shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+  --pop-shadow: 0 14px 34px rgba(0, 0, 0, 0.7);
   color-scheme: dark;
 }
 .g-root :focus-visible {
@@ -402,6 +403,24 @@
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
+}
+.g-chip-warn {
+  height: auto;
+  min-height: 26px;
+  padding: 4px 10px;
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+  text-align: left;
+}
+.g-chip-ghost {
+  background: var(--glass);
+  color: var(--fg-2);
+  border: 1px solid var(--ctl-line);
+}
+.g-search .g-x {
+  width: 22px;
+  height: 22px;
+  margin-right: -4px;
 }
 .g-search-wrap,
 .g-filter-wrap {
@@ -1303,6 +1322,15 @@ textarea.g-input {
   background: var(--seg-on);
   color: var(--fg);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.g-root kbd {
+  padding: 0 4px;
+  border: 1px solid var(--ctl-line);
+  border-radius: 4px;
+  background: var(--card-sub);
+  font: inherit;
+  font-size: 10.5px;
 }
 
 /* ---- compact density ---- */

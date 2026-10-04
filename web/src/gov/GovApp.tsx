@@ -54,7 +54,7 @@ import { casedLayers, pinLayer, roadLayers, selectionLayers, visibleSegs, widthS
 import MapLibreDeck from '../lib/MapLibreDeck';
 import { NC_VIEW, type MapHandle, type MapView } from '../lib/mapTypes';
 import { pinLabelLayer } from '../lib/pinLabels';
-import { useGovPrefs, useTheme, type KpiKey } from '../lib/prefs';
+import { MODES, useGovPrefs, useTheme, type KpiKey } from '../lib/prefs';
 import { useDetail } from '../lib/hooks';
 import { Legend } from '../lib/ui';
 import { useRoadData, useStats } from '../lib/useRoadData';
@@ -104,7 +104,9 @@ export default function GovApp() {
 
   const [view, setView] = useState<MapView | null>(null);
   const road = useRoadData(stats, view, MAX_SHARDS);
-  const [mode, setMode] = useState<Mode>('ytp');
+  const mode = prefs.mode;
+  const setMode = useCallback((m: Mode) => setPrefs({ mode: m }), [setPrefs]);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [selection, setSelection] = useState<Seg[]>([]);
   const detail = useDetail(selection.length === 1 ? selection[0] : null, stats);
@@ -129,6 +131,7 @@ export default function GovApp() {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [target, setTarget] = useState('');
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [queueData, setQueueData] = useState<{ county: string; rows: Row[]; perTier: number | null } | null>(null);
   const [storm, setStorm] = useState<{ rows: Row[]; min: number } | null>(null);
@@ -187,12 +190,20 @@ export default function GovApp() {
     mapRef.current?.flyTo(lng, lat, 13);
   }, []);
 
+  // Rows without their own line need a download to find it. Only the latest click may land.
+  const pickSeq = useRef(0);
   const pickRow = useCallback(
     async (row: Row, keepSide = false) => {
       if (!stats) return;
+      const n = ++pickSeq.current;
       mapRef.current?.flyTo(row.c[0], row.c[1], 13);
-      const seg = rowToSeg(row) ?? (await findSeg(row.id, row.c, stats));
-      if (!seg) return;
+      const seg = rowToSeg(row) ?? (await findSeg(row.id, row.c, stats).catch(() => null));
+      if (n !== pickSeq.current) return;
+      if (!seg) {
+        setNotice('That road’s line did not load. Check the connection and try again.');
+        return;
+      }
+      setNotice(null);
       setSelection([seg]);
       if (!keepSide) setSide('road');
     },
@@ -210,18 +221,21 @@ export default function GovApp() {
     [setSide, setBottom],
   );
 
+  // The chosen order can be marked Done (or deleted) after it was picked; a finished order takes no more roads.
+  const openTarget = wo.orders.some((o) => o.id === target && o.status !== 'Done') ? target : null;
+
   const addSegs = useCallback(
     async (segs: Seg[]) => {
       if (!stats || segs.length === 0) return;
       setBusy(true);
       try {
         const details = await Promise.all(segs.map((s) => loadDetail(s, stats).catch(() => null)));
-        openOrder(orderStore.addSegs(target || null, segs.map((s, i) => toOrderSeg(s, details[i], stats))));
+        openOrder(orderStore.addSegs(openTarget, segs.map((s, i) => toOrderSeg(s, details[i], stats))));
       } finally {
         setBusy(false);
       }
     },
-    [stats, target, openOrder],
+    [stats, openTarget, openOrder],
   );
 
   const addRows = useCallback(
@@ -229,17 +243,18 @@ export default function GovApp() {
       if (!stats || rows.length === 0) return;
       setBusy(true);
       try {
-        const segs = await Promise.all(rows.map((r) => rowToSeg(r) ?? findSeg(r.id, r.c, stats)));
+        const segs = await Promise.all(rows.map((r) => rowToSeg(r) ?? findSeg(r.id, r.c, stats).catch(() => null)));
         const out: OrderSeg[] = [];
         segs.forEach((seg, i) => {
           if (seg) out.push(toOrderSeg(seg, detailOf(rows[i]), stats));
         });
-        if (out.length) openOrder(orderStore.addSegs(target || null, out));
+        if (out.length) openOrder(orderStore.addSegs(openTarget, out));
+        if (out.length < rows.length) setNotice(`${rows.length - out.length} road${rows.length - out.length === 1 ? '' : 's'} could not be added: the line did not load.`);
       } finally {
         setBusy(false);
       }
     },
-    [stats, target, openOrder],
+    [stats, openTarget, openOrder],
   );
 
   // ---- map layers ------------------------------------------------------------------
@@ -336,7 +351,11 @@ export default function GovApp() {
 
   const goSr = useCallback(
     async (num: number, code: string) => {
-      const file = await loadCounty(code);
+      const file = await loadCounty(code).catch(() => null);
+      if (!file) {
+        setSearch({ message: 'That county’s road list did not load. Check the connection and try again.', choices: null, pending: null });
+        return;
+      }
       const b = file.sr[String(num)];
       if (!b) {
         setSearch({ message: `SR ${num} is not in ${file.name} County.`, choices: null, pending: null });
@@ -396,6 +415,50 @@ export default function GovApp() {
     },
     [stats, filters.county, setCounty, goSr],
   );
+
+  // ---- a link to the selected road ---------------------------------------------------
+  // ?seg=<id>&at=<lng>,<lat> reopens a road; the point says which data file holds it.
+  const linkRead = useRef(false);
+  useEffect(() => {
+    if (!stats || linkRead.current) return;
+    linkRead.current = true;
+    const q = new URLSearchParams(window.location.search);
+    const id = q.get('seg');
+    const at = (q.get('at') ?? '').split(',').map(Number);
+    if (!id || at.length !== 2 || !at.every(Number.isFinite)) return;
+    void pickRow({ id, c: [at[0], at[1]] } as Row);
+  }, [stats, pickRow]);
+
+  useEffect(() => {
+    if (!stats) return; // the link has not been read yet
+    const url = new URL(window.location.href);
+    if (selection.length === 1) {
+      const [lng, lat] = midOf(selection[0].paths);
+      url.searchParams.set('seg', selection[0].id);
+      url.searchParams.set('at', `${lng.toFixed(5)},${lat.toFixed(5)}`);
+    } else {
+      url.searchParams.delete('seg');
+      url.searchParams.delete('at');
+    }
+    window.history.replaceState(null, '', url);
+  }, [selection, stats]);
+
+  // ---- keyboard: / search, 1-4 map colouring, Escape clears the selection ---------------
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable)) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      } else if (e.key === 'Escape') {
+        if (!document.querySelector('.g-pop')) setSelection([]);
+      } else if (e.key >= '1' && e.key <= '4') setMode(MODES[Number(e.key) - 1]);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setMode]);
 
   // ---- printing ------------------------------------------------------------------------
   useEffect(() => {
@@ -519,6 +582,8 @@ export default function GovApp() {
 
             <div className="g-map-top">
               <SearchBox
+                inputRef={searchRef}
+                routeActive={filters.route !== ''}
                 onSearch={(q) => void onSearch(q)}
                 message={search.message}
                 choices={search.choices}
@@ -542,7 +607,12 @@ export default function GovApp() {
             )}
 
             <div className="g-map-status">
-              {error && <span className="g-status-err">Road data did not load ({error}). Run scripts/build_web_data.py.</span>}
+              {error && <span className="g-status-err">Road data did not load ({error}). Retrying…</span>}
+              {notice && !error && (
+                <button type="button" className="g-chip g-chip-warn" onClick={() => setNotice(null)}>
+                  {notice} <X size={12} />
+                </button>
+              )}
               {!error && road.pending > 0 && <span>Loading roads…</span>}
               {!error && road.pending === 0 && road.level === 'overview' && stats && (
                 <span>Zoomed out: showing the {fmtInt(stats.files.overview_n)} highest-priority roads. Zoom in to load every road.</span>
@@ -601,7 +671,7 @@ export default function GovApp() {
                   detail={detail}
                   stats={stats}
                   orders={wo.orders}
-                  target={target}
+                  target={openTarget ?? ''}
                   onTarget={setTarget}
                   onAdd={() => void addSegs(selection)}
                   onZoom={zoomTo}
@@ -620,7 +690,10 @@ export default function GovApp() {
                     mapRef.current?.fitBounds(b, 80);
                   }}
                   onPrint={(o) => setPrint({ kind: 'order', order: o })}
-                  onClose={() => setActiveOrderId(null)}
+                  onClose={() => {
+                    setActiveOrderId(null);
+                    setTarget('');
+                  }}
                 />
               )}
               {side === 'storm' && (

@@ -93,6 +93,7 @@ export default function MobileApp() {
   const [revealing, setRevealing] = useState(false);
 
   const [loc, setLoc] = useState<[number, number] | null>(null);
+  const [locNote, setLocNote] = useState<string | null>(null);
   const [near, setNear] = useState<NearState>({ status: 'idle', items: [] });
 
   const mode: Mode = tab === 'condition' ? 'ytp' : 'flood';
@@ -200,8 +201,10 @@ export default function MobileApp() {
     (thenRank: boolean) => {
       if (!('geolocation' in navigator)) {
         setNear({ status: 'denied', items: [] });
+        if (!thenRank) setLocNote('This browser does not share a location.');
         return;
       }
+      setLocNote(null);
       if (thenRank) setNear({ status: 'locating', items: [] });
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
@@ -210,6 +213,7 @@ export default function MobileApp() {
           setLoc([lng, lat]);
           if (!inNC(lng, lat) || !stats) {
             if (thenRank) setNear({ status: 'outside', items: [] });
+            else if (stats) setLocNote('You are outside North Carolina, so there are no scored roads near you.');
             return;
           }
           mapRef.current?.flyTo(lng, lat, 12.5);
@@ -224,12 +228,21 @@ export default function MobileApp() {
             .sort((a, b) => (a.seg.ytp ?? Infinity) - (b.seg.ytp ?? Infinity));
           setNear(items.length ? { status: 'ok', items } : { status: 'outside', items: [] });
         },
-        () => thenRank && setNear({ status: 'denied', items: [] }),
+        () => {
+          if (thenRank) setNear({ status: 'denied', items: [] });
+          else setLocNote('Location is off or took too long. Allow it in the browser to use this button.');
+        },
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 60_000 },
       );
     },
     [stats],
   );
+
+  useEffect(() => {
+    if (!locNote) return;
+    const t = window.setTimeout(() => setLocNote(null), 7000);
+    return () => window.clearTimeout(t);
+  }, [locNote]);
 
   const jump = useCallback((name: keyof typeof PLACES) => {
     const p = PLACES[name];
@@ -246,7 +259,7 @@ export default function MobileApp() {
     setFeaturedOpen(true);
     setSnap('half');
     mapRef.current?.flyTo(f.c[0], f.c[1], 12.8);
-    const seg = await findSeg(f.id, f.c, stats);
+    const seg = await findSeg(f.id, f.c, stats).catch(() => null);
     if (seg) setSelected(seg);
   }, [stats]);
 
@@ -330,11 +343,16 @@ export default function MobileApp() {
 
       {(error || mapError) && (
         <div className="m-toast m-toast-error" role="alert">
-          {error ? `Road data did not load (${error}).` : `The map did not start (${mapError}).`}
+          {error ? `Road data did not load (${error}). Retrying…` : `The map did not start (${mapError}).`}
         </div>
       )}
-      {!error && road.pending > 0 && <div className="m-toast">Loading roads…</div>}
-      {!error && road.pending === 0 && road.level === 'overview' && !showBacktest && (
+      {!error && !mapError && locNote && (
+        <div className="m-toast m-toast-error" role="alert" onClick={() => setLocNote(null)}>
+          {locNote}
+        </div>
+      )}
+      {!error && !locNote && road.pending > 0 && <div className="m-toast">Loading roads…</div>}
+      {!error && !locNote && road.pending === 0 && road.level === 'overview' && !showBacktest && (
         <div className="m-toast">Showing the {stats ? stats.files.overview_n.toLocaleString() : ''} highest-priority roads. Zoom in for every road.</div>
       )}
 

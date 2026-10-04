@@ -4,6 +4,7 @@
  * just means the choices last until the tab closes.
  */
 import { useCallback, useSyncExternalStore } from 'react';
+import type { Mode } from './data';
 
 function readJson(key: string): unknown {
   try {
@@ -133,6 +134,8 @@ export interface GovPrefs {
   sideOpen: boolean;
   bottomOpen: boolean;
   density: 'comfortable' | 'compact';
+  /** What the map is coloured by. Remembered between visits. */
+  mode: Mode;
   showKpis: boolean;
   showLegend: boolean;
   showHints: boolean;
@@ -148,12 +151,15 @@ export const GOV_DEFAULTS: GovPrefs = {
   sideOpen: true,
   bottomOpen: true,
   density: 'comfortable',
+  mode: 'ytp',
   showKpis: true,
   showLegend: true,
   showHints: true,
   kpis: ['total', 'fix_now', 'within_year', 'high_flood', 'heldout'],
   hiddenCols: [],
 };
+
+export const MODES: Mode[] = ['ytp', 'crack', 'flood', 'tier'];
 
 function px(v: unknown, lo: number, hi: number): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : null;
@@ -174,6 +180,7 @@ function cleanGov(raw: unknown): GovPrefs {
     sideOpen: bool('sideOpen'),
     bottomOpen: bool('bottomOpen'),
     density: raw.density === 'compact' ? 'compact' : 'comfortable',
+    mode: MODES.includes(raw.mode as Mode) ? (raw.mode as Mode) : 'ytp',
     showKpis: bool('showKpis'),
     showLegend: bool('showLegend'),
     showHints: bool('showHints'),

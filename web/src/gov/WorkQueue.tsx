@@ -193,7 +193,12 @@ export function WorkQueue({
         <button type="button" className="g-btn" disabled={filtered.length === 0} onClick={exportCsv} title="Download the rows listed here, as filtered and sorted">
           <Download size={14} /> CSV
         </button>
-        <button type="button" className="g-btn g-btn-primary" disabled={checkedRows.length === 0 || busy} onClick={() => onAdd(checkedRows)}>
+        <button type="button" className="g-btn g-btn-primary" disabled={checkedRows.length === 0 || busy}
+          onClick={() => {
+            onAdd(checkedRows);
+            setChecked(new Set());
+          }}
+        >
           <Plus size={15} /> {busy ? 'Adding…' : `Add ${checkedRows.length || ''} to work order`}
         </button>
       </div>
