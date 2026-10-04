@@ -1,96 +1,98 @@
-# RoadSense AI — Pavement Condition Predictor (WolfHacks '26)
+# Unwatched Roads: web dashboards
 
-Interactive geospatial infrastructure dashboard built with **Vite**, **MapLibre GL**, and **deck.gl `PathLayer`** to visualize and inspect AI-predicted road surface deterioration across North Carolina.
+One Vite + React app with two routes:
 
----
+- **`/gov`** agency dashboard (desktop): map, ranked work queue, work orders, storm readiness, alerts, model transparency.
+- **`/m`** judge dashboard (phone): map, Condition / Flood / Model in action, with the Helene backtest reveal.
+- **`/`** sends narrow screens to `/m` and everything else to `/gov`.
 
-## Quick Start
+There is no backend. The app reads static JSON from `public/data/`, which a Python script builds from the prediction file.
+
+## Run it locally
 
 ```bash
+# 1. from the repo root: build the data files (about 20 seconds, writes web/public/data/, ~50 MB)
+uv run python scripts/build_web_data.py
+
+# 2. start the app
 cd web
 npm install
 npm run dev
 ```
 
-Visit `http://localhost:5173` to interact with the map.
+Open `http://localhost:5173/gov` or `http://localhost:5173/m`.
 
-To create a production build:
-```bash
-npm run build
-npm run preview
+`web/public/data/` is **git-ignored and must be built on a machine that has the data**. The script always needs `handoff/predictions_geo.parquet` (committed). Route names, county, mileposts, rating, NCDOT treatment and cost come from `data/raw/ncdot_joined.parquet`, and the Helene backtest from `data/raw/helene_labels.parquet`. Neither of those two is committed. Without them the script still runs, says what it left out, and the dashboards hide those parts.
+
+## What the data files are
+
+| File | What it holds |
+|---|---|
+| `stats.json` | Statewide counts, tier counts, county table, exact-threshold histograms, shard index, README metrics (source noted) |
+| `shards/<cell>.json` | Every road on a 0.25 degree grid: `{id, path, rate, ytp, crack, flood, hz, ho}` |
+| `overview.json` | The ~5,000 highest-priority roads, simplified, for zoomed-out views |
+| `detail/<cell>.json` | NCDOT record fields per road, fetched when a road is opened |
+| `ranked.json` | Top 1,000 roads in each of the three action tiers |
+| `county/<code>.json` | Every action-tier road in one county, plus where each SR number is |
+| `routes.json` | Where each Interstate / US / NC route is; which counties have an SR number |
+| `storm.json` | The 300 highest flood scores in the Helene zone |
+| `backtest.json` | The 50 highest held-out flood scores and what Helene did to them |
+
+`path` is a flat list of integers: the first pair is `round(degrees * 1e5)` for longitude and latitude, and every later pair is the difference from the point before. `ho` is a bit mask: 1 wear held-out, 2 cracking held-out, 4 flood held-out. `flood` is present only inside the Helene zone.
+
+Tier thresholds and the priority-score weights are in `src/lib/priority.json`. Change them there and rerun the build script; the app and the script both read that file.
+
+## Google Maps on `/m` (optional)
+
+Copy `.env.example` to `.env` (git-ignored) and set both values. Without them, or if Google fails to load for any reason, `/m` uses MapLibre with the same road layers.
+
+```
+VITE_GOOGLE_MAPS_API_KEY=...   # restrict by HTTP referrer to the deployed domain
+VITE_GOOGLE_MAP_ID=...         # must be a vector map ID
 ```
 
----
+The Google path has not been run with a real key. The MapLibre path is the one that was tested.
 
-## Features Implemented
+## Deploy
 
-1. **MapLibre GL & deck.gl `PathLayer`**:
-   - High-contrast, dark-mode vector cartography powered by MapLibre GL.
-   - High-performance WebGL line rendering via deck.gl `PathLayer` with smooth line caps and joints.
-   - Interactive hover tooltips and dynamic selection highlighting with radiant cyan halo glow.
+The site is fully static, but the data files cannot be rebuilt on a hosting service (the source files are not in the repo). So: **build on this machine, then upload `web/dist`.**
 
-2. **100 Realistic Road Segments**:
-   - 50 segments in **Raleigh** (Piedmont Capital region).
-   - 50 segments in **Asheville** (Western Mountain region).
-   - Coloured dynamically by a continuous condition score from `0.0` (Critical / Crimson) to `1.0` (Optimal / Emerald).
+```bash
+uv run python scripts/build_web_data.py     # from the repo root
+cd web
+npm ci
+npm run build                               # set the two VITE_GOOGLE_* variables first if you want Google Maps
+```
 
-3. **City Quick-Zoom Controls**:
-   - **Asheville Button**: Flies smoothly to the Asheville French Broad River & downtown corridor (`zoom: 13.4`, `pitch: 35°`, `bearing: -15°`).
-   - **Raleigh Button**: Flies smoothly to the Raleigh Capital Blvd & downtown beltline (`zoom: 13.2`, `pitch: 25°`, `bearing: 0°`).
+Then one of:
 
-4. **Deep Inspection Slide-Over Panel**:
-   - Clicking any road segment opens an inspection panel detailing:
-     - **Pavement Rating (`pv_rating`)**: 0–100 condition rating with condition badge & progress gauge.
-     - **Pavement Age (`pv_age`)**: Years since last resurfacing.
-     - **Predicted Years Until Poor (`years_to_poor`)**: AI forecast horizon to failure threshold.
-     - **Flood Rank (`flood_rank`)**: FEMA tier and hydrological saturation index.
-     - **Top 3 Reasons (`drivers`)**: AI-attributed deterioration drivers (e.g., AADT heavy truck volume, freeze-thaw cycles, subgrade moisture).
-     - **Aerial Photo Square Placeholder (`chip_url`)**: Strictly 1:1 aspect-ratio container displaying high-res satellite ortho simulation with target crosshairs, scale bar, and coordinate readout, ready for live raster drop-in.
-     - **Fly to Segment Action**: Re-centers and zooms directly onto the chosen segment geometry.
+```bash
+# Netlify (public/_redirects handles /m and /gov)
+npx netlify-cli deploy --prod --dir=dist
 
-5. **Coverage Filter Toggle**:
-   - **"What the state surveys"**: Filters view to state-maintained roads only (`source === "ncdot"`).
-   - **"What we predict"**: Expands view to every street across both state and municipal networks (`all`).
+# Cloudflare Pages (unknown paths fall back to index.html by default)
+npx wrangler pages deploy dist --project-name unwatched-roads
 
----
+# Vercel (vercel.json handles /m and /gov; --prebuilt uploads what you built)
+npx vercel build --prod && npx vercel deploy --prebuilt --prod
+```
 
-## Data Schema Contract (1:1 Drop-in Ready)
+For Vercel, `VITE_GOOGLE_MAPS_API_KEY` and `VITE_GOOGLE_MAP_ID` are read at build time from `web/.env` on this machine. Nothing needs to be set on the host for a prebuilt upload.
 
-Every segment follows this exact TypeScript schema:
+## QR code for the poster
 
-| Property | Type | Description | Production Compatibility |
-| :--- | :--- | :--- | :--- |
-| `seg_id` | `string` | Unique segment identifier (e.g., `"NC-RAL-001"`) | Matches real prediction output |
-| `source` | `"ncdot" \| "city"` | Jurisdiction origin (`"ncdot"` state or `"city"` municipal) | Direct match |
-| `pv_rating` | `number` | Pavement rating (0–100) | Direct match |
-| `pv_age` | `number` | Age in years since last repave | Direct match |
-| `years_to_poor` | `number` | Predicted years until condition reaches "Poor" | Direct match |
-| `flood_rank` | `string \| number` | Flood risk classification | Direct match |
-| `drivers` | `[string, string, string]` | Top 3 explanatory degradation factors | Direct match |
-| `chip_url` | `string` | URL to aerial ortho photo chip | Direct match |
-| `path` | `[number, number][]` | Array of `[longitude, latitude]` coordinates | deck.gl PathLayer |
-| `score` | `number` | Normalized score `0.0 – 1.0` for color mapping | deck.gl Color Scale |
+After deploying, from the repo root:
 
----
+```bash
+uv run --no-project --with segno --with pillow python scripts/make_qr.py "https://<deployed-domain>/m?demo=1"
+```
 
-## Scaling to Real Data (112k+ Segments via PMTiles)
+It writes `web/public/qr/unwatched-roads.png` and `.svg` with the short address printed underneath. `?demo=1` opens the page straight into the Helene backtest. Rebuild and redeploy if you want the QR image served from the site too.
 
-Loading 112,000+ line geometries as plain GeoJSON would result in an unwieldy **180 MB – 240 MB** payload, freezing browser tabs and failing on mobile devices.
+## Checks
 
-### PMTiles Integration Roadmap:
-1. **Pipeline**:
-   - Export ML predictions with geometry into GeoJSON / GeoParquet.
-   - Slice into multi-zoom vector tiles using Tippecanoe:
-     ```bash
-     tippecanoe -zg --drop-densest-as-needed --extend-zooms-if-still-dropping -l nc_roads -o nc_roads.pmtiles roads.geojson
-     ```
-2. **Client Streaming**:
-   - Host `nc_roads.pmtiles` on S3 or Cloudflare R2 with HTTP Range Request support.
-   - Register the `pmtiles` protocol in MapLibre:
-     ```ts
-     import * as pmtiles from 'pmtiles';
-     const protocol = new pmtiles.Protocol();
-     maplibregl.addProtocol('pmtiles', protocol.tile);
-     ```
-   - Connect the tile source directly to the map with sub-35ms tile streaming latency.
-   - The UI components (`DetailPanel`, `Header`, `Legend`) consume feature properties identically without rewriting any application logic.
+```bash
+npm run build      # TypeScript (strict) + production build
+npm run lint       # oxlint
+cd .. && uv run pytest tests/web -q    # data build, tier logic, API
+```
