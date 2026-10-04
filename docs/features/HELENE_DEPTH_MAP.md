@@ -26,7 +26,7 @@ It is the second half of the flood-depth track. The first half reads water depth
 - The error number comes from hiding marks and guessing them back with the same code, and from the 280 marks where the depth was also taped.
 - The build refuses if the 10 m ground does not beat the 30 m ground on the taped marks.
 - Every output column starts with `y_` or `n_`, so the model's input check rejects it. The depth is an outcome of the storm, not a clue.
-- The code writes only `data/processed/flood_helene_depth*` and `data/processed/dem10_helene/`.
+- The depth script refuses to write any file whose name does not start with `flood_helene_depth`; the ground script writes only tiles and their manifest into `data/processed/dem10_helene/`.
 
 ## Where things are
 
@@ -60,13 +60,13 @@ The marks file can be pulled again without a login from `https://services.arcgis
 | Column | Meaning |
 |---|---|
 | `seg_id` | Same id as `segments.parquet`, same row order |
-| `y_helene_depth_assessed` | True when at least two neighbouring road points could be assessed |
+| `y_helene_depth_assessed` | True when at least two neighbouring road points were usable (they had a water level and ground, and were not set aside) |
 | `y_helene_depth_max_m` | Deepest water held by two neighbouring points; 0.0 when dry; blank when not assessed |
 | `y_helene_depth_point_max_m` | Deepest single point |
 | `y_helene_depth_wet_share` | Share of the assessed points under water |
 | `y_helene_depth_band` | `dry`, `under 0.3 m`, `0.3 to 1 m`, `1 to 2 m`, `over 2 m` |
-| `y_helene_depth_conf` | `high` (a mark within 250 m along the stream) or `low` |
-| `y_helene_depth_mark_dist_m` | Distance along the stream to the nearest mark |
+| `y_helene_depth_conf` | `high` when both points that set the depth have a mark within 250 m and neither lies past the end of a stream line; otherwise `low` |
+| `y_helene_depth_mark_dist_m` | Distance to the nearest mark: along the stream line, or straight to the mark where the nearest spot on the line is a mark itself (a bend or an end) |
 | `y_helene_depth_typical_miss_m` | Typical miss at that distance, from the hidden-mark test |
 | `y_helene_depth_stream` | The stream whose marks were used |
 | `n_helene_depth_marks` | Marks behind the estimate |
@@ -88,10 +88,10 @@ Guessing a hidden mark from its neighbours: 0.22 m with a mark within 100 m, 0.5
 |---|---|
 | 10 m against 30 m ground, 280 taped depths | 0.24 m against 0.61 m |
 | Hidden marks, typical miss | 0.27 m (1,199 marks; range 0.23 to 0.33 m) |
-| ... with a mark within 100 m | 0.23 m |
-| ... 100 to 250 m | 0.31 m |
-| ... 250 to 500 m | 0.36 m |
-| ... 500 m to 1 km | 0.39 m |
+| ... with a mark within 100 m | 0.23 m (range 0.18 to 0.28) |
+| ... 100 to 250 m | 0.31 m (0.26 to 0.40) |
+| ... 250 to 500 m | 0.36 m (0.31 to 0.48) |
+| ... 500 m to 1 km | 0.39 m (0.29 to 0.46) |
 | End to end against the tape | 0.37 m (190 marks; one in ten off by more than 1.4 m) |
 
 1,602 segments assessed out of 112,443; 648 had water (75 under 0.3 m, 136 from 0.3 to 1 m, 175 from 1 to 2 m, 262 over 2 m). Biltmore Village reads 4.2 m. Of the segments with at least 0.3 m of water, 37.5% are marked failed in Helene, against 11.5% of the dry ones.
