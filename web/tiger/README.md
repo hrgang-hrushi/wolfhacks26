@@ -41,7 +41,7 @@ Nothing in this package prints the value. Optional: `TIGER_SCHEMA` (default `unw
 
 | Command | What it does |
 |---|---|
-| `py -m web.tiger.config --check` | Prints `ok`, `network` (the port is blocked or nothing listens) or `login` |
+| `py -m web.tiger.config --check` | Prints `ok`, `network` (the port is blocked or nothing listens), `login` (refused) or `unavailable` |
 | `py -m web.tiger.config --probe` | Version, limits, and a trial of each database feature the load uses, in a throwaway schema |
 | `py -m web.tiger.load` | Builds the tables from the project files and loads them (about 10 seconds for the real data) |
 | `py -m web.tiger.verify` | Compares the database with the files, check by check; exits 1 if any fails |
@@ -61,8 +61,9 @@ or the other.
 ## When the venue network blocks the database port
 
 Tiger services listen on a high port and this network blocks those. In order: `--check`; a phone hotspot; else
-`--dump-dir`, then in the Tiger console run `setup.sql` in the SQL editor, import each CSV into its table, and run
-`after_load.sql`. The service has to run somewhere that can reach the database.
+`--dump-dir`, then in the Tiger console run `setup.sql` in the SQL editor (it creates everything, empties the tables and
+marks a load as started, so the service answers "loading"), import each CSV into its table, and run `after_load.sql`
+(summaries, compression, and the load marked complete). The service has to run somewhere that can reach the database.
 
 ## Local test database
 
@@ -82,8 +83,10 @@ To use the same container as a stand-in for Tiger: `TIGER_DATABASE_URL=postgresq
 ```
 py -m pytest tests/dashboard -q -m "not db and not network"    # no database needed
 py -m pytest tests/dashboard -q -m db                          # needs the local test database
-py -m pytest tests/dashboard -q -m network                     # needs the real Tiger service
+TIGER_LIVE_TESTS=1 py -m pytest tests/dashboard -q -m network  # the real Tiger service; never runs without that variable
 ```
 
 With the plain main interpreter (no `py`), the files in `tests/dashboard` leave themselves out, so the project's base
-suite is unaffected.
+suite is unaffected. The `network` tests talk to the real service and one of them creates and drops a small probe
+schema there, so they skip unless `TIGER_LIVE_TESTS=1` is set, even when `data/raw/tiger.env` exists. The `db` tests can
+only reach a database on this machine; there is no switch to point them elsewhere.

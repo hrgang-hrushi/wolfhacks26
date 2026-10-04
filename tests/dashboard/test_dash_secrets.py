@@ -23,7 +23,8 @@ NOT_OURS = ["src", "pyproject.toml", "uv.lock", ".gitignore", ".python-version",
             "tests/test_scripts.py", "tests/test_targets.py", "tests/potholes", "tests/cctv", "tests/crashes", "tests/vision",
             "web/src", "web/public", "web/README.md", "web/DESIGN.md", "web/index.html", "web/package.json",
             "web/package-lock.json", "web/vite.config.ts", "web/.gitignore", "web/.env.example", "web/generate_roads.cjs",
-            "web/capture.mjs", "web/tsconfig.json", "web/tsconfig.app.json", "web/tsconfig.node.json", "web/.oxlintrc.json"]
+            "web/capture.mjs", "web/tsconfig.json", "web/tsconfig.app.json", "web/tsconfig.node.json", "web/.oxlintrc.json",
+            "web/vercel.json", "tests/web"]
 
 
 def git(*a):

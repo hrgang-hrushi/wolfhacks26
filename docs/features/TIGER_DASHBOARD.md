@@ -66,8 +66,8 @@ All routes are GET and return JSON, except the risk-file download. Blanks are `n
 | `/api/summary` | none | bucket counts, totals, the load's status and the fixed caveats |
 | `/api/worklist` | `bucket`, `county`, `system`, `in_zone`, `sort`, `direction`, `limit` (at most 500), `offset` | a page of roads, worst first, with a total count |
 | `/api/road` | `seg_id` | one road in full, its shape, its monthly pothole counts and any cameras on it |
-| `/api/alerts` | `as_of` (a UTC time; defaults to the latest reading) | camera flags and sensor alerts for that hour and the hour before |
-| `/api/alerts/peaks` | `limit` | the hours with the most alerts, known-dry cameras counted separately, each with the `as_of` to ask for |
+| `/api/alerts` | `as_of` (a UTC time; defaults to the latest reading), `hours` (2 by default, or 1) | camera flags and sensor alerts for that clock hour and, with `hours=2`, the hour before |
+| `/api/alerts/peaks` | `limit` | the hours with the most alerts, known-dry cameras counted separately; ask `/api/alerts` with the row's `as_of` and `hours=1` to see exactly that hour |
 | `/api/camera_history` | `camera_id`, `start`, `end` | hourly worst values for one camera |
 | `/api/stats` | none | what the database is doing: rows, chunks, compressed bytes before and after, summaries, jobs, size, version |
 | `/api/export/risk.csv` | none | the risk file |
@@ -81,7 +81,7 @@ Replies other than 200:
 |---|---|---|
 | 400 | `{"error": "..."}` | a parameter outside what the route accepts |
 | 404 | `{"error": "..."}` | no road or camera has that id |
-| 503 | `{"error": "loading", "load_status": ...}` | the latest load has not finished; `/api/health`, `/api/summary` and `/api/stats` still answer and report the status |
+| 503 | `{"error": "loading", "load_status": ...}` | the latest load has not finished, or a load is copying and holds the tables; `/api/health`, `/api/summary` and `/api/stats` still answer and report the status |
 | 503 | `{"error": "database unavailable", "kind": "network" or "login" or "unavailable"}` | the database cannot be reached |
 
 One road in `/api/worklist` (the worst-ranked road in the real data, shortened):
@@ -98,7 +98,15 @@ One road in `/api/worklist` (the worst-ranked road in the real data, shortened):
  "traffic": {"vehicles_per_day": null, "source": "none"}, "mid": [-77.9, 35.9]}
 ```
 
-One camera alert in `/api/alerts?as_of=2026-09-27T15:30:00Z` (shortened). The worst reading and the latest reading each carry their own time:
+`/api/alerts?as_of=2026-09-27T15:30:00Z` returns an envelope and two lists:
+
+```json
+{"as_of": "2026-09-27T15:30:00Z", "as_of_was_given": true, "window_start": "2026-09-27T14:00:00Z", "window_hours": 2,
+ "live": false, "flag_at": 0.5, "flooded_cm": 2.0, "caveat": "A camera flag is a signal to check, not a confirmed flood. ...",
+ "camera_alerts": [...], "sensor_alerts": [...]}
+```
+
+`live` is true only when `as_of` is within the last hour of the real clock. One camera alert (shortened); the worst reading and the latest reading each carry their own time:
 
 ```json
 {"camera_id": "CB_03", "name": "Oystershell Ln.", "lat": 34.0435, "lon": -77.8894, "role": "cv", "known_dry": false,
@@ -117,7 +125,7 @@ Whether crash rate belongs in this file is an open question for the user.
 
 ## Storm replay
 
-The real readings are from late September, so nothing in the database changes on its own during a demo. `python -m web.tiger.replay` copies the real sensor and camera rows of the storm's peak hour (2026-09-27 15:00 to 16:00 UTC) into the tables with their times shifted to end now, a few at a time. The hourly summaries and `/api/alerts` update as the rows arrive, and the alert reads as live from the first batch. Every replayed row keeps its original time in `replay_of` and is labelled as a replay wherever it appears. Replayed rows never count toward the peak hours or the check command. `--clear` removes them.
+The real readings are from late September, so nothing in the database changes on its own during a demo. `python -m web.tiger.replay` copies the real sensor and camera rows of the storm's peak hour (2026-09-27 15:00 to 16:00 UTC) into the tables with their times shifted to end now, a few at a time. The hourly summaries and `/api/alerts` update as the rows arrive, and the alert reads as live from the first batch. Every replayed row keeps its original time in `replay_of` and is labelled as a replay wherever it appears. Replayed rows never count toward the peak hours or the check command. A replayed row that would land exactly on an existing row's time is left out, never written over it, and the command reports how many it left out. `--clear` removes them.
 
 ## Reaching the real database
 
@@ -148,7 +156,7 @@ The venue network blocks the port Tiger services listen on. In order: test the p
 | Whole load, with summaries and compression | 8.4 s |
 | Check command | 15 of 15 checks passed, 4.4 s |
 | Database size | 122 MB (`roads` 53 MB, `road_shapes` 41 MB) |
-| Service replies | 4 to 80 ms per route; the 20 MB download in 1.5 s |
+| Service replies | 4 to 81 ms per route; the 20 MB download in 1.5 s |
 
 Compression, read from the database after the load:
 
@@ -160,4 +168,4 @@ Compression, read from the database after the load:
 
 These tables are small, so the saving is a few megabytes; the 112,443 roads and their shapes are ordinary tables and are not compressed. The figures for the real Tiger service will be recorded here when it is loaded.
 
-Tests: 320 in `tests/dashboard`. 195 need no database and pass. 120 need the local database: 119 passed, and the one added last (loading through the console fallback files) has not been run to completion because the drive holding Docker disconnected. 5 need the real service and skip until it is reachable.
+Tests: 334 in `tests/dashboard`. 206 need no database and pass. 123 need the local database: 119 of them passed before the external drive that holds Docker's files disconnected on 2026-10-03; the four added after that (the console fallback, a held lock answering "loading", the one-hour alert window, and a replayed row never overwriting a real one) and the fixes made since have not been run against a database yet. 5 need the real service and run only with `TIGER_LIVE_TESTS=1`.

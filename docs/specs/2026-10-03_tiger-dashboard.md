@@ -151,12 +151,12 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 | | Result |
 |---|---|
 | AC1 | Met. `py -m pytest tests/dashboard -q -m "not db and not network"`: 195 passed, 0 skipped. |
-| AC2 | Met for 119 of the 120 tests marked `db`: 119 passed at about 20:15. The 120th, the console-fallback test, was added after that; its first run was cut short when the external drive that holds Docker's files disconnected (`could not fdatasync file`: an input/output error from the drive, not an assertion). It has not passed yet. |
+| AC2 | Not met. 119 tests marked `db` passed at about 20:15, on the code as it was then. At 20:35 the external drive that holds Docker's files disconnected (`could not fdatasync file`: an input/output error from the drive, not an assertion) and the local database has been down since. Four `db` tests added after that have never passed, and the code changed in the critique fixes has not been run against a database. The full `db` run has to be repeated once Docker is back. |
 | AC3 | Not met. The real service was not loaded. Against the local database with the real files, `py -m web.tiger.verify` passed 15 of 15 checks with 112,443 roads, 3,093 camera readings, 17,790 pothole reports and 12,557 sensor readings. |
 | AC4 | Met locally, in the database and from the service: buckets 4,432 / 794 / 4,699 / 100,875 / 1,643; held-out 77,422 / 68,349 / 32,558; Helene 32,558 / 1,266 / 18. |
 | AC5 | Recorded for the local database (below). Not yet for the real service. |
 | AC6 | Met. `risk_roads.csv`: 112,443 rows, 20,144,430 bytes, sha256 `e1a9bcef74f9e5e75f6b1e6c010759c4616570759d1b0b970fab2f26e522dc7b` on two runs; the service's download returned the same bytes. |
-| AC7 | Met, with two notes. The base suite gives 91 passed, with and without `--ignore=tests/dashboard`; it gave 91 before any change too (the spec's 89 was the count at an older commit). Of the 20 source files the loader reads, 19 have the same sha256 as before execution; `data/processed/flood_camera_depth.parquet` was rebuilt by the flood chat at 19:51 (see Deviations 4). `git status` lists only this change's files. |
+| AC7 | Partly met. Base suite: 91 passed with and without `--ignore=tests/dashboard`, the same as before any change (the spec's 89 was the count at an older commit); after `main` at `c71592c` was merged in, 112 both ways, which is `main`'s own count with its new `tests/web`. Source files: 19 of the 20 the loader reads have the same sha256 as before execution; the clause fails for `data/processed/flood_camera_depth.parquet`, which the flood chat rebuilt at 19:51 (Deviations 4), not this change. Files: `git diff --stat 277154f..aaa0926` lists only this change's 26 files. |
 | AC8 | Met. No tracked or new file holds a database address with a password, and the output of the load command, the check command and the running service was captured and searched (S10). |
 
 **Measured on the local database, real files**
@@ -168,11 +168,11 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 - Alerts: as of 2026-09-27 15:30 UTC, 7 camera flags and 6 sensor alerts. With no time given, 7 flags, all from NCDOT stills labelled known dry.
 - Replay of the peak hour: the alert read as live from the first batch; clearing it restored the original rows and the check command passed again.
 
-**Tests**: 320 in `tests/dashboard` (195 without a database, 120 with the local database, 5 that need the real service and skip until it is reachable). P2 estimated about 67; the larger number comes from the plan review's additions and from one test per case where P2 listed one per failure.
+**Tests**: 334 in `tests/dashboard` after the critique fixes (206 without a database, all passing; 123 with the local database; 5 that need the real service and run only with `TIGER_LIVE_TESTS=1`). P2 estimated about 67; the larger number comes from the plan review's additions and from one test per case where P2 listed one per failure.
 
 ## Deviations from the plan
 
-1. **Base and baseline.** A teammate pushed a frontend to GitHub during execution. The branch was fast-forwarded to it (`c83c4e1`) and later to local `main` at `277154f`, at the coordination chat's request. AC7's comparison base is therefore `277154f`, and the base suite's count is 91, not 89. S5 and S9 take the nearer of the merge-bases with `main` and `origin/main`, because the local `main` lagged the pushed one for a while.
+1. **Base and baseline.** A teammate pushed a frontend to GitHub during execution. The branch was fast-forwarded to it (`c83c4e1`) and later to local `main` at `277154f`, at the coordination chat's request; after the first commit, `main` at `c71592c` (a new frontend from another chat) was merged in. AC7's comparison base for the first commit is `277154f`, and the base suite's count is 91, not 89 (112 after that merge). S5 and S9 take the nearer of the merge-bases with `main` and `origin/main`, because the local `main` lagged the pushed one for a while.
 2. **`web/README.md`.** It now belongs to the teammate's frontend. This change's notes are in `web/tiger/README.md`. S9's list of files this change must not touch was extended to the frontend's files.
 3. **The frontend.** The pushed frontend fetched `/api/segments` from port 8000. A route answering that call from the database was considered and dropped: the coordination chat reported that another chat is replacing the frontend with pages that read static JSON files, so nothing would call it. As things stand no page reads this service. `/api/worklist` and `/api/alerts` are the two routes a page would most likely use; wiring is a follow-up for the user to decide.
 4. **A source file changed under the build.** The flood chat rebuilt `data/processed/flood_camera_depth.parquet` at 19:51 with its fine-tuned reader (same 3,093 rows and columns; `run` is now `finetune_camera`). The known-dry NCDOT stills now carry 9 flags, not 10, and the coastal frames 448, not 554. The real-data half of T5 therefore checks the flag counts against the file itself and that the dry-road false alarms stay under 5%; the 1,191 and 1,902 row counts are still pinned. The fixed caveat text uses the flood chat's figures (85% of flags right on a camera never seen; 9 of 1,191 dry stills wrongly flagged). The facts section above still shows the 10 and 554 measured before the rebuild.
@@ -181,6 +181,12 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 7. **Step 2b did not run.** With no connection setting there was nothing to probe. The console fallback (`--dump-dir`) was built anyway because it was small, and has a test that loads its files into the local database (the test in AC2's note).
 8. **`db_url` no longer deletes other sessions' schemas** (plan review) and the fixtures gained `empty_schema`, a schema name with nothing loaded.
 9. **Test names.** S1's "git ignores `tiger.env`" reads the rule from `.gitignore`; `main` now also ignores `*.env`.
+
+10. **`/api/alerts` takes `hours`** (2 by default, or 1). The peak hours are counted one hour at a time, and without this the alert list for a peak's time covered two hours and could show more than the peak's count.
+11. **The tests that talk to the real service need `TIGER_LIVE_TESTS=1`.** With only the `network` marker, a plain test run would have reached the real service as soon as `tiger.env` existed, and one of those tests creates and drops a probe schema there. The switch the plan gave the `db` tests for reaching another machine (`TIGER_TEST_ALLOW_REMOTE`) was removed: there is no way to point them off this machine.
+12. **The console files** empty the tables and write a `loaded` record in `setup.sql`, and `after_load.sql` sets it to `complete`, so D11's "loading" rule also holds for a load done by hand.
+13. **A held table lock answers "loading".** While a load's copy step holds the tables, a data route used to wait for its lock time limit and answer "database unavailable".
+14. **The replay reports rows it left out.** A replayed row that would land exactly on an existing row's key is not inserted (the real row is never written over); the command prints how many.
 
 ## Paragraph for the README (for the user to paste; this change does not edit the README)
 
@@ -191,6 +197,29 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 ## Not done
 
 - The real Tiger Data service is not loaded, so AC3, the real half of AC5 and L1 to L5 are open. It needs the connection setting in `data/raw/tiger.env` and a network that allows the service's port (a phone hotspot), or the console fallback.
-- One `db` test has not passed (AC2's note). It needs Docker, which needs the external drive.
+- The `db` tests have to be run again in full (AC2). They need Docker, which needs the external drive "Crucial P3" reconnected, or the user's say to rebuild the test database on the internal disk.
 - Hosting, the domain and frontend wiring were gated on the user's yes and were not started.
 - Whether crash rate should enter the rank or the risk file is still the user's call; it is shown and not used.
+
+## Reviews
+
+### Claude critique, round 1 (`aaa0926`): Overall Fail
+
+Scorecard: Plan adherence Acceptable; Scope discipline Acceptable; Test coverage **Fail**; Review compliance Acceptable; Freeze integrity Acceptable; Regression check Acceptable; Documentation Acceptable. The reviewer ran the tests that need no database (195 passed) and could run none of the `db` tests.
+
+The one blocking finding stands: AC2 and AC3 are not met and the database evidence cannot be re-checked while Docker is down. It is not something code can fix; it needs the drive and the Tiger connection setting.
+
+Non-blocking findings, all fixed in the next commit unless noted:
+
+1. The `network` tests would reach the real service without opting in. Fixed: `TIGER_LIVE_TESTS=1`, with a test that they skip without it.
+2. `TIGER_TEST_ALLOW_REMOTE` turned the local-only guard off and left cleanup inconsistent. Fixed: removed, with a test.
+3. AC2 and AC7 were labelled more generously than the evidence. Fixed: relabelled above.
+4. A database error after connecting printed the driver's text from the commands. Fixed: one fixed sentence (`config.describe`), with tests for load, verify and replay.
+5. The load record had no rows per source file (D11). Fixed: `rows` is stored beside each file's sha256.
+6. The console files broke D11's loading rule and ignored `--schema`. Fixed (Deviations 12).
+7. The replay silently dropped rows that met an existing key. Fixed: reported; X5 now replays into hours that hold real sensor rows, and a second test covers the left-out case.
+8. A held lock answered "database unavailable". Fixed (Deviations 13).
+9. Peak hours and the alert list counted different windows; a camera missing from the camera table could raise; a numpy boolean was written as `True`. Fixed, each with a test.
+10. Weak tests: R12 checked a constant the rank did not read (the rank now sorts by `RANK_KEYS` itself, and a tie test was added); T5 used `>` where the service flags at `>=`; A12 allowed 2.5 s where the spec says 2. Fixed. A17's mid-stream cases call the page generator directly, which the reviewer notes is true by construction now that each page is its own checkout: left as is.
+11. Documentation nits (`unavailable` from `--check`, 80 against 81 ms, the alert example's envelope). Fixed.
+
