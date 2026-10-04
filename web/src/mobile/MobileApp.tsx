@@ -299,9 +299,7 @@ export default function MobileApp() {
 
       <header className="m-top">
         <div className="m-top-brand">
-          <div className="m-brand-mark" aria-hidden="true">
-            <span className="m-brand-dot" />
-          </div>
+          <img src="/assets/reference/logo.webp" alt="RoadSense AI" className="m-brand-logo-img" />
           <div className="m-top-text">
             <div className="m-title-row">
               <h1 className="m-brand-title">RoadSense AI</h1>

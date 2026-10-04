@@ -95,6 +95,14 @@
   background: #10b981;
 }
 
+.m-brand-logo-img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+}
+
 .m-top-text {
   display: flex;
   flex-direction: column;
@@ -250,10 +258,8 @@
   border-radius: 24px 24px 0 0;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
   box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.08);
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  box-sizing: border-box;
+  max-width: 560px;
+  margin: 0 auto;
 }
 
 .m-grip {
@@ -908,20 +914,12 @@
 
 @media (min-width: 700px) {
   .m-sheet {
-    left: 0;
-    right: 0;
-    width: 100%;
-    max-width: 100%;
+    left: 16px;
+    right: auto;
+    width: 420px;
     margin: 0;
   }
-  .m-sheet-head {
-    padding: 0 24px 12px 24px;
-  }
-  .m-sheet-body {
-    padding: 0 24px calc(env(safe-area-inset-bottom, 0px) + 20px);
-  }
   .m-fab {
-    bottom: calc(var(--sheet-h, 172px) + 16px);
-    right: 24px;
+    bottom: 24px;
   }
 }
