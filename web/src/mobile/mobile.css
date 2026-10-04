@@ -151,6 +151,7 @@
   border-radius: 8px;
   background: #f8fafc;
   color: #64748b;
+  text-decoration: none;
   cursor: pointer;
   transition: all 0.15s ease;
 }

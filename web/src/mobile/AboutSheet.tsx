@@ -63,6 +63,12 @@ export function AboutSheet({
       <p className="fine">
         Basemap: {engine === 'google' ? 'Google Maps' : `MapLibre with a Carto basemap${fallbackReason ? ` (${fallbackReason})` : ''}`}.
       </p>
+
+      <h3>Other views</h3>
+      <p style={{ display: 'flex', gap: '16px', marginTop: '6px' }}>
+        <a href="/gov" style={{ color: '#2563eb', fontWeight: 600 }}>Agency Dashboard (/gov) &rarr;</a>
+        <a href="/dashboard" style={{ color: '#2563eb', fontWeight: 600 }}>Executive View (/dashboard) &rarr;</a>
+      </p>
     </div>
   );
 }

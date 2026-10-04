@@ -6,7 +6,7 @@
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Layer } from '@deck.gl/core';
-import { Info, LocateFixed, X } from 'lucide-react';
+import { Building2, Info, LocateFixed, X } from 'lucide-react';
 import {
   cellsForBounds,
   distanceToSeg,
@@ -310,9 +310,19 @@ export default function MobileApp() {
             <p className="m-brand-subtitle">State Highway Pavement &amp; Flood Intelligence</p>
           </div>
         </div>
-        <button type="button" className="m-icon-btn" aria-label="About this model" onClick={() => setAboutOpen(true)}>
-          <Info size={18} />
-        </button>
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <a
+            href={`${import.meta.env.BASE_URL}gov`}
+            className="m-icon-btn"
+            title="Desktop agency dashboard (/gov)"
+            aria-label="Agency dashboard"
+          >
+            <Building2 size={18} />
+          </a>
+          <button type="button" className="m-icon-btn" aria-label="About this model" onClick={() => setAboutOpen(true)}>
+            <Info size={18} />
+          </button>
+        </div>
       </header>
 
       {(error || mapError) && (

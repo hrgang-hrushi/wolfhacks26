@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { Plus, Calendar, MessageSquare, Ticket, Settings, Navigation } from 'lucide-react';
+import { Plus, Calendar, MessageSquare, Ticket, Settings, Navigation, Building2, Smartphone } from 'lucide-react';
 
 interface CleanSidebarProps {
   onHomeClick?: () => void;
@@ -46,6 +46,24 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
         >
           <img src="/assets/reference/icon_home.webp" alt="Home" className="sidebar-icon-img home-active-icon" />
         </button>
+
+        <a
+          href="/gov"
+          className="sidebar-icon-btn svg-nav-btn hotspot-gov"
+          title="Agency Dashboard (/gov)"
+          aria-label="Agency Dashboard"
+        >
+          <Building2 size={21} className="nav-svg-icon text-amber-500" />
+        </a>
+
+        <a
+          href="/m"
+          className="sidebar-icon-btn svg-nav-btn hotspot-mobile"
+          title="Judge Mobile Dashboard (/m)"
+          aria-label="Judge Mobile Dashboard"
+        >
+          <Smartphone size={21} className="nav-svg-icon text-sky-500" />
+        </a>
 
         <button
           type="button"

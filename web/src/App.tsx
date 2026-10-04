@@ -12,8 +12,9 @@ function route(): 'dashboard' | 'gov' | 'm' {
   if (path === '/gov') return 'gov';
   if (path === '/m') return 'm';
   if (path === '/dashboard') return 'dashboard';
-  // Default to phone dashboard on narrow screens, executive dashboard on desktop
-  const target = window.innerWidth < MOBILE_MAX_WIDTH ? 'm' : 'dashboard';
+  // Default to phone dashboard on narrow screens, agency dashboard on desktop
+  const target = window.innerWidth < MOBILE_MAX_WIDTH ? 'm' : 'gov';
+  window.history.replaceState(null, '', `${base}/${target}${window.location.search}${window.location.hash}`);
   return target;
 }
 

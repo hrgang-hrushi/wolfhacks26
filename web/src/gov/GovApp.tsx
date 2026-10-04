@@ -393,7 +393,10 @@ export default function GovApp() {
           </button>
         ))}
         <span className="g-rail-gap" />
-        <a href={`${import.meta.env.BASE_URL}m`} title="Phone view for judges" aria-label="Phone view for judges">
+        <a href={`${import.meta.env.BASE_URL}dashboard`} title="Executive view (/dashboard)" aria-label="Executive view (/dashboard)">
+          <Home size={20} />
+        </a>
+        <a href={`${import.meta.env.BASE_URL}m`} title="Phone view for judges (/m)" aria-label="Phone view for judges (/m)">
           <Smartphone size={20} />
         </a>
       </nav>

@@ -27,6 +27,13 @@
       }
     },
     {
+      "source": "/(gov|m|dashboard)(.*)",
+      "destination": {
+        "service": "web",
+        "path": "/index.html"
+      }
+    },
+    {
       "source": "/(.*)",
       "destination": {
         "service": "web"
