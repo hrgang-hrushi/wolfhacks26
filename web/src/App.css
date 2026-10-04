@@ -486,43 +486,99 @@ html, body, #root {
   transform: rotate(180deg);
 }
 
-/* Dropdown Menu */
+/* Dropdown Smooth Animation & Premium Glassmorphism */
+@keyframes dropdownSmoothOpen {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .pixel-dropdown-menu {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 14px;
+  box-shadow: 0 16px 36px -6px rgba(15, 23, 42, 0.16), 0 6px 14px -3px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.09);
   padding: 6px;
-  min-width: 200px;
+  min-width: 250px;
+  max-height: 380px;
+  overflow-y: auto;
+  overflow-x: hidden;
   z-index: 50;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  animation: dropdownSmoothOpen 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: top left;
+}
+
+/* Slick slim scrollbar for long dropdowns */
+.pixel-dropdown-menu::-webkit-scrollbar {
+  width: 5px;
+}
+.pixel-dropdown-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pixel-dropdown-menu::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 10px;
+}
+.pixel-dropdown-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
 }
 
 .pixel-dropdown-item {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   width: 100%;
   text-align: left;
   padding: 8px 12px;
   border: none;
   background: transparent;
-  border-radius: 8px;
+  border-radius: 9px;
   font-size: 13px;
   font-family: var(--font-family);
   color: #334155;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
+  gap: 8px;
+  box-sizing: border-box;
 }
 
 .pixel-dropdown-item:hover {
   background: #f1f5f9;
   color: #0f172a;
+  transform: translateX(2px);
+}
+
+.pixel-dropdown-item.selected {
+  background: #f1f5f9;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.dropdown-item-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-check-icon {
+  color: #2563eb;
+  flex-shrink: 0;
+  margin-left: 6px;
 }
 
 /* ==========================================================================

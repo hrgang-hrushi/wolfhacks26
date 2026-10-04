@@ -12,6 +12,9 @@ export interface MapViewHandle {
   flyToCity: (city: string) => void;
   flyToSegment: (segment: RoadSegment) => void;
   flyToCoords: (lng: number, lat: number, zoom?: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  fitStatewide: () => void;
 }
 
 export type ConditionColorFilter = 'all' | 'blue' | 'green' | 'yellow' | 'red';
@@ -153,6 +156,23 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         duration: 1500,
         essential: true
       });
+    },
+    zoomIn: () => {
+      if (mapRef.current) mapRef.current.zoomIn({ duration: 300 });
+    },
+    zoomOut: () => {
+      if (mapRef.current) mapRef.current.zoomOut({ duration: 300 });
+    },
+    fitStatewide: () => {
+      if (!mapRef.current) return;
+      mapRef.current.flyTo({
+        center: NC_CITY_COORDINATES.Statewide.center,
+        zoom: NC_CITY_COORDINATES.Statewide.zoom,
+        pitch: 0,
+        bearing: 0,
+        duration: 1600,
+        essential: true
+      });
     }
   }));
 
@@ -244,7 +264,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         zoom: NC_CITY_COORDINATES.Statewide.zoom,
         pitch: 0,
         bearing: 0,
-        maxBounds: NC_BOUNDS,
+        minZoom: 5.0,
+        maxZoom: 20.0,
         attributionControl: false,
         antialias: true
       });
@@ -254,6 +275,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         try {
           mapInstance.fitBounds(NC_BOUNDS, {
             padding: { top: 60, bottom: 60, left: 30, right: 30 },
+            maxZoom: 7.4,
             duration: 0
           });
         } catch {}
@@ -329,7 +351,8 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
           zoom: NC_CITY_COORDINATES.Statewide.zoom,
           pitch: 0,
           bearing: 0,
-          maxBounds: NC_BOUNDS,
+          minZoom: 5.0,
+          maxZoom: 20.0,
           attributionControl: false,
           antialias: true
         });
@@ -337,6 +360,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
           try {
             fallbackMap.fitBounds(NC_BOUNDS, {
               padding: { top: 60, bottom: 60, left: 30, right: 30 },
+              maxZoom: 7.4,
               duration: 0
             });
           } catch {}

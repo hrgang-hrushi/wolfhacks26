@@ -17,7 +17,7 @@ export interface RoadSegment {
   
   // Helpful metadata for display and navigation
   name: string;
-  city: 'Raleigh' | 'Asheville';
+  city: string;
 
   // Real pipeline prediction fields from handoff/predictions_geo.parquet
   pred_rate?: number;

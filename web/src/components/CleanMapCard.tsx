@@ -1,5 +1,5 @@
 import { useState, useImperativeHandle, forwardRef, useEffect, useRef, useMemo } from 'react';
-import { Search, ChevronDown, X, MapPin, Compass, Thermometer, CloudRain, Sun, Navigation } from 'lucide-react';
+import { Search, ChevronDown, X, MapPin, Compass, Thermometer, CloudRain, Sun, Navigation, Check } from 'lucide-react';
 import type { RoadSegment, ViewFilter } from '../types/roadSegment';
 import { MapView, type MapViewHandle, type ConditionColorFilter } from './MapView';
 import { fetchWeatherByCity, type WeatherData } from '../services/weatherService';
@@ -49,6 +49,8 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<'insurance' | 'state' | 'city' | 'district' | 'condition' | null>(null);
+  const [activeRegion, setActiveRegion] = useState<string>('Statewide');
+  const [activeDistrict, setActiveDistrict] = useState<string>('All');
   const [geocodedPlaces, setGeocodedPlaces] = useState<GeocodedPlace[]>([]);
   const [weather, setWeather] = useState<WeatherData | null>(null);
 
@@ -400,193 +402,209 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
             </span>
           </div>
 
-          {/* Insurance Type Dropdown */}
+          {/* 1. Network / Insurance Dropdown */}
           <div className="pixel-filter-wrap">
             <button
               type="button"
               className={`pixel-filter-btn ${openDropdown === 'insurance' ? 'active' : ''}`}
               onClick={() => toggleDropdown('insurance')}
-              title="Insurance Type"
-              aria-label="Insurance Type"
+              title="Filter by Road Network / Survey Source"
+              aria-label="Network Type"
             >
-              <span>Insurance Type</span>
+              <span>{_viewFilter === 'ncdot' ? 'Network: NCDOT' : 'Network: All'}</span>
               <ChevronDown size={14} className="pixel-filter-chevron" />
             </button>
             {openDropdown === 'insurance' && (
               <div className="pixel-dropdown-menu">
                 <button
                   type="button"
-                  className="pixel-dropdown-item"
+                  className={`pixel-dropdown-item ${_viewFilter === 'all' ? 'selected' : ''}`}
                   onClick={() => {
                     onToggleFilter('all');
                     setOpenDropdown(null);
                   }}
                 >
-                  All Street Types (Prediction)
+                  <span className="dropdown-item-text">All Networks (Statewide Predictive)</span>
+                  <span className="condition-badge blue">All</span>
+                  {_viewFilter === 'all' && <Check size={14} className="dropdown-check-icon" />}
                 </button>
                 <button
                   type="button"
-                  className="pixel-dropdown-item"
+                  className={`pixel-dropdown-item ${_viewFilter === 'ncdot' ? 'selected' : ''}`}
                   onClick={() => {
                     onToggleFilter('ncdot');
                     setOpenDropdown(null);
                   }}
                 >
-                  State Surveys (NCDOT Only)
+                  <span className="dropdown-item-text">State Surveys (NCDOT Highway Only)</span>
+                  <span className="condition-badge green">NCDOT</span>
+                  {_viewFilter === 'ncdot' && <Check size={14} className="dropdown-check-icon" />}
                 </button>
               </div>
             )}
           </div>
 
-          {/* State Dropdown */}
+          {/* 2. Region / State Dropdown */}
           <div className="pixel-filter-wrap">
             <button
               type="button"
               className={`pixel-filter-btn ${openDropdown === 'state' ? 'active' : ''}`}
               onClick={() => toggleDropdown('state')}
-              title="State / Region"
-              aria-label="State"
+              title="Filter Geographic Region"
+              aria-label="Region"
             >
-              <span>State</span>
+              <span>{activeRegion === 'Statewide' ? 'Region: Statewide' : `Region: ${activeRegion}`}</span>
               <ChevronDown size={14} className="pixel-filter-chevron" />
             </button>
             {openDropdown === 'state' && (
               <div className="pixel-dropdown-menu">
                 <button
                   type="button"
-                  className="pixel-dropdown-item"
+                  className={`pixel-dropdown-item ${activeRegion === 'Statewide' ? 'selected' : ''}`}
                   onClick={() => {
+                    setActiveRegion('Statewide');
                     handleSelectCity('Statewide');
                     setOpenDropdown(null);
                   }}
                 >
-                  North Carolina Statewide (112,443 Segments)
+                  <span className="dropdown-item-text">NC Statewide (112,443 Segments)</span>
+                  <span className="condition-badge blue">State</span>
+                  {activeRegion === 'Statewide' && <Check size={14} className="dropdown-check-icon" />}
                 </button>
                 <button
                   type="button"
-                  className="pixel-dropdown-item"
+                  className={`pixel-dropdown-item ${activeRegion === 'Mountains' ? 'selected' : ''}`}
                   onClick={() => {
-                    handleSelectCity('Statewide');
+                    setActiveRegion('Mountains');
+                    gisMapRef.current?.flyToCity('Mountains');
                     setOpenDropdown(null);
                   }}
                 >
-                  All State Jurisdictions
+                  <span className="dropdown-item-text">Western Mountains (Helene Zone)</span>
+                  <span className="condition-badge yellow">West</span>
+                  {activeRegion === 'Mountains' && <Check size={14} className="dropdown-check-icon" />}
+                </button>
+                <button
+                  type="button"
+                  className={`pixel-dropdown-item ${activeRegion === 'Piedmont' ? 'selected' : ''}`}
+                  onClick={() => {
+                    setActiveRegion('Piedmont');
+                    gisMapRef.current?.flyToCity('Piedmont');
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <span className="dropdown-item-text">Central Piedmont (Triangle & Triad)</span>
+                  <span className="condition-badge green">Central</span>
+                  {activeRegion === 'Piedmont' && <Check size={14} className="dropdown-check-icon" />}
+                </button>
+                <button
+                  type="button"
+                  className={`pixel-dropdown-item ${activeRegion === 'Coastal' ? 'selected' : ''}`}
+                  onClick={() => {
+                    setActiveRegion('Coastal');
+                    gisMapRef.current?.flyToCity('Coastal');
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <span className="dropdown-item-text">Coastal Plain (Cape Fear & Outer Banks)</span>
+                  <span className="condition-badge blue">East</span>
+                  {activeRegion === 'Coastal' && <Check size={14} className="dropdown-check-icon" />}
                 </button>
               </div>
             )}
           </div>
 
-          {/* City Dropdown */}
+          {/* 3. City Corridor Dropdown */}
           <div className="pixel-filter-wrap">
             <button
               type="button"
               className={`pixel-filter-btn ${openDropdown === 'city' ? 'active' : ''}`}
               onClick={() => toggleDropdown('city')}
-              title="City Focus"
+              title="City Corridor Focus"
               aria-label="City"
             >
-              <span>{activeCity || 'City'}</span>
+              <span>{activeCity && activeCity !== 'Statewide' ? `City: ${activeCity}` : 'City: Statewide'}</span>
               <ChevronDown size={14} className="pixel-filter-chevron" />
             </button>
             {openDropdown === 'city' && (
               <div className="pixel-dropdown-menu">
-                <button
-                  type="button"
-                  className="pixel-dropdown-item"
-                  onClick={() => {
-                    handleSelectCity('Statewide');
-                    setOpenDropdown(null);
-                  }}
-                >
-                  Statewide (All North Carolina)
-                </button>
-                <button
-                  type="button"
-                  className="pixel-dropdown-item"
-                  onClick={() => {
-                    handleSelectCity('Raleigh');
-                    setOpenDropdown(null);
-                  }}
-                >
-                  Raleigh (Capital District)
-                </button>
-                <button
-                  type="button"
-                  className="pixel-dropdown-item"
-                  onClick={() => {
-                    handleSelectCity('Charlotte');
-                    setOpenDropdown(null);
-                  }}
-                >
-                  Charlotte (Metrolina Corridor)
-                </button>
-                <button
-                  type="button"
-                  className="pixel-dropdown-item"
-                  onClick={() => {
-                    handleSelectCity('Greensboro');
-                    setOpenDropdown(null);
-                  }}
-                >
-                  Greensboro (Piedmont Triad)
-                </button>
-                <button
-                  type="button"
-                  className="pixel-dropdown-item"
-                  onClick={() => {
-                    handleSelectCity('Wilmington');
-                    setOpenDropdown(null);
-                  }}
-                >
-                  Wilmington (Coastal Corridor)
-                </button>
-                <button
-                  type="button"
-                  className="pixel-dropdown-item"
-                  onClick={() => {
-                    handleSelectCity('Asheville');
-                    setOpenDropdown(null);
-                  }}
-                >
-                  Asheville (Helene Mountain Zone)
-                </button>
+                {[
+                  { id: 'Statewide', label: 'Statewide (All North Carolina)', badge: 'State', badgeColor: 'blue' },
+                  { id: 'Raleigh', label: 'Raleigh (Capital District)', badge: 'Capital', badgeColor: 'green' },
+                  { id: 'Charlotte', label: 'Charlotte (Metrolina Corridor)', badge: 'Metro', badgeColor: 'green' },
+                  { id: 'Greensboro', label: 'Greensboro (Piedmont Triad)', badge: 'Triad', badgeColor: 'yellow' },
+                  { id: 'Winston-Salem', label: 'Winston-Salem (Twin City)', badge: 'Piedmont', badgeColor: 'yellow' },
+                  { id: 'Wilmington', label: 'Wilmington (Coastal Corridor)', badge: 'Coast', badgeColor: 'blue' },
+                  { id: 'Asheville', label: 'Asheville (Helene Mountain Zone)', badge: 'Helene', badgeColor: 'red' },
+                  { id: 'Fayetteville', label: 'Fayetteville (Sandhills District)', badge: 'South', badgeColor: 'yellow' },
+                  { id: 'Boone', label: 'Boone (High Country)', badge: 'Mountain', badgeColor: 'yellow' },
+                  { id: 'Outer Banks', label: 'Outer Banks (Cape Hatteras)', badge: 'Coast', badgeColor: 'blue' }
+                ].map((c) => {
+                  const isSel = (activeCity || 'Statewide') === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`pixel-dropdown-item ${isSel ? 'selected' : ''}`}
+                      onClick={() => {
+                        handleSelectCity(c.id);
+                        setOpenDropdown(null);
+                      }}
+                    >
+                      <span className="dropdown-item-text">{c.label}</span>
+                      <span className={`condition-badge ${c.badgeColor}`}>{c.badge}</span>
+                      {isSel && <Check size={14} className="dropdown-check-icon" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* District Dropdown */}
+          {/* 4. District (NCDOT Divisions) Dropdown */}
           <div className="pixel-filter-wrap">
             <button
               type="button"
               className={`pixel-filter-btn ${openDropdown === 'district' ? 'active' : ''}`}
               onClick={() => toggleDropdown('district')}
-              title="District"
+              title="NCDOT Engineering Division"
               aria-label="District"
             >
-              <span>District</span>
+              <span>{activeDistrict === 'All' ? 'District: All' : `District: ${activeDistrict}`}</span>
               <ChevronDown size={14} className="pixel-filter-chevron" />
             </button>
             {openDropdown === 'district' && (
               <div className="pixel-dropdown-menu">
-                <button
-                  type="button"
-                  className="pixel-dropdown-item"
-                  onClick={() => setOpenDropdown(null)}
-                >
-                  District 1 (Western Mountains / Helene)
-                </button>
-                <button
-                  type="button"
-                  className="pixel-dropdown-item"
-                  onClick={() => setOpenDropdown(null)}
-                >
-                  District 2 (Central Piedmont &amp; Triangle)
-                </button>
+                {[
+                  { id: 'All', label: 'All Divisions (Statewide 1–14)', badge: 'All', badgeColor: 'blue', coordKey: 'Statewide' },
+                  { id: 'Div 5 & 7', label: 'Division 5 & 7 (Triangle & Triad)', badge: 'Div 5/7', badgeColor: 'green', coordKey: 'Div 5 & 7' },
+                  { id: 'Div 10 & 12', label: 'Division 10 & 12 (Charlotte Metrolina)', badge: 'Div 10/12', badgeColor: 'green', coordKey: 'Div 10 & 12' },
+                  { id: 'Div 13 & 14', label: 'Division 13 & 14 (Western Helene Zone)', badge: 'Div 13/14', badgeColor: 'red', coordKey: 'Div 13 & 14' },
+                  { id: 'Div 1 & 3', label: 'Division 1 & 3 (Coastal & Cape Fear)', badge: 'Div 1/3', badgeColor: 'blue', coordKey: 'Div 1 & 3' }
+                ].map((d) => {
+                  const isSel = activeDistrict === d.id;
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      className={`pixel-dropdown-item ${isSel ? 'selected' : ''}`}
+                      onClick={() => {
+                        setActiveDistrict(d.id);
+                        gisMapRef.current?.flyToCity(d.coordKey);
+                        setOpenDropdown(null);
+                      }}
+                    >
+                      <span className="dropdown-item-text">{d.label}</span>
+                      <span className={`condition-badge ${d.badgeColor}`}>{d.badge}</span>
+                      {isSel && <Check size={14} className="dropdown-check-icon" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Condition Dropdown (Blue, Green, Yellow, Red) */}
+          {/* 5. Condition Dropdown (Blue, Green, Yellow, Red) */}
           <div className="pixel-filter-wrap">
             <button
               type="button"
@@ -597,11 +615,11 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
             >
               <span className={`condition-indicator-dot ${conditionColorFilter}`} />
               <span>
-                {conditionColorFilter === 'all' && 'Condition'}
-                {conditionColorFilter === 'blue' && 'Blue (Helene)'}
-                {conditionColorFilter === 'green' && 'Green (Safe)'}
-                {conditionColorFilter === 'yellow' && 'Yellow (Caution)'}
-                {conditionColorFilter === 'red' && 'Red (Danger)'}
+                {conditionColorFilter === 'all' && 'Condition: All'}
+                {conditionColorFilter === 'blue' && 'Condition: Blue'}
+                {conditionColorFilter === 'green' && 'Condition: Green'}
+                {conditionColorFilter === 'yellow' && 'Condition: Yellow'}
+                {conditionColorFilter === 'red' && 'Condition: Red'}
               </span>
               <ChevronDown size={14} className="pixel-filter-chevron" />
             </button>
@@ -617,6 +635,8 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
                 >
                   <span className="condition-item-dot all" />
                   <span className="condition-item-label">All Conditions</span>
+                  <span className="condition-badge blue">All</span>
+                  {conditionColorFilter === 'all' && <Check size={14} className="dropdown-check-icon" />}
                 </button>
                 <button
                   type="button"
@@ -629,6 +649,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
                   <span className="condition-item-dot blue" />
                   <span className="condition-item-label">Blue (Helene / Flood Zone)</span>
                   <span className="condition-badge blue">Zone</span>
+                  {conditionColorFilter === 'blue' && <Check size={14} className="dropdown-check-icon" />}
                 </button>
                 <button
                   type="button"
@@ -641,6 +662,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
                   <span className="condition-item-dot green" />
                   <span className="condition-item-label">Green (Safe / Optimal)</span>
                   <span className="condition-badge green">Safe</span>
+                  {conditionColorFilter === 'green' && <Check size={14} className="dropdown-check-icon" />}
                 </button>
                 <button
                   type="button"
@@ -653,6 +675,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
                   <span className="condition-item-dot yellow" />
                   <span className="condition-item-label">Yellow (Caution / Fair)</span>
                   <span className="condition-badge yellow">Caution</span>
+                  {conditionColorFilter === 'yellow' && <Check size={14} className="dropdown-check-icon" />}
                 </button>
                 <button
                   type="button"
@@ -665,6 +688,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
                   <span className="condition-item-dot red" />
                   <span className="condition-item-label">Red (Danger / Critical)</span>
                   <span className="condition-badge red">Danger</span>
+                  {conditionColorFilter === 'red' && <Check size={14} className="dropdown-check-icon" />}
                 </button>
               </div>
             )}

@@ -56,7 +56,7 @@ export const MAPBOX_STYLES: Record<MapboxStyleKey, { label: string; url: string;
 
 export const NC_CITY_COORDINATES: Record<string, { center: [number, number]; zoom: number; pitch: number; bearing: number }> = {
   Raleigh: {
-    center: [-78.565, 35.625],
+    center: [-78.6382, 35.7796],
     zoom: 12.0,
     pitch: 35,
     bearing: -10
@@ -75,20 +75,89 @@ export const NC_CITY_COORDINATES: Record<string, { center: [number, number]; zoo
   },
   Charlotte: {
     center: [-80.8431, 35.2271],
-    zoom: 11.5,
+    zoom: 11.8,
     pitch: 35,
     bearing: 0
   },
   Greensboro: {
     center: [-79.7919, 36.0726],
-    zoom: 11.5,
+    zoom: 11.8,
+    pitch: 35,
+    bearing: 0
+  },
+  'Winston-Salem': {
+    center: [-80.2442, 36.0999],
+    zoom: 11.8,
     pitch: 35,
     bearing: 0
   },
   Wilmington: {
     center: [-77.9447, 34.2257],
-    zoom: 11.5,
+    zoom: 11.8,
     pitch: 35,
     bearing: 0
+  },
+  Fayetteville: {
+    center: [-78.8784, 35.0526],
+    zoom: 11.8,
+    pitch: 35,
+    bearing: 0
+  },
+  Boone: {
+    center: [-81.6748, 36.2168],
+    zoom: 12.0,
+    pitch: 35,
+    bearing: 10
+  },
+  'Outer Banks': {
+    center: [-75.62, 35.95],
+    zoom: 10.0,
+    pitch: 20,
+    bearing: 0
+  },
+  // Regional Coordinates
+  Mountains: {
+    center: [-82.6, 35.55],
+    zoom: 9.0,
+    pitch: 30,
+    bearing: 10
+  },
+  Piedmont: {
+    center: [-79.5, 35.8],
+    zoom: 8.8,
+    pitch: 25,
+    bearing: -5
+  },
+  Coastal: {
+    center: [-77.2, 35.2],
+    zoom: 8.5,
+    pitch: 15,
+    bearing: 0
+  },
+  // NCDOT Division Groupings
+  'Div 1 & 3': {
+    center: [-77.3, 34.8],
+    zoom: 8.7,
+    pitch: 15,
+    bearing: 0
+  },
+  'Div 5 & 7': {
+    center: [-79.1, 35.9],
+    zoom: 9.2,
+    pitch: 25,
+    bearing: 0
+  },
+  'Div 10 & 12': {
+    center: [-80.8, 35.3],
+    zoom: 9.0,
+    pitch: 25,
+    bearing: 0
+  },
+  'Div 13 & 14': {
+    center: [-82.6, 35.6],
+    zoom: 9.0,
+    pitch: 35,
+    bearing: 10
   }
 };
+

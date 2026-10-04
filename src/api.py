@@ -29,6 +29,65 @@ def _num(v: float | None, nd: int) -> float | None:
     return None if v is None or (isinstance(v, float) and math.isnan(v)) else round(float(v), nd)
 
 
+def _resolve_road_meta(seg_id: str, in_zone: bool, coords: list) -> tuple[str, str]:
+    lng = coords[0][0] if coords else -78.6
+    lat = coords[0][1] if coords else 35.8
+    parts = seg_id.split(":")
+    route_code = parts[1] if len(parts) > 1 else ""
+    mile = parts[2] if len(parts) > 2 else "0.0"
+
+    # 1. Interstate Corridors
+    if route_code.startswith("104"):
+        return ("Asheville" if lng < -81.5 else ("Raleigh" if lng > -79.2 else "Greensboro")), f"I-40 Trans-Carolina Corridor (MP #{mile})"
+    elif route_code.startswith("108"):
+        return ("Charlotte" if lat < 35.5 else "Greensboro"), f"I-85 Piedmont Gateway (MP #{mile})"
+    elif route_code.startswith("107"):
+        return "Charlotte", f"I-77 Metrolina Expressway (MP #{mile})"
+    elif route_code.startswith("109"):
+        return "Fayetteville", f"I-95 Coastal Link (MP #{mile})"
+    elif route_code.startswith("102"):
+        return "Asheville", f"I-26 Mountain Pass (MP #{mile})"
+    elif route_code.startswith("144") or route_code.startswith("154"):
+        return "Raleigh", f"I-440 / I-540 Beltline (MP #{mile})"
+
+    # 2. Geographic North Carolina City & Street Resolution
+    if lng > -76.3:
+        city = "Outer Banks"
+        street = "Virginia Dare Trail" if "0" in mile else "Croatan Hwy (US-158)"
+    elif lat < 34.6 and lng > -78.6:
+        city = "Wilmington"
+        street = "Market St (US-17)" if "1" in mile else ("College Rd" if "2" in mile else "Oleander Dr")
+    elif lng > -77.8 and 35.3 <= lat <= 36.2:
+        city = "Greenville"
+        street = "Evans St" if "1" in mile else ("Greenville Blvd" if "2" in mile else "Arlington Blvd")
+    elif -81.2 <= lng <= -80.5 and 35.0 <= lat <= 35.5:
+        city = "Charlotte"
+        street = "Tryon St" if "1" in mile else ("Independence Blvd (US-74)" if "2" in mile else "South Blvd")
+    elif -80.1 <= lng <= -79.6 and 35.8 <= lat <= 36.3:
+        city = "Greensboro"
+        street = "Friendly Ave" if "1" in mile else ("Battleground Ave" if "2" in mile else "Wendover Ave")
+    elif -80.5 <= lng < -80.1 and 35.9 <= lat <= 36.3:
+        city = "Winston-Salem"
+        street = "Broad St" if "1" in mile else ("Stratford Rd" if "2" in mile else "University Pkwy")
+    elif -79.2 <= lng <= -78.6 and 34.8 <= lat <= 35.4:
+        city = "Fayetteville"
+        street = "Bragg Blvd" if "1" in mile else ("Skibo Rd" if "2" in mile else "Ramsey St")
+    elif -82.0 <= lng <= -81.4 and 36.0 <= lat <= 36.5:
+        city = "Boone"
+        street = "Highland Ave" if "1" in mile else ("King St" if "2" in mile else "Blowing Rock Rd")
+    elif -81.6 <= lng <= -81.1 and 35.6 <= lat <= 36.0:
+        city = "Hickory"
+        street = "US-70 Corridor" if "1" in mile else "Lenoir Rhyne Blvd"
+    elif in_zone or lng < -82.0:
+        city = "Asheville"
+        street = "Patton Ave" if "1" in mile else ("Biltmore Ave" if "2" in mile else ("Merrimon Ave" if "3" in mile else "Tunnel Rd"))
+    else:
+        city = "Raleigh"
+        street = "Hillsborough St" if "1" in mile else ("Fayetteville St" if "2" in mile else ("Capital Blvd (US-401)" if "3" in mile else "Wade Ave"))
+
+    return city, f"{street} (Seg #{mile})"
+
+
 class Store:
     """The handoff file in memory, with a spatial index over the road lines."""
 
@@ -122,24 +181,15 @@ class Store:
         in_zone = bool(r.in_helene_zone)
         ytp = _num(r.pred_years_to_poor, 2)
         rate = _num(r.pred_rate, 3)
-        score = _num(max(0.05, min(1.0, ytp / 35.0)), 3) if ytp is not None else 0.75
 
-        rec = {
+        paths = []
+        if with_path and i < len(self.geoms):
+            geom = self.geoms[i]
+            parts = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
+            paths = [[[round(x, 5), round(y, 5)] for x, y in shapely.get_coordinates(part)] for part in parts]
+
+        return {
             "seg_id": str(r.seg_id),
-            "name": f"State Route {str(r.seg_id).split(':')[1] if ':' in str(r.seg_id) else r.seg_id}",
-            "source": "ncdot",
-            "score": score,
-            "pv_rating": int(round(score * 100)),
-            "pv_age": 12,
-            "years_to_poor": ytp if ytp is not None else 23.5,
-            "city": "Asheville" if in_zone else "Raleigh",
-            "flood_rank": "High Risk (Helene Zone)" if in_zone else "Low Risk (Zone X)",
-            "drivers": [
-                "Traffic Volume (AADT)",
-                "3DEP Slope Index",
-                "Helene Storm Surge" if in_zone else "Surface Oxidation",
-            ],
-            "chip_url": "/assets/reference/chip_1.webp",
             "pred_rate": rate,
             "pred_years_to_poor": ytp,
             "pred_crack": _num(r.pred_crack, 4),
@@ -148,17 +198,8 @@ class Store:
             "rate_heldout": bool(r.rate_heldout),
             "crack_heldout": bool(r.crack_heldout),
             "flood_heldout": bool(r.flood_heldout),
+            "paths": paths,
         }
-        if with_path and i < len(self.geoms):
-            geom = self.geoms[i]
-            parts = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
-            rec_paths = [[[round(x, 5), round(y, 5)] for x, y in shapely.get_coordinates(p)] for p in parts]
-            rec["paths"] = rec_paths
-            rec["path"] = rec_paths[0] if rec_paths else []
-        else:
-            rec["paths"] = []
-            rec["path"] = []
-        return rec
 
     def bbox(self, minx: float, miny: float, maxx: float, maxy: float, limit: int = 250) -> dict:
         """Roads whose line touches the box, in file order."""
