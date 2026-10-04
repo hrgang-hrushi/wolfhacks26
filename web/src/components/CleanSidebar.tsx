@@ -79,8 +79,8 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
           type="button"
           className="sidebar-icon-btn svg-nav-btn hotspot-plus"
           onClick={onPlusClick}
-          title="Add Filter / Road Layer"
-          aria-label="Add"
+          title="Selected road details"
+          aria-label="Selected road details"
         >
           <Plus size={22} className="nav-svg-icon" />
         </button>
@@ -89,8 +89,8 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
           type="button"
           className="sidebar-icon-btn svg-nav-btn hotspot-tasks"
           onClick={onDocsClick}
-          title="Schedule & Tasks"
-          aria-label="Tasks"
+          title="About this project"
+          aria-label="About this project"
         >
           <Calendar size={22} className="nav-svg-icon" />
         </button>
@@ -99,8 +99,8 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
           type="button"
           className="sidebar-icon-btn svg-nav-btn hotspot-chat"
           onClick={onChatClick}
-          title="Inspector Field Notes"
-          aria-label="Notes"
+          title="How the data is served"
+          aria-label="How the data is served"
         >
           <MessageSquare size={22} className="nav-svg-icon" />
         </button>
@@ -112,8 +112,8 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
           type="button"
           className="sidebar-icon-btn svg-nav-btn hotspot-ticket"
           onClick={onTagClick}
-          title="Saved Segments / Tickets"
-          aria-label="Tickets"
+          title="Selected road details"
+          aria-label="Selected road details"
         >
           <Ticket size={22} className="nav-svg-icon" />
         </button>
@@ -122,8 +122,8 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
           type="button"
           className="sidebar-icon-btn svg-nav-btn hotspot-settings"
           onClick={onSettingsClick}
-          title="Settings & PMTiles Architecture"
-          aria-label="Settings"
+          title="Data architecture"
+          aria-label="Data architecture"
         >
           <Settings size={22} className="nav-svg-icon" />
         </button>
@@ -132,8 +132,8 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
           type="button"
           className="sidebar-icon-btn profile-btn hotspot-nbadge"
           onClick={onSettingsClick}
-          title="Network Profile"
-          aria-label="Profile"
+          title="Data architecture"
+          aria-label="Data architecture"
         >
           <img src="/assets/reference/n_badge.webp" alt="Profile" className="sidebar-icon-img profile-badge-img" />
         </button>

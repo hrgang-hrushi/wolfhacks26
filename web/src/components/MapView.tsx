@@ -80,6 +80,10 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const [activeStyleKey, setActiveStyleKey] = useState<NCBasemapKey>('light');
+  const styleKeyRef = useRef<NCBasemapKey>('light');
+  useEffect(() => {
+    styleKeyRef.current = activeStyleKey;
+  }, [activeStyleKey]);
 
   // Hover state for interactive tooltip
   const [hoveredInfo, setHoveredInfo] = useState<{
@@ -306,7 +310,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         const status = (e.error as any)?.status;
         if (status === 401 || status === 403 || msg.toLowerCase().includes('token') || msg.toLowerCase().includes('unauthorized') || msg.toLowerCase().includes('forbidden')) {
           console.warn('Mapbox basemap unauthorized or rate limited, switching to Carto vector basemap:', msg);
-          const fallbackUrl = NC_BASEMAPS[activeStyleKey]?.fallback || CARTO_LIGHT_STYLE;
+          const fallbackUrl = NC_BASEMAPS[styleKeyRef.current]?.fallback || CARTO_LIGHT_STYLE;
           mapInstance.setStyle(fallbackUrl);
         }
       });

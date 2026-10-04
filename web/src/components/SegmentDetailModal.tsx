@@ -3,6 +3,7 @@ import { X, Navigation, Calendar, Clock, ShieldAlert, Activity, Building2, MapPi
 import type { RoadSegment } from '../types/roadSegment';
 import { getConditionInfo } from '../utils/colors';
 import { fetchWeatherByCoords, type WeatherData } from '../services/weatherService';
+import { useRoadRecord } from '../utils/roadFacts';
 
 interface SegmentDetailModalProps {
   segment: RoadSegment | null;
@@ -16,6 +17,8 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
   onFlyTo
 }) => {
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const record = useRoadRecord(segment);
+  const surfaceAge = record?.ry != null ? Math.max(0, new Date().getFullYear() - record.ry) : null;
 
   useEffect(() => {
     let active = true;
@@ -135,9 +138,9 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
               <span>PAVEMENT AGE</span>
             </div>
             <div className="col-metric-val" style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {segment.pv_age} <span className="val-unit">yrs</span>
+              {surfaceAge != null ? <>{surfaceAge} <span className="val-unit">yrs</span></> : '–'}
             </div>
-            <span className="col-metric-sub">Since last repaving</span>
+            <span className="col-metric-sub">{record?.ry != null ? `Last resurfaced ${record.ry} (NCDOT record)` : 'No resurfacing year on record'}</span>
           </div>
 
           {/* Predicted Years to Poor */}
@@ -203,32 +206,32 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
               <span className="sub-header-title">LIVE ATMOSPHERIC CONDITIONS</span>
             </div>
             <span className="condition-pill-badge" style={{ backgroundColor: '#eff6ff', color: '#1d4ed8' }}>
-              OpenWeatherMap Live
+              {weather ? `Live · ${weather.source}` : 'Unavailable'}
             </span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '6px' }}>
             <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
               <div style={{ fontSize: '10px', color: '#64748b' }}>TEMP</div>
               <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-                {weather ? `${weather.temp}°F` : '69°F'}
+                {weather ? `${weather.temp}°F` : '–'}
               </div>
             </div>
             <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
               <div style={{ fontSize: '10px', color: '#64748b' }}>HUMIDITY</div>
               <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-                {weather ? `${weather.humidity}%` : '93%'}
+                {weather ? `${weather.humidity}%` : '–'}
               </div>
             </div>
             <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '8px', textAlign: 'center' }}>
               <div style={{ fontSize: '10px', color: '#64748b' }}>WIND SPEED</div>
               <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>
-                {weather ? `${weather.windSpeed} mph` : '11 mph'}
+                {weather ? `${weather.windSpeed} mph` : '–'}
               </div>
             </div>
           </div>
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
-            Current Condition: <strong style={{ color: '#1e293b' }}>{weather?.description || 'light rain'}</strong>
-            {weather?.rain1h ? ` • Precipitation: ${weather.rain1h} mm/hr (Increases pavement saturation risk)` : ''}
+            Current Condition: <strong style={{ color: '#1e293b' }}>{weather?.description || 'weather is not available right now'}</strong>
+            {weather?.rain1h ? ` • Precipitation: ${weather.rain1h} mm in the last hour` : ''}
           </div>
         </div>
 

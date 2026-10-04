@@ -31,6 +31,20 @@ interface CleanMapCardProps {
   onClearRoutePreview?: () => void;
 }
 
+/** A plain description of each city shortcut in the search list. */
+const CITY_NOTE: Record<string, string> = {
+  Raleigh: 'Capital area • central North Carolina',
+  Asheville: 'Western mountains • inside the Helene zone',
+  Charlotte: 'Metrolina • southern Piedmont',
+  Greensboro: 'Piedmont Triad',
+  'Winston-Salem': 'Piedmont Triad',
+  Wilmington: 'Cape Fear coast',
+  Fayetteville: 'Sandhills',
+  Greenville: 'Coastal plain',
+  Boone: 'High Country • inside the Helene zone',
+  'Outer Banks': 'Barrier islands',
+};
+
 interface GeocodedPlace {
   id: string;
   name: string;
@@ -108,10 +122,12 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
       return;
     }
 
+    // A slower, older lookup must not replace the suggestions for what is typed now.
+    const abort = new AbortController();
     const timer = setTimeout(async () => {
       try {
         const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&bbox=-84.3,33.8,-75.4,36.6&limit=3`;
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: abort.signal });
         if (!res.ok) return;
         const data = await res.json();
         if (data && Array.isArray(data.features)) {
@@ -124,11 +140,14 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           setGeocodedPlaces(places);
         }
       } catch (e) {
-        console.warn('Mapbox Geocoding error:', e);
+        if (!abort.signal.aborted) console.warn('Mapbox Geocoding error:', e);
       }
     }, 280);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
   }, [searchQuery]);
 
   useImperativeHandle(ref, () => ({
@@ -335,9 +354,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
                         <div>
                           <div className="search-item-title">{city}, North Carolina</div>
                           <div className="search-item-sub">
-                            {city === 'Raleigh'
-                              ? 'Capital District • 6,257 Arterial Segments'
-                              : 'Helene Disaster Zone • Western NC Mountain Corridor'}
+                            {CITY_NOTE[city] ?? 'North Carolina'}
                           </div>
                         </div>
                       </div>
@@ -391,10 +408,10 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
             className="weather-top-pill"
             title={
               weather
-                ? `Live OpenWeatherMap Telemetry for ${weather.cityName}, NC\nTemperature: ${weather.temp}°F (Feels like ${weather.feelsLike}°F)\nCondition: ${weather.description}\nHumidity: ${weather.humidity}%\nWind Speed: ${weather.windSpeed} mph${
-                    weather.rain1h ? `\nPrecipitation: ${weather.rain1h} mm/hr (Helene Flood Exposure Risk)` : ''
+                ? `Current weather in ${weather.cityName}, NC (${weather.source})\nTemperature: ${weather.temp}°F (Feels like ${weather.feelsLike}°F)\nCondition: ${weather.description}\nHumidity: ${weather.humidity}%\nWind Speed: ${weather.windSpeed} mph${
+                    weather.rain1h ? `\nPrecipitation: ${weather.rain1h} mm in the last hour` : ''
                   }`
-                : 'Loading weather...'
+                : 'Weather is not available right now'
             }
             onClick={() => onZoomCity(activeCity === 'Raleigh' ? 'Asheville' : 'Raleigh')}
           >
@@ -406,7 +423,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
               <Thermometer size={15} color="#475569" />
             )}
             <span style={{ color: isRaining ? '#1d4ed8' : '#0f172a' }}>
-              {weather ? `${weather.temp}°F` : '69°F'}
+              {weather ? `${weather.temp}°F` : '–'}
             </span>
             <span style={{ color: '#64748b', fontSize: '11px', fontWeight: 500 }}>
               {weather?.cityName || activeCity || 'Raleigh'}

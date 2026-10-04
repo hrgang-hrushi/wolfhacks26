@@ -1,6 +1,7 @@
 // Real North Carolina Road Segments from LightGBM + 3DEP + Helene Pipeline
 // Source: handoff/predictions_geo.parquet (112,443 total segments statewide)
 import type { RoadSegment } from '../types/roadSegment';
+import { realRoadName } from '../utils/roadFacts';
 import rawRoads from './realRoads.json';
 
 export interface StatewideMetadata {
@@ -21,4 +22,14 @@ export const NC_STATEWIDE_METRICS: StatewideMetadata = {
   high_flood_count: 1209
 };
 
-export const REAL_NC_ROAD_SEGMENTS: RoadSegment[] = rawRoads as unknown as RoadSegment[];
+// The sample file carries placeholder street names. The road's own route, county and milepost replace them.
+export const REAL_NC_ROAD_SEGMENTS: RoadSegment[] = (rawRoads as unknown as RoadSegment[]).map((s) => ({
+  ...s,
+  name: realRoadName(s.seg_id) ?? s.name,
+  flood_rank: !s.in_helene_zone
+    ? 'Not scored (outside the Helene zone)'
+    : (s.pred_flood ?? 0) >= 0.5
+      ? 'High flood score (Helene zone)'
+      : 'Lower flood score (Helene zone)',
+  drivers: ['Pavement record (age, last treatment)', 'Traffic volume', 'Shape of the land (slope, drainage)'],
+}));

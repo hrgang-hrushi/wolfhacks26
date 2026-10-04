@@ -154,7 +154,12 @@ export const CleanTenantsCard: React.FC<CleanTenantsCardProps> = ({
             <span className="capex-eyebrow">
               {districtCode} • NCDOT HIGHWAY FUND
             </span>
-            <h2 className="capex-title">CapEx &amp; Maintenance Allocation</h2>
+            <h2 className="capex-title">
+              CapEx &amp; Maintenance Allocation{' '}
+              <span className="badge badge-demo" title="Budget, crew and fleet figures on this card are illustrative placeholders, not NCDOT data.">
+                Illustrative
+              </span>
+            </h2>
             <p className="capex-subtitle">{divisionName}</p>
           </div>
           <div className="capex-arrow-indicator" aria-hidden="true">

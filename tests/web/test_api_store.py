@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from src import api
+pytest.importorskip("fastapi")  # the pipeline environment does not carry the web server
+
+from src import api  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 INVENTED = {"pv_rating", "pv_age", "name", "flood_rank", "drivers", "chip_url", "score", "city"}

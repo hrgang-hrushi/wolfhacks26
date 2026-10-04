@@ -24,7 +24,8 @@ CANDIDATE_PATHS = [
 
 DATA_PATH = next((p for p in CANDIDATE_PATHS if p.exists()), CANDIDATE_PATHS[0])
 
-MAX_LIMIT = 120000
+# One reply carries full geometry, so this stays well under the hosting response cap.
+MAX_LIMIT = 5000
 
 
 def _num(v: float | None, nd: int) -> float | None:
@@ -32,63 +33,67 @@ def _num(v: float | None, nd: int) -> float | None:
     return None if v is None or (isinstance(v, float) and math.isnan(v)) else round(float(v), nd)
 
 
-def _resolve_road_meta(seg_id: str, in_zone: bool, coords: list) -> tuple[str, str]:
-    lng = coords[0][0] if coords else -78.6
-    lat = coords[0][1] if coords else 35.8
+NC_COUNTIES = [
+    "Alamance", "Alexander", "Alleghany", "Anson", "Ashe", "Avery", "Beaufort", "Bertie", "Bladen", "Brunswick",
+    "Buncombe", "Burke", "Cabarrus", "Caldwell", "Camden", "Carteret", "Caswell", "Catawba", "Chatham", "Cherokee",
+    "Chowan", "Clay", "Cleveland", "Columbus", "Craven", "Cumberland", "Currituck", "Dare", "Davidson", "Davie",
+    "Duplin", "Durham", "Edgecombe", "Forsyth", "Franklin", "Gaston", "Gates", "Graham", "Granville", "Greene",
+    "Guilford", "Halifax", "Harnett", "Haywood", "Henderson", "Hertford", "Hoke", "Hyde", "Iredell", "Jackson",
+    "Johnston", "Jones", "Lee", "Lenoir", "Lincoln", "Macon", "Madison", "Martin", "McDowell", "Mecklenburg",
+    "Mitchell", "Montgomery", "Moore", "Nash", "New Hanover", "Northampton", "Onslow", "Orange", "Pamlico",
+    "Pasquotank", "Pender", "Perquimans", "Person", "Pitt", "Polk", "Randolph", "Richmond", "Robeson", "Rockingham",
+    "Rowan", "Rutherford", "Sampson", "Scotland", "Stanly", "Stokes", "Surry", "Swain", "Transylvania", "Tyrrell",
+    "Union", "Vance", "Wake", "Warren", "Washington", "Watauga", "Wayne", "Wilkes", "Wilson", "Yadkin", "Yancey",
+]
+
+ROUTE_PREFIX = {"1": "I-", "2": "US ", "3": "NC ", "4": "SR "}
+
+# Reference points for the dashboard's "nearest city" grouping. A label for the area, not an address.
+METROS = [
+    ("Charlotte", -80.84, 35.22), ("Raleigh", -78.64, 35.78), ("Greensboro", -79.79, 36.07),
+    ("Winston-Salem", -80.24, 36.10), ("Wilmington", -77.94, 34.23), ("Asheville", -82.55, 35.59),
+    ("Fayetteville", -78.88, 35.05), ("Greenville", -77.37, 35.61), ("Boone", -81.67, 36.21),
+    ("Outer Banks", -75.62, 35.95),
+]
+
+# A flood score at or above this is "high" (the fix-now threshold in web/src/lib/priority.json).
+HIGH_FLOOD = 0.5
+
+
+def route_label(route_id: str) -> str:
+    """'20000013008' -> 'US 13'. An NCDOT route id is a class digit, two flag digits, a five-digit number, then the county."""
+    try:
+        return f"{ROUTE_PREFIX.get(route_id[:1], 'SR ')}{int(route_id[3:8])}"
+    except ValueError:
+        return "State road"
+
+
+def county_name(route_id: str) -> str | None:
+    """The county from the last three digits of the route id (001 Alamance to 100 Yancey)."""
+    try:
+        i = int(route_id[8:11])
+    except ValueError:
+        return None
+    return NC_COUNTIES[i - 1] if 1 <= i <= len(NC_COUNTIES) else None
+
+
+def nearest_metro(lng: float, lat: float) -> str:
+    return min(METROS, key=lambda m: (lng - m[1]) ** 2 + (lat - m[2]) ** 2)[0]
+
+
+def _resolve_road_meta(seg_id: str, coords: list) -> tuple[str, str]:
+    """(nearest city, road name) from the road's own id and position. Nothing here is invented."""
     parts = seg_id.split(":")
-    route_code = parts[1] if len(parts) > 1 else ""
-    mile = parts[2] if len(parts) > 2 else "0.0"
-
-    # 1. Interstate Corridors
-    if route_code.startswith("104"):
-        return ("Asheville" if lng < -81.5 else ("Raleigh" if lng > -79.2 else "Greensboro")), f"I-40 Trans-Carolina Corridor (MP #{mile})"
-    elif route_code.startswith("108"):
-        return ("Charlotte" if lat < 35.5 else "Greensboro"), f"I-85 Piedmont Gateway (MP #{mile})"
-    elif route_code.startswith("107"):
-        return "Charlotte", f"I-77 Metrolina Expressway (MP #{mile})"
-    elif route_code.startswith("109"):
-        return "Fayetteville", f"I-95 Coastal Link (MP #{mile})"
-    elif route_code.startswith("102"):
-        return "Asheville", f"I-26 Mountain Pass (MP #{mile})"
-    elif route_code.startswith("144") or route_code.startswith("154"):
-        return "Raleigh", f"I-440 / I-540 Beltline (MP #{mile})"
-
-    # 2. Geographic North Carolina City & Street Resolution
-    if lng > -76.3:
-        city = "Outer Banks"
-        street = "Virginia Dare Trail" if "0" in mile else "Croatan Hwy (US-158)"
-    elif lat < 34.6 and lng > -78.6:
-        city = "Wilmington"
-        street = "Market St (US-17)" if "1" in mile else ("College Rd" if "2" in mile else "Oleander Dr")
-    elif lng > -77.8 and 35.3 <= lat <= 36.2:
-        city = "Greenville"
-        street = "Evans St" if "1" in mile else ("Greenville Blvd" if "2" in mile else "Arlington Blvd")
-    elif -81.2 <= lng <= -80.5 and 35.0 <= lat <= 35.5:
-        city = "Charlotte"
-        street = "Tryon St" if "1" in mile else ("Independence Blvd (US-74)" if "2" in mile else "South Blvd")
-    elif -80.1 <= lng <= -79.6 and 35.8 <= lat <= 36.3:
-        city = "Greensboro"
-        street = "Friendly Ave" if "1" in mile else ("Battleground Ave" if "2" in mile else "Wendover Ave")
-    elif -80.5 <= lng < -80.1 and 35.9 <= lat <= 36.3:
-        city = "Winston-Salem"
-        street = "Broad St" if "1" in mile else ("Stratford Rd" if "2" in mile else "University Pkwy")
-    elif -79.2 <= lng <= -78.6 and 34.8 <= lat <= 35.4:
-        city = "Fayetteville"
-        street = "Bragg Blvd" if "1" in mile else ("Skibo Rd" if "2" in mile else "Ramsey St")
-    elif -82.0 <= lng <= -81.4 and 36.0 <= lat <= 36.5:
-        city = "Boone"
-        street = "Highland Ave" if "1" in mile else ("King St" if "2" in mile else "Blowing Rock Rd")
-    elif -81.6 <= lng <= -81.1 and 35.6 <= lat <= 36.0:
-        city = "Hickory"
-        street = "US-70 Corridor" if "1" in mile else "Lenoir Rhyne Blvd"
-    elif in_zone or lng < -82.0:
-        city = "Asheville"
-        street = "Patton Ave" if "1" in mile else ("Biltmore Ave" if "2" in mile else ("Merrimon Ave" if "3" in mile else "Tunnel Rd"))
-    else:
-        city = "Raleigh"
-        street = "Hillsborough St" if "1" in mile else ("Fayetteville St" if "2" in mile else ("Capital Blvd (US-401)" if "3" in mile else "Wade Ave"))
-
-    return city, f"{street} (Seg #{mile})"
+    route_id = parts[1] if len(parts) > 1 else ""
+    county = county_name(route_id)
+    name = route_label(route_id) + (f", {county} County" if county else "")
+    if len(parts) > 2:
+        try:
+            name += f" (mp {float(parts[2]):.2f})"
+        except ValueError:
+            pass
+    city = nearest_metro(coords[0][0], coords[0][1]) if coords else (f"{county} County" if county else "North Carolina")
+    return city, name
 
 
 class Store:
@@ -183,48 +188,56 @@ class Store:
         in_zone = bool(r.in_helene_zone)
         ytp = _num(r.pred_years_to_poor, 2)
         rate = _num(r.pred_rate, 3)
-        score = _num(max(0.05, min(1.0, ytp / 35.0)), 3) if ytp is not None else 0.75
+        flood = _num(r.pred_flood, 4) if in_zone else None
+        # A 0-1 condition index for map colour: years to Poor over a 35-year horizon. None when there is no forecast.
+        score = _num(max(0.05, min(1.0, ytp / 35.0)), 3) if ytp is not None else None
 
-        path = []
+        paths = []
         if with_path and i < len(self.geoms):
             geom = self.geoms[i]
             parts = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
-            if parts:
-                path = [[round(x, 5), round(y, 5)] for x, y in shapely.get_coordinates(parts[0])]
+            paths = [[[round(x, 5), round(y, 5)] for x, y in shapely.get_coordinates(p)] for p in parts]
+        path = paths[0] if paths else []
 
         seg_id_str = str(r.seg_id)
-        city, name = _resolve_road_meta(seg_id_str, in_zone, path)
+        city, name = _resolve_road_meta(seg_id_str, path)
+
+        if not in_zone:
+            flood_rank = "Not scored (outside the Helene zone)"
+        elif flood is not None and flood >= HIGH_FLOOD:
+            flood_rank = "High flood score (Helene zone)"
+        else:
+            flood_rank = "Lower flood score (Helene zone)"
 
         return {
             "seg_id": seg_id_str,
             "name": name,
             "source": "ncdot",
             "score": score,
-            "pv_rating": int(round(score * 100)),
-            "pv_age": 12,
-            "years_to_poor": ytp if ytp is not None else 23.5,
+            # The condition index as 0-100. It is derived from the forecast, not NCDOT's surveyed rating.
+            "pv_rating": int(round(score * 100)) if score is not None else None,
+            # Surface age is not in the predictions file; the dashboards read it from the NCDOT record instead.
+            "pv_age": None,
+            "years_to_poor": ytp,
             "city": city,
-            "flood_rank": "High Risk (Helene Zone)" if in_zone else "Low Risk (Zone X)",
-            "drivers": [
-                "Traffic Volume (AADT)",
-                "3DEP Slope Index",
-                "Helene Storm Surge" if in_zone else "Surface Oxidation",
-            ],
-            "chip_url": "/assets/reference/chip_1.webp",
+            "flood_rank": flood_rank,
+            # The three groups of inputs the models use (README, "Does it work?"). Not per-road importances.
+            "drivers": ["Pavement record (age, last treatment)", "Traffic volume", "Shape of the land (slope, drainage)"],
+            "chip_url": None,
             "pred_rate": rate,
             "pred_years_to_poor": ytp,
             "pred_crack": _num(r.pred_crack, 4),
-            "pred_flood": _num(r.pred_flood, 4) if in_zone else None,
+            "pred_flood": flood,
             "in_helene_zone": in_zone,
             "rate_heldout": bool(r.rate_heldout),
             "crack_heldout": bool(r.crack_heldout),
             "flood_heldout": bool(r.flood_heldout),
             "path": path,
-            "paths": [path] if path else [],
+            "paths": paths,
         }
 
     def bbox(self, minx: float, miny: float, maxx: float, maxy: float, limit: int = 250) -> dict:
-        """Roads whose line touches the box, in file order."""
+        """Roads whose line touches the box. When more match than `limit`, an even spread of them, not the first few."""
         if self.tree is None or self.df is None or len(self.df) == 0:
             return {
                 "bbox": [minx, miny, maxx, maxy],
@@ -237,12 +250,17 @@ class Store:
         import shapely
 
         hits = sorted(int(i) for i in self.tree.query(shapely.box(minx, miny, maxx, maxy), predicate="intersects"))
+        matched = len(hits)
+        if matched > limit:
+            # The file is in route order, so the first `limit` rows are one corner of the box. Take every k-th instead.
+            step = matched / limit
+            hits = [hits[int(k * step)] for k in range(limit)]
         return {
             "bbox": [minx, miny, maxx, maxy],
-            "matched": len(hits),
-            "count": min(len(hits), limit),
-            "truncated": len(hits) > limit,
-            "segments": [self.record(i) for i in hits[:limit]],
+            "matched": matched,
+            "count": len(hits),
+            "truncated": matched > limit,
+            "segments": [self.record(i) for i in hits],
         }
 
     def find(self, seg_id: str) -> dict | None:
@@ -272,11 +290,12 @@ app = FastAPI(
     version="2.0.0",
 )
 
+# Read-only and public: any site may call it, and it never takes cookies or credentials.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET"],
     allow_headers=["*"],
 )
 
@@ -483,6 +502,8 @@ def segments_bbox(
     maxy: float = Query(..., description="North latitude, e.g. 35.7"),
     limit: int = Query(250, ge=1, le=MAX_LIMIT),
 ):
+    if not all(math.isfinite(v) for v in (minx, miny, maxx, maxy)):
+        raise HTTPException(status_code=422, detail="bbox values must be finite numbers")
     if minx >= maxx or miny >= maxy:
         raise HTTPException(status_code=422, detail="bbox must have minx < maxx and miny < maxy")
     return get_store().bbox(minx, miny, maxx, maxy, limit)

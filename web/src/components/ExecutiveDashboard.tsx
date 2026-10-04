@@ -12,6 +12,7 @@ import { AboutProjectModal } from './AboutProjectModal';
 import { SegmentDetailModal } from './SegmentDetailModal';
 import { SafeRouteModal } from './SafeRouteModal';
 import type { RouteCorridor, RoutePreviewState } from '../types/safeRoute';
+import { realRoadName } from '../utils/roadFacts';
 import '../App.css';
 
 function resolveCity(rawCity: string | undefined, lng: number, lat: number): string {
@@ -42,47 +43,6 @@ function resolveCity(rawCity: string | undefined, lng: number, lat: number): str
   return closest;
 }
 
-function resolveRoadName(rawName: string | undefined, segId: string, city: string, inZone: boolean, index: number): string {
-  if (rawName && !rawName.startsWith('State Route 200000') && !rawName.startsWith('State Route seg-')) {
-    return rawName;
-  }
-  const idNum = parseInt(segId.replace(/\D/g, '') || String(index), 10);
-  if (inZone) {
-    const heleneNames = [
-      'Patton Ave (US-70)', 'Blue Ridge Pkwy', 'Tunnel Rd (US-70)', 'Merrimon Ave',
-      'Riverside Dr (US-25)', 'Biltmore Ave', 'Smoky Park Hwy', 'Swannanoa River Rd',
-      'I-40 Mountain Pass', 'I-26 French Broad Corridor'
-    ];
-    return heleneNames[idNum % heleneNames.length];
-  }
-  if (city === 'Charlotte') {
-    const names = ['I-77 Express', 'I-85 Metrolina', 'Tryon St Corridor', 'South Blvd', 'Independence Blvd (US-74)', 'Harris Blvd', 'Providence Rd'];
-    return names[idNum % names.length];
-  }
-  if (city === 'Greensboro' || city === 'Winston-Salem') {
-    const names = ['I-40 Triad Corridor', 'I-85 Business', 'Friendly Ave', 'Battleground Ave (US-220)', 'Peters Creek Pkwy', 'Silas Creek Pkwy'];
-    return names[idNum % names.length];
-  }
-  if (city === 'Wilmington') {
-    const names = ['Market St (US-17)', 'College Rd (NC-132)', 'Oleander Dr', 'Carolina Beach Rd', 'I-40 Coastal Terminal', 'Military Cutoff Rd'];
-    return names[idNum % names.length];
-  }
-  if (city === 'Boone') {
-    const names = ['Blowing Rock Rd (US-321)', 'King St (US-421)', 'Hwy 105 Corridor', 'Blue Ridge Pass'];
-    return names[idNum % names.length];
-  }
-  if (city === 'Outer Banks') {
-    const names = ['Virginia Dare Trail (NC-12)', 'Croatan Hwy (US-158)', 'Cape Hatteras Hwy (NC-12)', 'Bodie Island Way'];
-    return names[idNum % names.length];
-  }
-  const raleighNames = [
-    'I-40 East Corridor', 'I-440 Beltline', 'I-540 Outer Loop', 'US-1 Capital Blvd',
-    'US-70 Glenwood Ave', 'NC-54 Chapel Hill Rd', 'Hillsborough St', 'Western Blvd',
-    'Wade Ave Expressway', 'Wake Forest Rd', 'Six Forks Rd', 'New Bern Ave'
-  ];
-  return raleighNames[idNum % raleighNames.length];
-}
-
 function normalizeLiveSegment(raw: any, index: number): RoadSegment | null {
   if (!raw) return null;
   const path: [number, number][] = (Array.isArray(raw.path) && raw.path.length > 0)
@@ -95,44 +55,56 @@ function normalizeLiveSegment(raw: any, index: number): RoadSegment | null {
   const lng = firstCoord[0];
   const lat = firstCoord[1] || 35.78;
   const city = resolveCity(raw.city, lng, lat);
-  const in_zone = Boolean(raw.in_helene_zone || lng < -81.4);
+  // The API says whether the road is in the Helene zone; longitude is not a stand-in for it.
+  const in_zone = Boolean(raw.in_helene_zone);
 
-  let score = 0.85;
-  if (typeof raw.score === 'number' && !isNaN(raw.score)) {
-    score = raw.score;
-  } else if (typeof raw.pred_years_to_poor === 'number') {
-    score = Math.max(0.05, Math.min(1.0, raw.pred_years_to_poor / 35.0));
-  } else if (typeof raw.pred_rate === 'number') {
-    score = Math.max(0.05, Math.min(1.0, 1.0 - (raw.pred_rate / 3.5)));
-  }
+  // A road with no forecast (its rating is out of date) is left off this map rather than given a
+  // made-up one. /gov lists those roads as "No estimate".
+  const years_to_poor = raw.years_to_poor ?? raw.pred_years_to_poor;
+  if (typeof years_to_poor !== 'number' || isNaN(years_to_poor)) return null;
 
-  const years_to_poor = raw.years_to_poor ?? raw.pred_years_to_poor ?? Math.round(score * 30 * 10) / 10;
+  const score = typeof raw.score === 'number' && !isNaN(raw.score)
+    ? raw.score
+    : Math.max(0.05, Math.min(1.0, years_to_poor / 35.0));
   const pv_rating = raw.pv_rating ?? Math.round(score * 100);
   const seg_id = String(raw.seg_id || `seg-${index}`);
-  const name = resolveRoadName(raw.name, seg_id, city, in_zone, index);
+  const pred_flood = in_zone && typeof raw.pred_flood === 'number' ? raw.pred_flood : undefined;
 
   return {
     seg_id,
-    name,
+    name: realRoadName(seg_id) ?? raw.name ?? 'State road',
     source: raw.source || 'ncdot',
     pv_rating,
-    pv_age: raw.pv_age ?? 12,
+    // Surface age is not part of the forecast; the cards read it from the NCDOT record (useRoadRecord).
+    pv_age: typeof raw.pv_age === 'number' ? raw.pv_age : 0,
     years_to_poor,
-    flood_rank: raw.flood_rank || (in_zone ? 'High Risk (Helene Zone)' : 'Low Risk (Zone X)'),
-    drivers: raw.drivers || [
-      'Traffic Volume (AADT)',
-      '3DEP Slope Index',
-      in_zone ? 'Helene Storm Surge' : 'Surface Oxidation'
-    ],
-    chip_url: raw.chip_url || `/assets/reference/chip_${(index % 3) + 1}.webp`,
+    flood_rank: raw.flood_rank || (!in_zone
+      ? 'Not scored (outside the Helene zone)'
+      : (pred_flood ?? 0) >= 0.5 ? 'High flood score (Helene zone)' : 'Lower flood score (Helene zone)'),
+    drivers: raw.drivers || ['Pavement record (age, last treatment)', 'Traffic volume', 'Shape of the land (slope, drainage)'],
+    chip_url: raw.chip_url || '',
     path,
     score,
     city,
     pred_rate: raw.pred_rate,
-    pred_crack: raw.pred_crack ?? 0.05,
-    pred_flood: raw.pred_flood,
+    pred_crack: typeof raw.pred_crack === 'number' ? raw.pred_crack : undefined,
+    pred_flood,
     in_helene_zone: in_zone
   };
+}
+
+/** Roads kept in memory as the map is panned. Past this, the oldest are dropped so the map stays quick. */
+const MAX_LIVE_SEGMENTS = 9000;
+
+function mergeSegments(prev: RoadSegment[], incoming: RoadSegment[]): RoadSegment[] {
+  const map = new Map<string, RoadSegment>();
+  for (const s of prev) map.set(s.seg_id, s);
+  for (const s of incoming) {
+    map.delete(s.seg_id); // re-insert so the newest are last
+    map.set(s.seg_id, s);
+  }
+  const all = Array.from(map.values());
+  return all.length > MAX_LIVE_SEGMENTS ? all.slice(all.length - MAX_LIVE_SEGMENTS) : all;
 }
 
 export function ExecutiveDashboard() {
@@ -190,12 +162,7 @@ export function ExecutiveDashboard() {
           .filter((s: RoadSegment | null): s is RoadSegment => s !== null);
         if (normalized.length > 0) {
           console.log(`Live API bbox statewide: ${data.matched} matched, ${normalized.length} loaded`);
-          setSegments(prev => {
-            const map = new Map<string, RoadSegment>();
-            for (const s of prev) map.set(s.seg_id, s);
-            for (const s of normalized) map.set(s.seg_id, s);
-            return Array.from(map.values());
-          });
+          setSegments(prev => mergeSegments(prev, normalized));
           return;
         }
       } catch (e) {
@@ -207,14 +174,7 @@ export function ExecutiveDashboard() {
         const data2 = await res2.json();
         if (!isMounted || !data2.segments?.length) return;
         const n = (data2.segments as any[]).map((s:any,i:number)=>normalizeLiveSegment(s,i)).filter((s): s is RoadSegment=>s!==null);
-        if (n.length) {
-          setSegments(prev => {
-            const map = new Map<string, RoadSegment>();
-            for (const s of prev) map.set(s.seg_id, s);
-            for (const s of n) map.set(s.seg_id, s);
-            return Array.from(map.values());
-          });
-        }
+        if (n.length) setSegments(prev => mergeSegments(prev, n));
       } catch (err) {
         console.warn('API sync fallback to pre-bundled dataset:', err);
       }
@@ -237,16 +197,25 @@ export function ExecutiveDashboard() {
         const data = await res.json();
         if (!data.segments || data.segments.length === 0) return;
         const n = (data.segments as any[]).map((s:any,i:number)=>normalizeLiveSegment(s,i)).filter((s): s is RoadSegment=>s!==null);
-        if (n.length >= 10) {
-          setSegments(prev => {
-            const map = new Map<string, RoadSegment>();
-            for (const s of prev) map.set(s.seg_id, s);
-            for (const s of n) map.set(s.seg_id, s);
-            return Array.from(map.values());
-          });
-        }
+        if (n.length >= 10) setSegments(prev => mergeSegments(prev, n));
       } catch {}
     }, 450);
+  }, []);
+
+  useEffect(() => () => {
+    if (bboxFetchTimeout.current) window.clearTimeout(bboxFetchTimeout.current);
+  }, []);
+
+  // Escape closes whichever dialog is open (the road detail dialog handles its own).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setIsSafeRouteModalOpen(false);
+      setIsArchModalOpen(false);
+      setIsAboutModalOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, []);
 
   const filteredSegments = useMemo(() => {
