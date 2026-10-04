@@ -1,0 +1,15 @@
+{
+  "_note": "Single source of truth for the repair tiers and the priority score. Read by scripts/build_web_data.py and by web/src/lib/data.ts. Change a number here, rerun the build script, and both dashboards follow.",
+  "poor_rating": 60,
+  "tiers": {
+    "fix_now": { "ytp_max": 1, "crack_min": 0.6, "flood_min": 0.5 },
+    "within_year": { "ytp_max": 3, "crack_min": 0.4 },
+    "within_five": { "ytp_max": 5 }
+  },
+  "score": {
+    "w_ytp": 0.45,
+    "w_crack": 0.35,
+    "w_flood": 0.2,
+    "ytp_horizon_years": 10
+  }
+}
