@@ -1,5 +1,4 @@
 import React from 'react';
-import { Truck } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
 import { Gauge } from './Gauge';
 
@@ -25,16 +24,10 @@ export const CleanTenantsCard: React.FC<CleanTenantsCardProps> = ({
       <div className="tenants-card-inner">
         {/* Clean Auto-Layout Header */}
         <div className="tenants-header-row">
-          <div className="tenants-title-cluster">
-            <div className="tenants-tag-row">
-              <span className="agency-badge-pill">
-                <Truck size={11} className="text-blue-600" />
-                Fleet &amp; Maintenance Operations
-              </span>
-              <span className="agency-division-label">
-                {divisionName} • Active Dispatch
-              </span>
-            </div>
+          <div className="tenants-title-cluster" style={{ width: '100%' }}>
+            <span className="agency-division-label">
+              {divisionName} • Active Dispatch
+            </span>
             <h2 className="tenants-title">Agency Operations</h2>
             <p className="tenants-subtitle">
               Active highway patrol &amp; rapid repair dispatch

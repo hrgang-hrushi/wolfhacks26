@@ -11,6 +11,55 @@ import { AboutProjectModal } from './AboutProjectModal';
 import { SegmentDetailModal } from './SegmentDetailModal';
 import '../App.css';
 
+function normalizeLiveSegment(raw: any, index: number): RoadSegment | null {
+  if (!raw) return null;
+  const path: [number, number][] = (Array.isArray(raw.path) && raw.path.length > 0)
+    ? raw.path
+    : (Array.isArray(raw.paths) && raw.paths.length > 0 && Array.isArray(raw.paths[0]) ? raw.paths[0] : []);
+
+  if (path.length === 0) return null;
+
+  const firstCoord = path[0];
+  const lng = firstCoord[0];
+  const city: 'Raleigh' | 'Asheville' = raw.city || (lng < -81.0 ? 'Asheville' : 'Raleigh');
+
+  let score = 0.85;
+  if (typeof raw.score === 'number' && !isNaN(raw.score)) {
+    score = raw.score;
+  } else if (typeof raw.pred_years_to_poor === 'number') {
+    score = Math.max(0.05, Math.min(1.0, raw.pred_years_to_poor / 35.0));
+  } else if (typeof raw.pred_rate === 'number') {
+    score = Math.max(0.05, Math.min(1.0, 1.0 - (raw.pred_rate / 3.5)));
+  }
+
+  const in_zone = Boolean(raw.in_helene_zone);
+  const years_to_poor = raw.years_to_poor ?? raw.pred_years_to_poor ?? Math.round(score * 30 * 10) / 10;
+  const pv_rating = raw.pv_rating ?? Math.round(score * 100);
+
+  return {
+    seg_id: String(raw.seg_id || `seg-${index}`),
+    name: raw.name || `State Route ${String(raw.seg_id || '').split(':')[1] || raw.seg_id || index}`,
+    source: raw.source || 'ncdot',
+    pv_rating,
+    pv_age: raw.pv_age ?? 12,
+    years_to_poor,
+    flood_rank: raw.flood_rank || (in_zone ? 'High Risk (Helene Zone)' : 'Low Risk (Zone X)'),
+    drivers: raw.drivers || [
+      'Traffic Volume (AADT)',
+      '3DEP Slope Index',
+      in_zone ? 'Helene Storm Surge' : 'Surface Oxidation'
+    ],
+    chip_url: raw.chip_url || `/assets/reference/chip_${(index % 3) + 1}.webp`,
+    path,
+    score,
+    city,
+    pred_rate: raw.pred_rate,
+    pred_crack: raw.pred_crack ?? 0.05,
+    pred_flood: raw.pred_flood,
+    in_helene_zone: in_zone
+  };
+}
+
 export function ExecutiveDashboard() {
   const mapCardRef = useRef<CleanMapCardHandle>(null);
 
@@ -28,21 +77,33 @@ export function ExecutiveDashboard() {
   // Background sync with live API (relative /api in Vercel or dev proxy, or VITE_API_BASE_URL)
   useEffect(() => {
     let isMounted = true;
-    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '';
+    const rawBase = import.meta.env.VITE_API_BASE_URL ?? '';
+    // Avoid connecting to localhost in production browser
+    const apiBase = (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && rawBase.includes('127.0.0.1')) ? '' : rawBase;
+
     fetch(`${apiBase}/api/segments?limit=2500`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then(data => {
         if (isMounted && data && Array.isArray(data.segments) && data.segments.length > 0) {
-          console.log(`Live API connected! Loaded ${data.segments.length} real-time statewide NC segments.`);
-          setSegments(data.segments);
-          const firstInCity = data.segments.find((s: RoadSegment) => s.city === 'Raleigh') || data.segments[0];
-          if (firstInCity) {
-            setSelectedSegment(firstInCity);
+          const normalized = data.segments
+            .map((s: any, idx: number) => normalizeLiveSegment(s, idx))
+            .filter((s: RoadSegment | null): s is RoadSegment => s !== null);
+
+          if (normalized.length > 0) {
+            console.log(`Live API connected! Loaded ${normalized.length} real-time statewide NC segments.`);
+            setSegments(normalized);
+            const firstInCity = normalized.find((s: RoadSegment) => s.city === 'Raleigh') || normalized[0];
+            if (firstInCity) {
+              setSelectedSegment(firstInCity);
+            }
           }
         }
       })
-      .catch(() => {
-        console.log('Using pre-bundled real NC segments dataset (2,171 statewide segments).');
+      .catch((err) => {
+        console.warn('API sync fallback to pre-bundled dataset:', err);
       });
     return () => { isMounted = false; };
   }, []);

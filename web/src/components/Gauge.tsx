@@ -117,14 +117,15 @@ export const Gauge: React.FC<GaugeProps> = ({
         </g>
       </svg>
 
-      {/* Center Value and Label - Mathematically Centered at (cx, cy) with generous clearance */}
+      {/* Center Value and Label - Perfectly centered in container */}
       <div
         className="gauge-center-stat"
         style={{
           position: 'absolute',
-          top: cy,
-          left: cx,
+          top: '50%',
+          left: '50%',
           transform: 'translate(-50%, -50%)',
+          marginTop: '10px',
           textAlign: 'center',
           display: 'flex',
           flexDirection: 'column',

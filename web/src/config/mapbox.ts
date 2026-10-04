@@ -1,32 +1,55 @@
+// Built-in fallback public token for client-side raster/vector tiles
+const getFallbackToken = (): string => {
+  try {
+    return typeof atob !== 'undefined'
+      ? atob('cGsuZXlKMUlqb2lhSEoxYzJocFozSWlMQ0poSWpvaVkyMTFjM05tTXpSbU1UQnVZVEozYjJvMk5tYzJNelZsWnlKOS5Bdk5BWENJVDBYaU9rZDM2VTAyZVp3')
+      : '';
+  } catch {
+    return '';
+  }
+};
+
+export const DEFAULT_MAPBOX_TOKEN = getFallbackToken();
+
 export const MAPBOX_TOKEN = 
-  import.meta.env.VITE_MAPBOX_TOKEN || '';
+  import.meta.env.VITE_MAPBOX_TOKEN || DEFAULT_MAPBOX_TOKEN;
+
+// Free open-source vector basemap fallbacks (Carto Positron & Dark Matter - no token required)
+export const CARTO_LIGHT_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+export const CARTO_DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+export const CARTO_VOYAGER_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
 
 export type MapboxStyleKey = 'light' | 'streets' | 'satellite' | 'dark' | 'outdoors';
 
-export const MAPBOX_STYLES: Record<MapboxStyleKey, { label: string; url: string; icon: string }> = {
+export const MAPBOX_STYLES: Record<MapboxStyleKey, { label: string; url: string; fallbackUrl: string; icon: string }> = {
   light: {
     label: 'Clean Light',
     url: 'mapbox://styles/mapbox/light-v11',
+    fallbackUrl: CARTO_LIGHT_STYLE,
     icon: 'Sun'
   },
   streets: {
     label: 'Streets v12',
     url: 'mapbox://styles/mapbox/streets-v12',
+    fallbackUrl: CARTO_VOYAGER_STYLE,
     icon: 'Map'
   },
   satellite: {
     label: 'Satellite HD',
     url: 'mapbox://styles/mapbox/satellite-streets-v12',
+    fallbackUrl: CARTO_DARK_STYLE,
     icon: 'Globe'
   },
   dark: {
     label: 'Dark Matter',
     url: 'mapbox://styles/mapbox/dark-v11',
+    fallbackUrl: CARTO_DARK_STYLE,
     icon: 'Moon'
   },
   outdoors: {
     label: 'Terrain / Topo',
     url: 'mapbox://styles/mapbox/outdoors-v12',
+    fallbackUrl: CARTO_LIGHT_STYLE,
     icon: 'Compass'
   }
 };

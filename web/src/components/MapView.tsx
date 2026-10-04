@@ -6,7 +6,7 @@ import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
 import { Sun, Globe, Crosshair } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
 import { getScoreRGBA } from '../utils/colors';
-import { MAPBOX_TOKEN, NC_CITY_COORDINATES } from '../config/mapbox';
+import { MAPBOX_TOKEN, NC_CITY_COORDINATES, CARTO_LIGHT_STYLE, CARTO_DARK_STYLE } from '../config/mapbox';
 
 export interface MapViewHandle {
   flyToCity: (city: string) => void;
@@ -20,15 +20,17 @@ interface MapViewProps {
   onSelectSegment: (segment: RoadSegment) => void;
 }
 
-// Focused North Carolina Basemaps (Clean Light NCDOT & High-Res Satellite)
+// Focused North Carolina Basemaps with automatic fallback
 const NC_BASEMAPS = {
   light: {
     label: 'Clean Light',
-    url: 'mapbox://styles/mapbox/light-v11'
+    url: 'mapbox://styles/mapbox/light-v11',
+    fallback: CARTO_LIGHT_STYLE
   },
   satellite: {
     label: 'Satellite HD',
-    url: 'mapbox://styles/mapbox/satellite-streets-v12'
+    url: 'mapbox://styles/mapbox/satellite-streets-v12',
+    fallback: CARTO_DARK_STYLE
   }
 };
 
@@ -104,9 +106,15 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       });
     },
     flyToSegment: (segment: RoadSegment) => {
-      if (!mapRef.current || !segment.path || segment.path.length === 0) return;
-      const midIdx = Math.floor(segment.path.length / 2);
-      const [lng, lat] = segment.path[midIdx];
+      if (!mapRef.current) return;
+      const path = (Array.isArray(segment.path) && segment.path.length > 0)
+        ? segment.path
+        : (Array.isArray((segment as any).paths?.[0]) ? (segment as any).paths[0] : null);
+      if (!path || path.length === 0) return;
+      const midIdx = Math.floor(path.length / 2);
+      const targetCoord = path[midIdx] || path[0];
+      if (!targetCoord || isNaN(targetCoord[0]) || isNaN(targetCoord[1])) return;
+      const [lng, lat] = targetCoord;
       mapRef.current.flyTo({
         center: [lng, lat],
         zoom: 15.2,
@@ -117,7 +125,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       });
     },
     flyToCoords: (lng: number, lat: number, zoom: number = 14.5) => {
-      if (!mapRef.current) return;
+      if (!mapRef.current || isNaN(lng) || isNaN(lat)) return;
       mapRef.current.flyTo({
         center: [lng, lat],
         zoom,
@@ -132,7 +140,10 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const handleSwitchBasemap = (key: NCBasemapKey) => {
     setActiveStyleKey(key);
     if (!mapRef.current) return;
-    mapRef.current.setStyle(NC_BASEMAPS[key].url);
+    const targetUrl = (MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith('pk.'))
+      ? NC_BASEMAPS[key].url
+      : NC_BASEMAPS[key].fallback;
+    mapRef.current.setStyle(targetUrl);
   };
 
   // Current Location handler
@@ -188,14 +199,27 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     }
   };
 
+  // Helper to extract coordinates safely from path or paths
+  const getSegmentPath = (d: RoadSegment): [number, number][] => {
+    if (Array.isArray(d.path) && d.path.length > 0) return d.path;
+    if (Array.isArray((d as any).paths) && (d as any).paths.length > 0 && Array.isArray((d as any).paths[0])) {
+      return (d as any).paths[0];
+    }
+    return [];
+  };
+
   // Initialize Mapbox GL map constrained strictly to North Carolina
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     try {
+      const initialStyle = (MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith('pk.'))
+        ? NC_BASEMAPS[activeStyleKey].url
+        : NC_BASEMAPS[activeStyleKey].fallback;
+
       const mapInstance = new mapboxgl.Map({
         container: mapContainerRef.current,
-        style: NC_BASEMAPS[activeStyleKey].url,
+        style: initialStyle,
         center: NC_CITY_COORDINATES.Raleigh.center,
         zoom: NC_CITY_COORDINATES.Raleigh.zoom,
         pitch: NC_CITY_COORDINATES.Raleigh.pitch,
@@ -208,6 +232,17 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       // Controls
       mapInstance.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'bottom-right');
       mapInstance.addControl(new mapboxgl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
+
+      // Listen for tile authorization / token failures and seamlessly switch to free Carto vector basemap
+      mapInstance.on('error', (e) => {
+        const msg = String(e.error?.message || '');
+        const status = (e.error as any)?.status;
+        if (status === 401 || status === 403 || msg.toLowerCase().includes('token') || msg.toLowerCase().includes('unauthorized') || msg.toLowerCase().includes('forbidden')) {
+          console.warn('Mapbox basemap unauthorized or rate limited, switching to Carto vector basemap:', msg);
+          const fallbackUrl = NC_BASEMAPS[activeStyleKey]?.fallback || CARTO_LIGHT_STYLE;
+          mapInstance.setStyle(fallbackUrl);
+        }
+      });
 
       // Deck.gl overlay
       const overlayInstance = new MapboxOverlay({
@@ -235,8 +270,28 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         overlayRef.current = null;
       };
     } catch (e) {
-      console.warn('Mapbox GL WebGL error, using fallback:', e);
-      setWebGlSupported(false);
+      console.warn('Mapbox GL initial style error, retrying with Carto vector basemap:', e);
+      try {
+        if (!mapContainerRef.current) return;
+        const fallbackMap = new mapboxgl.Map({
+          container: mapContainerRef.current,
+          style: CARTO_LIGHT_STYLE,
+          center: NC_CITY_COORDINATES.Raleigh.center,
+          zoom: NC_CITY_COORDINATES.Raleigh.zoom,
+          pitch: NC_CITY_COORDINATES.Raleigh.pitch,
+          bearing: NC_CITY_COORDINATES.Raleigh.bearing,
+          maxBounds: NC_BOUNDS,
+          attributionControl: false,
+          antialias: true
+        });
+        const overlayInstance = new MapboxOverlay({ interleaved: false, layers: [] });
+        fallbackMap.addControl(overlayInstance as unknown as mapboxgl.IControl);
+        mapRef.current = fallbackMap;
+        overlayRef.current = overlayInstance;
+      } catch (err2) {
+        console.error('All WebGL basemaps failed:', err2);
+        setWebGlSupported(false);
+      }
     }
   }, []);
 
@@ -256,7 +311,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         widthMinPixels: 18,
         capRounded: true,
         jointRounded: true,
-        getPath: (d) => d.path,
+        getPath: (d) => getSegmentPath(d),
         getColor: [0, 0, 0, 0],
         getWidth: 16,
         onClick: (info) => {
@@ -288,7 +343,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         widthMinPixels: 3.5,
         capRounded: true,
         jointRounded: true,
-        getPath: (d) => d.path,
+        getPath: (d) => getSegmentPath(d),
         getColor: [15, 23, 42, 120],
         getWidth: 3.5
       })
@@ -305,7 +360,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
           widthMinPixels: 9,
           capRounded: true,
           jointRounded: true,
-          getPath: (d) => d.path,
+          getPath: (d) => getSegmentPath(d),
           getColor: [56, 189, 248, 255],
           getWidth: 10
         })
@@ -322,7 +377,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         widthMinPixels: 2.5,
         capRounded: true,
         jointRounded: true,
-        getPath: (d) => d.path,
+        getPath: (d) => getSegmentPath(d),
         getColor: (d) => {
           if (selectedSegment && selectedSegment.seg_id === d.seg_id) {
             return [255, 255, 255, 255]; // Crisp white highlight when selected
@@ -350,17 +405,25 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
     // 5. Warning Beacon Pins: ONLY on Critical/High-Hazard segments (no clutter on normal roads)
     const hazardSegments = segments.filter(
-      (s) => (s.score < 0.45) || (s.pred_crack && s.pred_crack > 0.4) || (selectedSegment && selectedSegment.seg_id === s.seg_id)
+      (s) => {
+        const sScore = typeof s.score === 'number' && !isNaN(s.score) ? s.score : (s.pv_rating ? s.pv_rating / 100 : 0.75);
+        return (sScore < 0.45) || (s.pred_crack && s.pred_crack > 0.4) || (selectedSegment && selectedSegment.seg_id === s.seg_id);
+      }
     );
 
     const pinData = hazardSegments.map(s => {
-      const midIdx = Math.floor(s.path.length / 2);
+      const p = getSegmentPath(s);
+      if (!p || p.length === 0) return null;
+      const midIdx = Math.floor(p.length / 2);
+      const pos = p[midIdx] || p[0];
+      if (!pos || isNaN(pos[0]) || isNaN(pos[1])) return null;
       return {
         segment: s,
-        pos: s.path[midIdx] || s.path[0],
+        pos,
         isSelected: selectedSegment?.seg_id === s.seg_id
       };
-    });
+    }).filter((item): item is { segment: RoadSegment; pos: [number, number]; isSelected: boolean } => item !== null);
+
 
     if (pinData.length > 0) {
       // Outer translucent amber warning pulse
