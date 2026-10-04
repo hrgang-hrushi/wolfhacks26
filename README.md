@@ -21,7 +21,7 @@ What this project is meant to become. The predictions exist today and a web dash
 | Goal | What it does | Where it stands |
 |---|---|---|
 | **Repair dashboard for officials** | A ranked work list for road agencies: fix now, fix within a year, plan within five, with alerts when a road crosses a threshold. | Predictions exist for all 112,443 state road stretches. Production web dashboard is available in `web/`. |
-| **Safer-route data for map companies** | A per-road risk file that navigation apps can read, so drivers are routed around rough pavement and flood-prone roads. | The held-out prediction file with road shapes exists (`handoff/predictions_geo.parquet`). No export format or routing yet. |
+| **Safer-route data for map companies** | A per-road risk file that navigation apps can read, so drivers are routed around rough pavement and flood-prone roads. | The held-out prediction file with road shapes exists (`handoff/predictions_geo.parquet`), and a per-road risk file with a column dictionary can be exported (`web/tiger/export.py`). No routing integration yet. |
 | **Budget planner** | Ranks repairs by benefit per dollar and shows what waiting costs. | NCDOT's data carries a recommended treatment and a cost estimate per road. Not built. |
 | **Storm readiness** | Before a forecast storm, lists the roads most likely to wash out, so crews can stage equipment and plan detours. | The flood model found 18 damaged roads among its 50 riskiest in the Helene zone, against about 2 by chance. |
 | **Live confirmation from cameras** | Uses public traffic cameras to confirm water on the road or visible damage, so an alert rests on more than a prediction. | One round of stills from about 1,000 NCDOT cameras is matched to roads, and a flood reader trained on coastal roadside cameras has been tested (see below). It is not running live yet. |
@@ -95,7 +95,7 @@ Status on the evening of October 3, 2026.
 | Flood depth from cameras | Done, first version | A reader trained on photos of flooded coastal roads from late September 2026, each with a measured water level. On a camera it has never seen it catches 91% of flooded photos. Results are under "Does it work?". |
 | Crash counts and estimated traffic | Done | Added for every road, for the repair ranking (`handoff/traffic_crash.parquet`). They did not improve the wear, cracking or flood predictions, so the model is unchanged. |
 | Agency and phone dashboards | Done, not deployed | An agency view at `/gov` and a phone view at `/m`, both on the real predictions for every road. See "Web dashboards and API" below. |
-| Database-backed service | In progress | A work list, alerts and a downloadable risk file served from a time-series database. |
+| Database-backed service | Built and tested on a local database; not yet loaded into Tiger Data | A read-only service over Postgres + TimescaleDB (`web/tiger/`, `web/service/`): the ranked work list, road details, flood alerts from hourly summaries, database statistics and a downloadable per-road risk file. No page reads it yet. |
 | Helene flood depth on roads | Done | A water depth in metres for the 1,602 road segments near surveyed high-water marks in 12 mountain counties; 648 had water. Checked by hiding marks and guessing them back (typical miss 0.27 m) and against 190 tape-measured depths (0.37 m). |
 
 ## What we cannot claim
