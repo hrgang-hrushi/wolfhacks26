@@ -4,6 +4,7 @@
   python -m src.model.flood_camera --epochs 6          # fine-tune; wants a GPU (Colab T4 is enough)
   --split camera   hold out whole camera sites (default)      --split day   hold out whole days
   --data DIR --out DIR                                 # defaults: data/raw/sunnyday, data/processed
+  --size 336                                           # smaller frames: what an 18 GB Mac can fine-tune (448 cannot)
 Reads:  {data}/labels.parquet and the frames it lists (python -m src.pipeline.sunnyday --labels)
 Writes: {out}/flood_camera_oof_{frozen|finetune}_{split}.parquet   held-out prediction per frame
         {out}/flood_camera_metrics_{frozen|finetune}_{split}.json
@@ -44,41 +45,44 @@ dev = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_av
 
 _to_tensor = T.Compose([T.ToImage(), T.ToDtype(torch.float32, scale=True),
                         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-_augment = T.Compose([T.RandomResizedCrop(SIZE, scale=(0.6, 1.0), ratio=(0.8, 1.25)),
+
+
+def augment(size: int):
+    return T.Compose([T.RandomResizedCrop(size, scale=(0.6, 1.0), ratio=(0.8, 1.25)),
                       T.RandomHorizontalFlip(), T.ColorJitter(0.3, 0.3, 0.2)])
 
 
-def load_frame(path: Path, train: bool = False) -> torch.Tensor:
+def load_frame(path: Path, size: int = SIZE, aug=None) -> torch.Tensor:
     im = Image.open(path).convert("RGB")
     im.paste((0, 0, 0), (0, 0, im.width, int(im.height * STAMP_FRAC)))
-    im = _augment(im) if train else im.resize((SIZE, SIZE), Image.BILINEAR)
+    im = aug(im) if aug else im.resize((size, size), Image.BILINEAR)
     return _to_tensor(im)
 
 
 class Frames(torch.utils.data.Dataset):
-    def __init__(self, df: pd.DataFrame, root: Path, train: bool = False):
+    def __init__(self, df: pd.DataFrame, root: Path, size: int, train: bool = False):
         self.files = [root / f for f in df["file"]]
         self.depth = df["depth_cm"].to_numpy("float32")
-        self.train = train
+        self.size, self.aug = size, augment(size) if train else None
 
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, i):
         d = self.depth[i]
-        return load_frame(self.files[i], self.train), torch.tensor(float(d >= FLOODED_CM)), torch.tensor(d / 10)
+        return load_frame(self.files[i], self.size, self.aug), torch.tensor(float(d >= FLOODED_CM)), torch.tensor(d / 10)
 
 
-def loader(df, root, train=False, bs=16):
-    return torch.utils.data.DataLoader(Frames(df, root, train), bs, shuffle=train, drop_last=train, num_workers=2)
+def loader(df, root, size, train=False, bs=16):
+    return torch.utils.data.DataLoader(Frames(df, root, size, train), bs, shuffle=train, drop_last=train, num_workers=2)
 
 
 class Net(nn.Module):
     """ViT-S/14 trunk; the head sees the CLS token and the mean patch token."""
 
-    def __init__(self):
+    def __init__(self, size: int = SIZE):
         super().__init__()
-        self.b = timm.create_model("vit_small_patch14_dinov2.lvd142m", pretrained=True, num_classes=0, img_size=SIZE)
+        self.b = timm.create_model("vit_small_patch14_dinov2.lvd142m", pretrained=True, num_classes=0, img_size=size)
         self.h = nn.Linear(768, 2)  # flooded logit, depth in decimetres
 
     def embed(self, x):
@@ -90,10 +94,10 @@ class Net(nn.Module):
 
 
 @torch.no_grad()
-def embeddings(df: pd.DataFrame, root: Path) -> np.ndarray:
-    net = Net().to(dev).eval()
+def embeddings(df: pd.DataFrame, root: Path, size: int = SIZE) -> np.ndarray:
+    net = Net(size).to(dev).eval()
     out = []
-    for i, (x, _, _) in enumerate(loader(df, root, bs=32)):
+    for i, (x, _, _) in enumerate(loader(df, root, size, bs=32)):
         with torch.autocast("cuda", enabled=dev == "cuda"):
             out.append(net.embed(x.to(dev)).float().cpu().numpy())
         if i % 10 == 0:
@@ -111,11 +115,11 @@ def fit_frozen(emb_tr, depth_tr, emb_te):
     return clf.fit(emb_tr, flooded).predict_proba(emb_te)[:, 1], depth
 
 
-def fit_finetune(tr: pd.DataFrame, root: Path, epochs: int) -> Net:
-    net = Net().to(dev)
+def fit_finetune(tr: pd.DataFrame, root: Path, epochs: int, size: int = SIZE) -> Net:
+    net = Net(size).to(dev)
     opt = torch.optim.AdamW([{"params": net.b.parameters(), "lr": 1e-5},
                              {"params": net.h.parameters(), "lr": 1e-3}], weight_decay=0.05)
-    dl = loader(tr, root, train=True)
+    dl = loader(tr, root, size, train=True)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=[1e-5, 1e-3], total_steps=epochs * len(dl), pct_start=0.1)
     scaler = torch.amp.GradScaler(enabled=dev == "cuda")
     share = float((tr["depth_cm"] >= FLOODED_CM).mean())
@@ -140,10 +144,10 @@ def fit_finetune(tr: pd.DataFrame, root: Path, epochs: int) -> Net:
 
 
 @torch.no_grad()
-def predict(net: Net, df: pd.DataFrame, root: Path):
+def predict(net: Net, df: pd.DataFrame, root: Path, size: int = SIZE):
     net.eval()
     out = []
-    for x, _, _ in loader(df, root, bs=32):
+    for x, _, _ in loader(df, root, size, bs=32):
         with torch.autocast("cuda", enabled=dev == "cuda"):
             out.append(net(x.to(dev)).float().cpu())
     o = torch.cat(out)
@@ -241,6 +245,7 @@ def main() -> None:
     ap.add_argument("--split", choices=["camera", "day"], default="camera")
     ap.add_argument("--folds", type=int, default=0, help="0 = one fold per camera site or per day")
     ap.add_argument("--epochs", type=int, default=6)
+    ap.add_argument("--size", type=int, default=SIZE, help="frame side in pixels, a multiple of 14")
     ap.add_argument("--final", action="store_true", help="also train on every frame, save weights, score the extra rows")
     ap.add_argument("--data", type=Path, default=Path("data/raw/sunnyday"))
     ap.add_argument("--out", type=Path, default=Path("data/processed"))
@@ -265,20 +270,28 @@ def main() -> None:
     k = min(args.folds or groups.nunique(), groups.nunique())
     folds = held_out_folds(groups, k)
 
-    emb = embeddings(pd.concat([cv, extra]), args.data) if args.frozen else None
+    emb = embeddings(pd.concat([cv, extra]), args.data, args.size) if args.frozen else None
     p, d = np.zeros(len(cv)), np.zeros(len(cv))
     pc, dc = np.zeros(len(cv)), np.zeros(len(cv))
     for i, (tr, te) in enumerate(folds):
         print(f"fold {i + 1}/{k}: held out {sorted(groups.iloc[te].unique())}", flush=True)
+        done = args.out / f".flood_camera_{run}_s{args.size}_e{args.epochs}_k{k}_fold{i}.npz"
         if args.frozen:
             p[te], d[te] = fit_frozen(emb[tr], cv["depth_cm"].to_numpy()[tr], emb[te])
+        elif done.exists():  # a stopped run picks up where it left off
+            p[te], d[te] = np.load(done)["p"], np.load(done)["d"]
+            print("  already trained, reusing its predictions", flush=True)
         else:
-            p[te], d[te] = predict(fit_finetune(cv.iloc[tr], args.data, args.epochs), cv.iloc[te], args.data)
+            net = fit_finetune(cv.iloc[tr], args.data, args.epochs, args.size)
+            p[te], d[te] = predict(net, cv.iloc[te], args.data, args.size)
+            np.savez(done, p=p[te], d=d[te])
         pc[te], dc[te] = tide_clock(cv.iloc[tr], cv.iloc[te], by_day=args.split == "day")
 
     truth = cv["depth_cm"].to_numpy()
     metrics = {
         "run": run,
+        "size": args.size,
+        "epochs": None if args.frozen else args.epochs,
         "model": score(truth, p, d),
         "tide_clock": score(truth, pc, dc),
         "always_dry": score(truth, np.zeros(len(cv)), np.zeros(len(cv))),
@@ -292,15 +305,17 @@ def main() -> None:
         if args.frozen:
             pe, de = fit_frozen(emb[: len(cv)], truth, emb[len(cv):]) if len(extra) else (np.array([]), np.array([]))
         else:
-            net = fit_finetune(cv, args.data, args.epochs)
+            net = fit_finetune(cv, args.data, args.epochs, args.size)
             torch.save(net.state_dict(), args.out / "flood_camera_vits14.pt")
-            pe, de = predict(net, extra, args.data) if len(extra) else (np.array([]), np.array([]))
+            pe, de = predict(net, extra, args.data, args.size) if len(extra) else (np.array([]), np.array([]))
         if len(extra):
             metrics["extra_known_dry"] = {"n": int(len(extra)), "called_flooded": int((pe >= 0.5).sum()),
                                           "depth_mean_cm": round(float(de.mean()), 2)}
             oof = pd.concat([oof, extra.assign(p_flooded=pe, depth_pred_cm=de, run=run)], ignore_index=True)
 
         save(oof, metrics)
+    for done in args.out.glob(f".flood_camera_{run}_*_fold*.npz"):
+        done.unlink()
     print(json.dumps({key: metrics[key] for key in metrics if key != "by_station"}, indent=1), flush=True)
 
 

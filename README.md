@@ -16,18 +16,18 @@ Our idea: learn from the inspected roads what age, traffic and the shape of the 
 
 ## End goals
 
-What this project is meant to become. The predictions exist today. The dashboard and the data feed are not built yet.
+What this project is meant to become. The predictions exist today and a web dashboard is in `web/`. The data feed for map companies is not built yet.
 
 | Goal | What it does | Where it stands |
 |---|---|---|
 | **Repair dashboard for officials** | A ranked work list for road agencies: fix now, fix within a year, plan within five, with alerts when a road crosses a threshold. | Predictions exist for all 112,443 state road stretches. Production web dashboard is available in `web/`. |
-| **Safer-route data for map companies** | A per-road risk file that navigation apps can read, so drivers are routed around rough pavement and flood-prone roads. | The held-out prediction file with road shapes exists (`handoff/predictions_geo.parquet`). No export format or routing yet. |
+| **Safer-route data for map companies** | A per-road risk file that navigation apps can read, so drivers are routed around rough pavement and flood-prone roads. | The held-out prediction file with road shapes exists (`handoff/predictions_geo.parquet`), and a per-road risk file with a column dictionary can be exported (`web/tiger/export.py`). No routing integration yet. |
 | **Budget planner** | Ranks repairs by benefit per dollar and shows what waiting costs. | NCDOT's data carries a recommended treatment and a cost estimate per road. Not built. |
 | **Storm readiness** | Before a forecast storm, lists the roads most likely to wash out, so crews can stage equipment and plan detours. | The flood model found 18 damaged roads among its 50 riskiest in the Helene zone, against about 2 by chance. |
-| **Live confirmation from cameras** | Uses public traffic cameras to confirm water on the road or visible damage, so an alert rests on more than a prediction. | In progress: camera stills are being matched to roads and a first flood reader is being tested. |
+| **Live confirmation from cameras** | Uses public traffic cameras to confirm water on the road or visible damage, so an alert rests on more than a prediction. | One round of stills from about 1,000 NCDOT cameras is matched to roads, and a flood reader trained on coastal roadside cameras has been tested (see below). It is not running live yet. |
 | **Scores for streets nobody inspects** | A first estimate for city streets, where no public survey exists. | Not built. Only state roads are scored so far. |
 
-Also planned: resident pothole reports as a check on the predictions, and ranking by who relies on the road (trucks, school routes, ambulance routes).
+Also planned: ranking by who relies on the road (trucks, school routes, ambulance routes).
 
 ## Follow one road through the model
 
@@ -71,16 +71,32 @@ We tested every prediction the same way as the road above: on roads the model ha
 
 Knowing the shape of the land barely changes the wear estimate. It clearly helps find cracked roads, and it helps most with flood damage.
 
+**Checked against real potholes.** Charlotte and Raleigh publish located pothole reports, and we matched 3,610 of them to state road segments. In Charlotte, roads our model's held-out predictions rank worst draw about three times the pothole reports per mile of the roads it ranks best, comparing roads with similar traffic (wear: 3.3, 95% range 1.6 to 6.7; cracking: 3.8, range 2.3 to 6.7). NCDOT's own rating, which is never an input to the model, gives 7.7 (range 4.8 to 12.6). Most of those reports are city-street repairs beside a state road; using only the 190 requests filed against state roads gives the same picture with wider ranges. Raleigh has 84 usable reports: its ranges are wide and the wear prediction shows no lift there. A separate pothole model trained on Charlotte did no better than a model that knows only traffic and segment length. We also graded 141 clear NCDOT traffic-camera stills; none showed an open pothole, and once interstates are set apart the camera evidence is too thin (about 20 cameras per group) to count as more than weak support.
+
+**Reading floods from cameras.** A second model looks at one roadside-camera photo and says whether the road is flooded and how deep the water is. It learned from 1,902 photos from ten coastal camera sites, each paired with a water-level sensor reading; 418 show a flooded road.
+
+| Test | Flood calls that were right | Flooded photos caught | Depth miss on flooded photos |
+|---|---|---|---|
+| A camera it has never seen, pretrained reader | 65% | 86% | 8.7 cm |
+| A camera it has never seen, fine-tuned | 85% | 91% | 9.7 cm |
+| A known camera on a new day, fine-tuned | 95% | 89% | 4.8 cm |
+
+Fine-tuning makes the flooded-or-not call clearly better and leaves the depth estimate about the same. On 1,191 NCDOT traffic-camera stills from a rainy day with no floods, the fine-tuned reader wrongly flagged 9. The two fine-tuned rows were trained with different settings (the new-day row at a larger image size and more passes), so compare them with care.
+
 ## What is being built right now
 
-Status on October 3, 2026.
+Status on the evening of October 3, 2026.
 
 | Track | Status | What it is |
 |---|---|---|
-| Corrected labels and honest map predictions | Done | Age is counted to the inspection year, a road counts as cracked only above 10%, and every road's score on the map comes from a model that never saw that road. 89 tests guard it. |
-| Do the aerial photos help? | Code written, not yet run | A test on all 112,443 photos: one view of each against eight turned and flipped views, and training with and without those changes. |
-| Real pothole evidence | Planned | 24,824 pothole reports from Charlotte and 435 from Raleigh, matched to roads, to check whether the roads we rank worst get more reports. Plus still images from public NCDOT cameras. |
-| Flood depth from cameras | Collecting photos | Photos of flooded coastal roads from late September 2026, each with a measured water level, to teach a model to read how deep the water is. |
+| Corrected labels and honest map predictions | Done | Age is counted to the inspection year, a road counts as cracked only above 10%, and every road's score on the map comes from a model that never saw that road. |
+| Do the aerial photos help? | Built, not run | The code and tests for a comparison on all 112,443 photos exist (one view of each against eight turned and flipped views, and training with and without those changes). The comparison was not run, so there is no result. |
+| Real pothole evidence | Done | Pothole reports from Charlotte and Raleigh matched to roads, plus graded stills from public NCDOT cameras. In Charlotte the roads we rank worst draw about three times the reports of the best. Results are under "Does it work?". |
+| Flood depth from cameras | Done, first version | A reader trained on photos of flooded coastal roads from late September 2026, each with a measured water level. On a camera it has never seen it catches 91% of flooded photos. Results are under "Does it work?". |
+| Crash counts and estimated traffic | Done | Added for every road, for the repair ranking (`handoff/traffic_crash.parquet`). They did not improve the wear, cracking or flood predictions, so the model is unchanged. |
+| Agency and phone dashboards | Done, not deployed | An agency view at `/gov` and a phone view at `/m`, both on the real predictions for every road. See "Web dashboards and API" below. |
+| Database-backed service | Built and tested on a local database; not yet loaded into Tiger Data | A read-only service over Postgres + TimescaleDB (`web/tiger/`, `web/service/`): the ranked work list, road details, flood alerts from hourly summaries, database statistics and a downloadable per-road risk file. No page reads it yet. |
+| Helene flood depth on roads | Done | A water depth in metres for the 1,602 road segments near surveyed high-water marks in 12 mountain counties; 648 had water. Checked by hiding marks and guessing them back (typical miss 0.27 m) and against 190 tape-measured depths (0.37 m). |
 
 ## What we cannot claim
 
@@ -89,6 +105,8 @@ Status on October 3, 2026.
 - **City streets are not scored yet.** Only state roads have ratings to learn from, so a city-street score would be borrowed from state roads and could not be checked the same way.
 - **Traffic counts are thin.** About 48% of roads have a real count.
 - **The photos are older than the inspections.** They are from 2022; most inspections are from 2025.
+- **Helene depths cover only roads near surveyed marks.** 1,602 of 112,443 segments have one; a blank means "not assessed", not "dry". The typical miss is 0.3 to 0.4 m and one reading in ten is off by more than 1.4 m. Bridges are handled by rule, and the ground was surveyed before the storm.
+- **A camera flag is not a confirmed flood.** The flood reader learned from ten coastal camera sites and wrongly flagged 9 of 1,191 dry stills. Traffic cameras also pan and zoom, so a view changes between photos.
 
 The technical detail behind each of these is in [Limitations](#limitations) below.
 
@@ -147,60 +165,43 @@ Targets, folds, feature lists and the out-of-fold loop live in `src/model/common
 
 ---
 
-## Real-Time Web Platform & API Architecture
+## Web dashboards and API
 
-### The Architectural Decision Matrix
-When dealing with **112,443 road segments** (~19 MB Parquet, ~90 MB GeoJSON):
+The web app in `web/` is one Vite + React app with two views. Both show the real predictions for all 112,443 state road segments.
 
-| Use Case | Architecture Approach | Is an API Required? | Why? |
-| :--- | :--- | :--- | :--- |
-| **Large-Scale Map Rendering (60fps Pan/Zoom)** | **PMTiles / Vector Tiles** | **No API required** *(Serverless)* | Serving static vector slices over HTTP Range Requests allows the browser to fetch only 20KB–100KB vector slices on demand. Scales infinitely at zero server cost. |
-| **Dynamic Viewport Bounding Box Queries** | **FastAPI Spatial Backend** | **Yes** | Allows map to request `GET /api/segments/bbox?minx=...` dynamically without downloading the entire 90MB dataset upfront. |
-| **Live "What-If" Degradation Simulation** | **FastAPI ML Service** | **Yes** | Allows users to simulate traffic surges (`+35% AADT`) or storm events (Hurricane Helene 500-yr flood) via `POST /api/simulate` and receive recalculated deterioration curves in real time. |
-| **Real-Time Sensor Telemetry & Weather Feeds** | **FastAPI + WebSockets / SSE** | **Yes** | Ingests real-time precipitation radars and USGS river gauge streams to trigger flood alerts on intersecting road segments. |
+- **`/gov`**, the agency dashboard (desktop): map, ranked work queue, work orders, storm readiness, alerts and how the model was tested.
+- **`/m`**, the phone dashboard: map with condition and flood views, and the Helene backtest.
+- **`/`** sends narrow screens to `/m` and everything else to `/gov`.
 
-### Implemented Dual-Mode Architecture
-RoadSense AI implements a **dual-mode architecture**:
-1. **Standalone Offline Mode**: The web client bundles rich, real North Carolina segments (Asheville & Raleigh) with statewide metadata, functioning instantly with zero server setup.
-2. **Live FastAPI Backend (`src/api.py`)**: A high-performance Python microservice that loads all 112,443 segments into memory with spatial indexing for live bounding-box queries, statewide statistics, and ML degradation simulations.
+There is no backend. The app reads static JSON files that a Python script builds from the prediction file.
 
-### Quickstart Guide
+### Run it locally
 
-#### Running the FastAPI Backend
 ```bash
-# Start FastAPI prediction microservice on port 8000
-uv run --with fastapi,uvicorn,pyarrow,pandas,shapely uvicorn src.api:app --host 127.0.0.1 --port 8000 --reload
-```
-Interactive Swagger API documentation is available at `http://127.0.0.1:8000/docs`.
+# 1. from the repo root: build the data files (writes web/public/data/, about 50 MB, git-ignored)
+uv run python scripts/build_web_data.py
 
-**Key API Endpoints**:
-- `GET /api/health` — Status and dataset record count (112,443 segments).
-- `GET /api/stats` — Statewide aggregations (total segments, Helene counts, average deterioration rate).
-- `GET /api/segments?city=Asheville&limit=100` — Filter segments by city or Helene impact zone.
-- `GET /api/segments/bbox?minx=-82.7&miny=35.4&maxx=-82.4&maxy=35.7` — Spatial bounding box viewport query.
-- `POST /api/simulate` — Real-time simulation of traffic surges and storm flood scenarios on any segment.
-
-#### Running the Web Frontend
-```bash
+# 2. start the app
 cd web
 npm install
 npm run dev
 ```
-Open `http://localhost:5173` in your browser.
 
----
+Open `http://localhost:5173/gov` or `http://localhost:5173/m`.
 
-### Frontend Component Overview
+The build script always needs `handoff/predictions_geo.parquet`, which is in the repo. Route names, ratings and the Helene backtest come from files under `data/raw/`, which are not in the repo, so the data files have to be built on a machine that has them. `web/README.md` describes the data files, the optional Google Maps setup for `/m`, and how to deploy.
 
-1. **Map Card (`web/src/components/CleanMapCard.tsx`)**:
-   - Live Vector GIS: MapLibre GL + deck.gl `PathLayer` rendering real road lines colored by predicted condition score, with real-time hover inspection and click selection.
-   - Top Pill Controls: Search input, Jurisdiction filter (State Surveys vs Prediction), State dropdown, City dropdown (Asheville vs Raleigh), and Live Mode switcher.
-2. **Location Card (`web/src/components/CleanLocationCard.tsx`)**:
-   - Live telemetry pod displaying real segment ID, road corridor, pavement age, predicted years to poor, and flood inundation risk.
-   - Interactive favorite heart toggle and click-to-open inspection drawer.
-3. **Infrastructure Deterioration Card (`web/src/components/GovAnalyticsCard.tsx`)**:
-   - Real-time PCI degradation forecast area chart with dynamic red alert stroke, split-gradient red drop fade when dipping below critical threshold (68 PCI), and reference corridors.
-4. **Agency Operations Card (`web/src/components/CleanTenantsCard.tsx` & `web/src/components/Gauge.tsx`)**:
-   - High-fidelity radial notch gauge with Royal Fleet Blue colorway, ARR run rate telemetry, and agency maintenance ops tracking.
-5. **Detail Inspection Modal (`web/src/components/SegmentDetailModal.tsx`)**:
-   - Deep drilldown into LightGBM + 3DEP predictions: cracking probability, deterioration rate, Helene disaster zone indicator, and top attribution drivers.
+### Optional API
+
+The dashboards do not need it. `src/api.py` is a small read-only service for anyone who wants the same predictions over HTTP.
+
+```bash
+uv run --with fastapi,uvicorn uvicorn src.api:app --host 127.0.0.1 --port 8000
+```
+
+- `GET /api/health`: status and segment count.
+- `GET /api/stats`: statewide counts.
+- `GET /api/segments/bbox?minx=-82.7&miny=35.4&maxx=-82.4&maxy=35.7`: segments inside a map window.
+- `GET /api/segments/{seg_id}`: one segment.
+
+Every field it returns is a real column of the prediction file. It has no simulate endpoint: a what-if needs the trained model.

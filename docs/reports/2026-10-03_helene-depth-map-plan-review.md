@@ -1,0 +1,15 @@
+1. **Critical** — Step 4 samples ground along entire candidate segments, but Step 1 fetches tiles only near streams and marks. This fails on current data: `ncdot:40002151011:0.318` intersects a live stream piece but has an endpoint in unfetched tile `(358, -826)`. Locate points first, then sample ground only for assessed points and the neighbours needed by bridge rules; ensure those neighbours have tile coverage. Add a regression with a road extending beyond the fetched area.
+
+2. **Critical** — `validate()` runs before `build()` and receives no per-segment results, so it cannot produce the D21 failure-label comparison promised in its output. Split validation into pre-build gates and post-build diagnostics, explicitly call `labels_check()` after summarisation, and test that the saved validation contains the computed comparison.
+
+3. **Critical** — Writing metadata last does not make the output bundle consistent. If points are replaced and writing depth fails, the old metadata and depth still match, so `load_depth()` accepts a bundle containing new points and old depth. Verify both output hashes before accepting the bundle, and cover an interrupted multi-file write. If the previous complete bundle must remain usable, stage a generation before publishing it.
+
+4. **Critical** — `--validate-only` is declared, but the specified `main()` sequence proceeds through bridge loading, building and writing without an early return. Define its branch explicitly after validation and add a CLI test proving it creates or modifies no output files.
+
+5. **Critical** — The missing-30 m escape hatch conflicts with unconditional fingerprinting. Step 0 and `main()` fingerprint `dem.tif` before the code reaches `gate_30m(..., skip=True)`. Represent an absent optional DEM explicitly in fingerprints and test the complete CLI path with the file absent, both with and without `--skip-30m-check`.
+
+6. **Suggestion** — `_fetch()` discards the source CRS, while `write_tile()` labels every reply EPSG:4269. `check_reply()` checks resolution but not rotation, location or coverage, so a finite array from the wrong area could pass and silently produce incorrect ground. Preserve and validate CRS and transform, verify coverage of the requested core plus interpolation margin, and test a shifted reply.
+
+7. **Suggestion** — Empty-data behaviour is unspecified for `tripwire`, statistics, bootstrapping and the tape gate. Valid individual tiles can still yield no finite ground at marks, and hidden-mark bands can contain no assessed guesses. Require finite, nonempty evidence for gates; return explicit empty statistics for reporting; test zero usable taped marks and an empty distance band.
+
+8. **Suggestion** — D14 leaves headline-pair ties and the segment’s `stream` value undefined. Multiple pairs can share the maximum depth while having different confidence, mark distances and streams. Specify deterministic selection and aggregation rules, then test tied pairs and segments assessed against multiple streams.
