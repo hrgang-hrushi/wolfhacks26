@@ -1,7 +1,7 @@
 import { useState, useImperativeHandle, forwardRef, useEffect, useRef, useMemo } from 'react';
 import { Search, ChevronDown, X, MapPin, Compass, Thermometer, CloudRain, Sun, Navigation } from 'lucide-react';
 import type { RoadSegment, ViewFilter } from '../types/roadSegment';
-import { MapView, type MapViewHandle } from './MapView';
+import { MapView, type MapViewHandle, type ConditionColorFilter } from './MapView';
 import { fetchWeatherByCity, type WeatherData } from '../services/weatherService';
 import { MAPBOX_TOKEN } from '../config/mapbox';
 import { getConditionInfo } from '../utils/colors';
@@ -18,9 +18,12 @@ interface CleanMapCardProps {
   onSelectSegment: (segment: RoadSegment) => void;
   viewFilter: ViewFilter;
   onToggleFilter: (filter: ViewFilter) => void;
-  activeCity: 'Asheville' | 'Raleigh' | null;
-  onZoomCity: (city: 'Asheville' | 'Raleigh') => void;
+  activeCity: 'Asheville' | 'Raleigh' | 'Statewide' | string | null;
+  onZoomCity: (city: 'Asheville' | 'Raleigh' | 'Statewide' | string) => void;
   onOpenHelp: () => void;
+  onBboxChange?: (bbox: [number, number, number, number]) => void;
+  conditionColorFilter?: ConditionColorFilter;
+  onConditionColorFilterChange?: (filter: ConditionColorFilter) => void;
 }
 
 interface GeocodedPlace {
@@ -38,11 +41,14 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
   onToggleFilter,
   activeCity,
   onZoomCity,
-  onOpenHelp
+  onOpenHelp,
+  onBboxChange,
+  conditionColorFilter = 'all',
+  onConditionColorFilterChange
 }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [openDropdown, setOpenDropdown] = useState<'insurance' | 'state' | 'city' | 'district' | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<'insurance' | 'state' | 'city' | 'district' | 'condition' | null>(null);
   const [geocodedPlaces, setGeocodedPlaces] = useState<GeocodedPlace[]>([]);
   const [weather, setWeather] = useState<WeatherData | null>(null);
 
@@ -50,10 +56,11 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const gisMapRef = useRef<MapViewHandle>(null);
 
-  // Sync live weather for active city
+  // Sync live weather for active city (Statewide → Raleigh)
   useEffect(() => {
     let active = true;
-    fetchWeatherByCity(activeCity || 'Raleigh').then((w) => {
+    const weatherCity = activeCity === 'Asheville' ? 'Asheville' : 'Raleigh';
+    fetchWeatherByCity(weatherCity).then((w) => {
       if (active) setWeather(w);
     });
     return () => { active = false; };
@@ -178,9 +185,35 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
     }
   };
 
-  const toggleDropdown = (name: 'insurance' | 'state' | 'city' | 'district') => {
+  const toggleDropdown = (name: 'insurance' | 'state' | 'city' | 'district' | 'condition') => {
     setOpenDropdown(prev => (prev === name ? null : name));
   };
+
+  // Compute subtle U-shape ambient glow rating: Green (Safe), Yellow (Caution), Red (Danger), Blue (Flood)
+  const ratingStatus: 'safe' | 'caution' | 'danger' | 'blue' = useMemo(() => {
+    if (conditionColorFilter === 'green') return 'safe';
+    if (conditionColorFilter === 'yellow') return 'caution';
+    if (conditionColorFilter === 'red') return 'danger';
+    if (conditionColorFilter === 'blue') return 'blue';
+
+    if (selectedSegment) {
+      if (selectedSegment.in_helene_zone || (selectedSegment.pred_flood && selectedSegment.pred_flood > 0.15)) {
+        return 'blue';
+      }
+      const score = typeof selectedSegment.score === 'number' && !isNaN(selectedSegment.score)
+        ? selectedSegment.score
+        : (selectedSegment.pv_rating ? selectedSegment.pv_rating / 100 : 0.75);
+      if (score < 0.45 || (selectedSegment.pred_crack && selectedSegment.pred_crack > 0.4)) {
+        return 'danger';
+      }
+      if (score < 0.70) {
+        return 'caution';
+      }
+      return 'safe';
+    }
+
+    return 'safe';
+  }, [conditionColorFilter, selectedSegment]);
 
   const showSuggestions = isSearchFocused && searchQuery.trim().length > 0;
   const isRaining = weather?.condition.toLowerCase().includes('rain') || (weather?.rain1h && weather.rain1h > 0);
@@ -194,8 +227,13 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           segments={segments}
           selectedSegment={selectedSegment}
           onSelectSegment={onSelectSegment}
+          onBboxChange={onBboxChange}
+          conditionColorFilter={conditionColorFilter}
         />
       </div>
+
+      {/* Subtle U-Shaped Rating Ambient Glow (Bottom-Left, Bottom, Bottom-Right) */}
+      <div className={`map-rating-u-glow rating-${ratingStatus}`} aria-hidden="true" />
 
       {/* Top Floating Controls Bar */}
       <div className="pixel-map-top-bar" ref={topBarRef}>
@@ -543,6 +581,90 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
                   onClick={() => setOpenDropdown(null)}
                 >
                   District 2 (Central Piedmont &amp; Triangle)
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Condition Dropdown (Blue, Green, Yellow, Red) */}
+          <div className="pixel-filter-wrap">
+            <button
+              type="button"
+              className={`pixel-filter-btn condition-filter-btn ${openDropdown === 'condition' ? 'active' : ''} ${conditionColorFilter !== 'all' ? `active-filter-${conditionColorFilter}` : ''}`}
+              onClick={() => toggleDropdown('condition')}
+              title="Filter Road Condition (Blue, Green, Yellow, Red)"
+              aria-label="Filter Road Condition"
+            >
+              <span className={`condition-indicator-dot ${conditionColorFilter}`} />
+              <span>
+                {conditionColorFilter === 'all' && 'Condition'}
+                {conditionColorFilter === 'blue' && 'Blue (Helene)'}
+                {conditionColorFilter === 'green' && 'Green (Safe)'}
+                {conditionColorFilter === 'yellow' && 'Yellow (Caution)'}
+                {conditionColorFilter === 'red' && 'Red (Danger)'}
+              </span>
+              <ChevronDown size={14} className="pixel-filter-chevron" />
+            </button>
+            {openDropdown === 'condition' && (
+              <div className="pixel-dropdown-menu condition-dropdown-menu">
+                <button
+                  type="button"
+                  className={`pixel-dropdown-item ${conditionColorFilter === 'all' ? 'selected' : ''}`}
+                  onClick={() => {
+                    onConditionColorFilterChange?.('all');
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <span className="condition-item-dot all" />
+                  <span className="condition-item-label">All Conditions</span>
+                </button>
+                <button
+                  type="button"
+                  className={`pixel-dropdown-item ${conditionColorFilter === 'blue' ? 'selected' : ''}`}
+                  onClick={() => {
+                    onConditionColorFilterChange?.('blue');
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <span className="condition-item-dot blue" />
+                  <span className="condition-item-label">Blue (Helene / Flood Zone)</span>
+                  <span className="condition-badge blue">Zone</span>
+                </button>
+                <button
+                  type="button"
+                  className={`pixel-dropdown-item ${conditionColorFilter === 'green' ? 'selected' : ''}`}
+                  onClick={() => {
+                    onConditionColorFilterChange?.('green');
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <span className="condition-item-dot green" />
+                  <span className="condition-item-label">Green (Safe / Optimal)</span>
+                  <span className="condition-badge green">Safe</span>
+                </button>
+                <button
+                  type="button"
+                  className={`pixel-dropdown-item ${conditionColorFilter === 'yellow' ? 'selected' : ''}`}
+                  onClick={() => {
+                    onConditionColorFilterChange?.('yellow');
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <span className="condition-item-dot yellow" />
+                  <span className="condition-item-label">Yellow (Caution / Fair)</span>
+                  <span className="condition-badge yellow">Caution</span>
+                </button>
+                <button
+                  type="button"
+                  className={`pixel-dropdown-item ${conditionColorFilter === 'red' ? 'selected' : ''}`}
+                  onClick={() => {
+                    onConditionColorFilterChange?.('red');
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <span className="condition-item-dot red" />
+                  <span className="condition-item-label">Red (Danger / Critical)</span>
+                  <span className="condition-badge red">Danger</span>
                 </button>
               </div>
             )}

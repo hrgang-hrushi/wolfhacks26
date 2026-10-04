@@ -2,7 +2,6 @@ import { useState, useEffect, type FC } from 'react';
 import { X, Navigation, Calendar, Clock, ShieldAlert, Sparkles, Building2, MapPin, CloudRain } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
 import { getConditionInfo } from '../utils/colors';
-import { AerialChip } from './AerialChip';
 import { fetchWeatherByCoords, type WeatherData } from '../services/weatherService';
 
 interface SegmentDetailModalProps {
@@ -30,13 +29,35 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
     return () => { active = false; };
   }, [segment?.seg_id, segment?.city]);
 
+  useEffect(() => {
+    if (!segment) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [segment, onClose]);
+
   if (!segment) return null;
 
   const condition = getConditionInfo(segment.score);
   const isNcdot = segment.source === 'ncdot';
 
   return (
-    <div className="segment-detail-drawer" aria-label="Road segment inspection details">
+    <>
+      <div className="drawer-scrim" onClick={onClose} aria-hidden="true" />
+      <div
+        className="segment-detail-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-segment-title"
+        aria-label="Road segment inspection details"
+      >
       <div className="drawer-header-light">
         <div className="drawer-badges-row">
           <span className={`jurisdiction-pill ${isNcdot ? 'pill-state' : 'pill-municipal'}`}>
@@ -50,8 +71,8 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
         </div>
 
         <div className="drawer-title-close-row">
-          <div>
-            <h2 className="drawer-segment-name">{segment.name}</h2>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h2 id="drawer-segment-title" className="drawer-segment-name">{segment.name}</h2>
             <span className="drawer-segment-id">Segment ID: <code>{segment.seg_id}</code></span>
           </div>
           <button
@@ -60,19 +81,20 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
             className="drawer-close-circle-btn"
             aria-label="Close details"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
       </div>
 
       <div className="drawer-scroll-body">
-        {/* Pavement Condition Rating Card */}
+        {/* Pavement Condition Rating Card — premium hierarchy */}
         <div className="detail-metric-card rating-highlight-card">
           <div className="card-sub-header">
             <span className="sub-header-title">PAVEMENT CONDITION RATING</span>
             <span
               className="condition-pill-badge"
-              style={{ backgroundColor: condition.color, color: '#FFFFFF' }}
+              style={{ backgroundColor: condition.bgRgba, color: condition.color, borderColor: condition.borderRgba }}
+              aria-label={`Condition ${condition.category}`}
             >
               {condition.category.toUpperCase()}
             </span>
@@ -86,31 +108,33 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
               Score: <strong>{(segment.score * 100).toFixed(0)}%</strong>
             </div>
           </div>
-          <div className="rating-progress-track">
+          <div
+            className="rating-progress-track"
+            role="progressbar"
+            aria-valuenow={segment.pv_rating}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuetext={`${segment.pv_rating} out of 100, ${condition.category}`}
+          >
             <div
               className="rating-progress-bar"
               style={{
-                width: `${Math.max(5, Math.min(100, segment.pv_rating))}%`,
+                width: `${Math.max(0, Math.min(100, segment.pv_rating))}%`,
                 backgroundColor: condition.color
               }}
             />
           </div>
         </div>
 
-        {/* 1:1 Aspect Ratio Square Aerial Photo Placeholder */}
-        <div className="aerial-section-wrap">
-          <AerialChip segment={segment} />
-        </div>
-
-        {/* 2-Column Metrics Grid */}
+        {/* 2-Column Metrics Grid — refined 8pt, tabular-nums */}
         <div className="detail-two-col-grid">
           {/* Pavement Age */}
           <div className="detail-metric-card">
             <div className="col-metric-title">
-              <Calendar size={13} className="text-amber-500" />
+              <Calendar size={12} className="text-amber-500" style={{ strokeWidth: 1.75 }} />
               <span>PAVEMENT AGE</span>
             </div>
-            <div className="col-metric-val">
+            <div className="col-metric-val" style={{ fontVariantNumeric: 'tabular-nums' }}>
               {segment.pv_age} <span className="val-unit">yrs</span>
             </div>
             <span className="col-metric-sub">Since last repaving</span>
@@ -119,10 +143,10 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
           {/* Predicted Years to Poor */}
           <div className="detail-metric-card">
             <div className="col-metric-title">
-              <Clock size={13} className="text-rose-500" />
+              <Clock size={12} className="text-rose-500" style={{ strokeWidth: 1.75 }} />
               <span>YEARS TO POOR</span>
             </div>
-            <div className="col-metric-val text-rose-500">
+            <div className="col-metric-val text-rose-500" style={{ fontVariantNumeric: 'tabular-nums' }}>
               {segment.years_to_poor} <span className="val-unit">yrs</span>
             </div>
             <span className="col-metric-sub">
@@ -241,5 +265,6 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
         </div>
       </div>
     </div>
+    </>
   );
 };

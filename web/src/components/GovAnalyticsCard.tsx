@@ -93,76 +93,81 @@ const ReferenceArea: React.FC<any> = ({
 );
 (ReferenceArea as any).displayName = 'ReferenceArea';
 
-// Area component wrapper with split-color stroke: EMERALD GREEN above threshold (68), RED below threshold
-const Area: React.FC<any> = ({
-  dataKey = 'desktop',
-  fillOpacity = 1,
-  strokeWidth = 2.5,
-  type = 'monotone',
-  ...props
-}) => (
-  <>
-    <defs>
-      {/* 
-        Stroke gradient:
-        Value range: min 56 to max 90 (height = 34).
-        Threshold is 68.
-        Offset from top = (90 - 68) / 34 = 64.71%.
-        Above threshold: #10b981 (emerald green)
-        Below threshold: #ef4444 (danger alert red)
-      */}
-      <linearGradient id="splitColorStroke" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
-        <stop offset="64.7%" stopColor="#10b981" stopOpacity={1} />
-        <stop offset="64.7%" stopColor="#ef4444" stopOpacity={1} />
-        <stop offset="100%" stopColor="#ef4444" stopOpacity={1} />
-      </linearGradient>
+// Segmented drop-fade: green vs red per X — each vertical column drops from the line with its own color
+// Threshold 68 PCI — green ≥68, red <68
+const DropFadeDefs: React.FC = () => (
+  <defs>
+    <linearGradient id="greenDropFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stopColor="#10b981" stopOpacity={0.32} />
+      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+    </linearGradient>
+    <linearGradient id="redDropFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stopColor="#ef4444" stopOpacity={0.34} />
+      <stop offset="100%" stopColor="#ef4444" stopOpacity={0.02} />
+    </linearGradient>
+  </defs>
+);
 
-      {/* 
-        Area drop fade gradient:
-        Above threshold (top 24.5% of fill): soft emerald green drop fade
-        Below threshold (bottom 75.5% of fill): rich alert red drop fade
-      */}
-      <linearGradient id="splitColorFill" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#10b981" stopOpacity={0.20} />
-        <stop offset="24.4%" stopColor="#10b981" stopOpacity={0.06} />
-        <stop offset="24.5%" stopColor="#ef4444" stopOpacity={0.24} />
-        <stop offset="70%" stopColor="#ef4444" stopOpacity={0.08} />
-        <stop offset="100%" stopColor="#ef4444" stopOpacity={0.01} />
-      </linearGradient>
-    </defs>
+// Two segmented Areas — green where value >= THRESHOLD, red where < THRESHOLD.
+// Their fill is a vertical drop from the line (top) downwards, color chosen per X segment.
+const SegmentedAreas: React.FC = () => (
+  <>
+    <DropFadeDefs />
     <RechartsArea
-      type={type}
-      dataKey={dataKey}
-      stroke="url(#splitColorStroke)"
-      fill="url(#splitColorFill)"
-      fillOpacity={fillOpacity}
-      strokeWidth={strokeWidth}
+      type="monotone"
+      dataKey="green"
+      stroke="#10b981"
+      fill="url(#greenDropFade)"
+      strokeWidth={2.5}
+      dot={false}
+      activeDot={{ r: 3, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }}
       isAnimationActive={false}
-      {...props}
+      connectNulls={false}
+    />
+    <RechartsArea
+      type="monotone"
+      dataKey="red"
+      stroke="#ef4444"
+      fill="url(#redDropFade)"
+      strokeWidth={2.5}
+      dot={false}
+      activeDot={{ r: 3, fill: '#ef4444', stroke: '#fff', strokeWidth: 1.5 }}
+      isAnimationActive={false}
+      connectNulls={false}
     />
   </>
 );
-(Area as any).displayName = 'Area';
 
-// XAxis component wrapper matching Bklit UI timeline
-const XAxis: React.FC<any> = ({
-  dataKey = 'month',
-  ...props
-}) => (
+// XAxis for numeric x (0..5) with fractional threshold points — ticks only at integer months
+const XAxis: React.FC<any> = (props) => (
   <RechartsXAxis
-    dataKey={dataKey}
+    dataKey="x"
+    type="number"
+    domain={[0, 5]}
+    ticks={[0, 1, 2, 3, 4, 5]}
+    tickFormatter={(v: number) => {
+      const labels: Record<number, string> = {
+        0: 'Jan 1',
+        1: 'Feb 1',
+        2: 'Mar 1',
+        3: 'Apr 1',
+        4: 'May 1',
+        5: 'Jun 1'
+      };
+      return labels[v] ?? '';
+    }}
     axisLine={false}
     tickLine={false}
     tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }}
     padding={{ left: 18, right: 18 }}
     dy={6}
+    allowDecimals={false}
     {...props}
   />
 );
 (XAxis as any).displayName = 'XAxis';
 
-// Clean floating tooltip showing decreased PCI road health rating
+// Clean floating tooltip — shows single PCI value per X, de-duplicated for segmented green/red
 const ChartTooltip: React.FC<any> = (props) => (
   <RechartsTooltip
     contentStyle={{
@@ -174,8 +179,13 @@ const ChartTooltip: React.FC<any> = (props) => (
       padding: '6px 10px',
       boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
     }}
-    formatter={(val: any) => [`${val} PCI`, 'Pavement Health Index']}
     labelStyle={{ color: '#94a3b8', marginBottom: '2px', fontWeight: 600 }}
+    formatter={(_val: any, _name: any, item: any) => {
+      // item.payload holds the unified `value` for that X
+      const v = item?.payload?.value ?? _val;
+      if (v == null) return [null as any, null as any];
+      return [`${v} PCI`, 'Pavement Health Index'];
+    }}
     {...props}
   />
 );
@@ -188,17 +198,20 @@ export const GovAnalyticsCard: React.FC<GovAnalyticsCardProps> = ({
   const seg = selectedSegment;
   const rating = seg ? seg.pv_rating : 81;
 
-  // Decreased Y-Axis Values (0-100 PCI Standard):
-  // Starts below threshold at Jan 1 (62 - RED), peaks into good condition at Feb 1 (90 - GREEN),
-  // stabilizes in corridor at Mar 1 (78 - GREEN), dips into critical wear zone at Apr 1 (56 - TURNS RED!),
-  // recovers above threshold at May 1 (75 - GREEN), and stabilizes at Jun 1 (82 - GREEN).
+  // Segmented X-axis: threshold TH=68, raw 62,90,78,56,75,82
+  // Interpolated crossing X fractions: Jan→Feb 0.214, Mar→Apr 2.455, Apr→May 3.632
+  // Each drop column's fill color is chosen per X — green where line ≥68, red where <68,
+  // and the fade drops vertically from the line (top) downwards.
   const chartData = [
-    { month: 'Jan 1', desktop: 62 },
-    { month: 'Feb 1', desktop: 90 },
-    { month: 'Mar 1', desktop: 78 },
-    { month: 'Apr 1', desktop: 56 },
-    { month: 'May 1', desktop: 75 },
-    { month: 'Jun 1', desktop: 82 }
+    { x: 0, month: 'Jan 1', green: null, red: 62, value: 62 },
+    { x: 0.2142857, month: '', green: 68, red: 68, value: 68 },
+    { x: 1, month: 'Feb 1', green: 90, red: null, value: 90 },
+    { x: 2, month: 'Mar 1', green: 78, red: null, value: 78 },
+    { x: 2.454545, month: '', green: 68, red: 68, value: 68 },
+    { x: 3, month: 'Apr 1', green: null, red: 56, value: 56 },
+    { x: 3.6315789, month: '', green: 68, red: 68, value: 68 },
+    { x: 4, month: 'May 1', green: 75, red: null, value: 75 },
+    { x: 5, month: 'Jun 1', green: 82, red: null, value: 82 }
   ];
 
   return (
@@ -229,12 +242,12 @@ export const GovAnalyticsCard: React.FC<GovAnalyticsCardProps> = ({
           </div>
         </div>
 
-        {/* 110% Pixel-to-Pixel Cloned AreaChart - Pure Auto-Layout Flex Fill */}
+        {/* Segmented drop-fade AreaChart — vertical fade drops from the line, color per X segment (green ≥68, red <68) */}
         <div className="gov-recharts-container">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart margin={{ top: 8, right: 12, bottom: 18, left: 12 }} data={chartData}>
               <ReferenceArea y1={68} y2={84} strokeStyle="dashed" showMarkers />
-              <Area dataKey="desktop" strokeWidth={2.5} />
+              <SegmentedAreas />
               <XAxis />
               <ChartTooltip />
             </AreaChart>

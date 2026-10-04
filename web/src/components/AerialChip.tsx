@@ -1,4 +1,4 @@
-import type { FC } from 'react';
+import { useState, useEffect, type FC } from 'react';
 import { Camera, Satellite, Crosshair, Layers } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
 
@@ -7,7 +7,17 @@ interface AerialChipProps {
 }
 
 export const AerialChip: FC<AerialChipProps> = ({ segment }) => {
-  const [lng, lat] = segment.path[Math.floor(segment.path.length / 2)] || [-78.6382, 35.7796];
+  const p = (Array.isArray(segment.path) && segment.path.length > 0)
+    ? segment.path
+    : (Array.isArray((segment as any).paths) && (segment as any).paths[0]) || [];
+  const [lng, lat] = (p.length > 0 ? p[Math.floor(p.length / 2)] : null) || [-78.6382, 35.7796];
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [segment.chip_url, segment.seg_id]);
+
+  const showImage = Boolean(segment.chip_url) && !imgError;
 
   return (
     <div className="aerial-chip-container">
@@ -20,11 +30,13 @@ export const AerialChip: FC<AerialChipProps> = ({ segment }) => {
       </div>
 
       <div className="aerial-chip-square">
-        {segment.chip_url ? (
+        {showImage ? (
           <img
             src={segment.chip_url}
             alt={`Aerial view of ${segment.seg_id}`}
             className="aerial-image"
+            loading="lazy"
+            onError={() => setImgError(true)}
           />
         ) : (
           <div className="aerial-placeholder">
@@ -79,10 +91,10 @@ export const AerialChip: FC<AerialChipProps> = ({ segment }) => {
               <div className="aerial-tag">Ready for Drop-in (chip_url)</div>
             </div>
 
-            {/* Scale indicator */}
+            {/* Scale indicator — 5 miles */}
             <div className="aerial-scale-bar">
               <div className="scale-line" />
-              <span>50 m</span>
+              <span>5 mi</span>
             </div>
           </div>
         )}

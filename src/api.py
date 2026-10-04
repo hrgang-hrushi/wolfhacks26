@@ -21,7 +21,7 @@ DATA_PATH = BASE_DIR / "handoff" / "predictions_geo.parquet"
 if not DATA_PATH.exists():
     DATA_PATH = Path("handoff/predictions_geo.parquet")
 
-MAX_LIMIT = 5000
+MAX_LIMIT = 120000
 
 
 def _num(v: float | None, nd: int) -> float | None:

@@ -24,7 +24,7 @@ CANDIDATE_PATHS = [
 
 DATA_PATH = next((p for p in CANDIDATE_PATHS if p.exists()), CANDIDATE_PATHS[0])
 
-MAX_LIMIT = 5000
+MAX_LIMIT = 120000
 
 
 def _num(v: float | None, nd: int) -> float | None:

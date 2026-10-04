@@ -14,10 +14,28 @@ export interface MapViewHandle {
   flyToCoords: (lng: number, lat: number, zoom?: number) => void;
 }
 
+export type ConditionColorFilter = 'all' | 'blue' | 'green' | 'yellow' | 'red';
+
+export const getConditionCategory = (d: RoadSegment): 'blue' | 'green' | 'yellow' | 'red' => {
+  if (d.in_helene_zone || (typeof d.pred_flood === 'number' && d.pred_flood > 0.15)) {
+    return 'blue';
+  }
+  const sScore = typeof d.score === 'number' && !isNaN(d.score) ? d.score : (d.pv_rating ? d.pv_rating / 100 : 0.75);
+  if (sScore < 0.45 || (d.pred_crack && d.pred_crack > 0.4)) {
+    return 'red';
+  }
+  if (sScore < 0.70) {
+    return 'yellow';
+  }
+  return 'green';
+};
+
 interface MapViewProps {
   segments: RoadSegment[];
   selectedSegment: RoadSegment | null;
   onSelectSegment: (segment: RoadSegment) => void;
+  onBboxChange?: (bbox: [number, number, number, number]) => void;
+  conditionColorFilter?: ConditionColorFilter;
 }
 
 // Focused North Carolina Basemaps with automatic fallback
@@ -45,7 +63,9 @@ const NC_BOUNDS: [mapboxgl.LngLatLike, mapboxgl.LngLatLike] = [
 export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   segments,
   selectedSegment,
-  onSelectSegment
+  onSelectSegment,
+  onBboxChange,
+  conditionColorFilter = 'all'
 }, ref) => {
   const mapWrapperRef = useRef<HTMLDivElement>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -220,13 +240,23 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       const mapInstance = new mapboxgl.Map({
         container: mapContainerRef.current,
         style: initialStyle,
-        center: NC_CITY_COORDINATES.Raleigh.center,
-        zoom: NC_CITY_COORDINATES.Raleigh.zoom,
-        pitch: NC_CITY_COORDINATES.Raleigh.pitch,
-        bearing: NC_CITY_COORDINATES.Raleigh.bearing,
+        center: NC_CITY_COORDINATES.Statewide.center,
+        zoom: NC_CITY_COORDINATES.Statewide.zoom,
+        pitch: 0,
+        bearing: 0,
         maxBounds: NC_BOUNDS,
         attributionControl: false,
         antialias: true
+      });
+
+      // Fit entire North Carolina immediately on load
+      mapInstance.on('load', () => {
+        try {
+          mapInstance.fitBounds(NC_BOUNDS, {
+            padding: { top: 60, bottom: 60, left: 30, right: 30 },
+            duration: 0
+          });
+        } catch {}
       });
 
       // Controls
@@ -244,9 +274,10 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         }
       });
 
-      // Deck.gl overlay
+      // Deck.gl overlay with generous picking radius for effortless clicking/hovering
       const overlayInstance = new MapboxOverlay({
         interleaved: false,
+        pickingRadius: 10,
         layers: []
       });
 
@@ -255,6 +286,20 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       mapRef.current = mapInstance;
       overlayRef.current = overlayInstance;
 
+      // Entire NC bbox streaming — emit viewport bounds on moveend
+      if (onBboxChange) {
+        const emitBbox = () => {
+          try {
+            const b = mapInstance.getBounds();
+            if (b) onBboxChange([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+          } catch {}
+        };
+        mapInstance.on('moveend', emitBbox);
+        mapInstance.once('idle', emitBbox);
+        // store for cleanup via closure
+        (mapInstance as any)._emitBbox = emitBbox;
+      }
+
       const handleResize = () => {
         mapInstance.resize();
       };
@@ -262,6 +307,10 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
       return () => {
         window.removeEventListener('resize', handleResize);
+        try {
+          const eb = (mapInstance as any)._emitBbox;
+          if (eb) mapInstance.off('moveend', eb);
+        } catch {}
         if (overlayRef.current) {
           overlayRef.current.finalize();
         }
@@ -276,15 +325,23 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         const fallbackMap = new mapboxgl.Map({
           container: mapContainerRef.current,
           style: CARTO_LIGHT_STYLE,
-          center: NC_CITY_COORDINATES.Raleigh.center,
-          zoom: NC_CITY_COORDINATES.Raleigh.zoom,
-          pitch: NC_CITY_COORDINATES.Raleigh.pitch,
-          bearing: NC_CITY_COORDINATES.Raleigh.bearing,
+          center: NC_CITY_COORDINATES.Statewide.center,
+          zoom: NC_CITY_COORDINATES.Statewide.zoom,
+          pitch: 0,
+          bearing: 0,
           maxBounds: NC_BOUNDS,
           attributionControl: false,
           antialias: true
         });
-        const overlayInstance = new MapboxOverlay({ interleaved: false, layers: [] });
+        fallbackMap.on('load', () => {
+          try {
+            fallbackMap.fitBounds(NC_BOUNDS, {
+              padding: { top: 60, bottom: 60, left: 30, right: 30 },
+              duration: 0
+            });
+          } catch {}
+        });
+        const overlayInstance = new MapboxOverlay({ interleaved: false, pickingRadius: 10, layers: [] });
         fallbackMap.addControl(overlayInstance as unknown as mapboxgl.IControl);
         mapRef.current = fallbackMap;
         overlayRef.current = overlayInstance;
@@ -301,19 +358,19 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
 
     const layers = [];
 
-    // 1. Transparent wide hit-detection layer for effortless clicking
+    // 1. Transparent wide hit-detection layer for effortless clicking and hovering (generously expanded to 36px)
     layers.push(
       new PathLayer<RoadSegment>({
         id: 'road-segments-hit-area',
         data: segments,
         pickable: true,
         widthScale: 1,
-        widthMinPixels: 18,
+        widthMinPixels: 36,
         capRounded: true,
         jointRounded: true,
         getPath: (d) => getSegmentPath(d),
         getColor: [0, 0, 0, 0],
-        getWidth: 16,
+        getWidth: 34,
         onClick: (info) => {
           if (info.object) {
             onSelectSegment(info.object as RoadSegment);
@@ -333,21 +390,61 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       })
     );
 
-    // 2. Slender subtle shadow casing under all segments (prevents clumsiness while maintaining contrast)
+    // 2. Slender subtle shadow casing under all segments (muted for dimmed roads)
     layers.push(
       new PathLayer<RoadSegment>({
         id: 'road-segments-casing',
         data: segments,
         pickable: false,
         widthScale: 1,
-        widthMinPixels: 3.5,
+        widthMinPixels: 2.2,
         capRounded: true,
         jointRounded: true,
         getPath: (d) => getSegmentPath(d),
-        getColor: [15, 23, 42, 120],
-        getWidth: 3.5
+        getColor: (d) => {
+          if (conditionColorFilter && conditionColorFilter !== 'all') {
+            const cat = getConditionCategory(d);
+            return cat === conditionColorFilter ? [15, 23, 42, 130] : [0, 0, 0, 0];
+          }
+          return [15, 23, 42, 100];
+        },
+        getWidth: (d) => {
+          if (conditionColorFilter && conditionColorFilter !== 'all') {
+            const cat = getConditionCategory(d);
+            return cat === conditionColorFilter ? 4.5 : 0;
+          }
+          return 3.5;
+        },
+        updateTriggers: {
+          getColor: [conditionColorFilter],
+          getWidth: [conditionColorFilter]
+        }
       })
     );
+
+    // 2b. Radiant aura under highlighted condition roads
+    if (conditionColorFilter && conditionColorFilter !== 'all') {
+      const conditionMatches = segments.filter(s => getConditionCategory(s) === conditionColorFilter);
+      if (conditionMatches.length > 0) {
+        layers.push(
+          new PathLayer<RoadSegment>({
+            id: 'highlighted-condition-aura',
+            data: conditionMatches,
+            pickable: false,
+            widthScale: 1,
+            widthMinPixels: 6.5,
+            capRounded: true,
+            jointRounded: true,
+            getPath: (d) => getSegmentPath(d),
+            getColor: conditionColorFilter === 'green' ? [34, 197, 94, 90]
+              : conditionColorFilter === 'yellow' ? [234, 179, 8, 90]
+              : conditionColorFilter === 'red' ? [239, 68, 68, 100]
+              : [56, 189, 248, 100],
+            getWidth: 7.5
+          })
+        );
+      }
+    }
 
     // 3. Radiant cyan halo ONLY under the currently selected segment
     if (selectedSegment) {
@@ -367,14 +464,14 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       );
     }
 
-    // 4. Main clean colored road segment lines
+    // 4. Main colored road segment lines with condition highlighting and dimming
     layers.push(
       new PathLayer<RoadSegment>({
         id: 'road-segments-core',
         data: segments,
         pickable: true,
         widthScale: 1,
-        widthMinPixels: 2.5,
+        widthMinPixels: 2.2,
         capRounded: true,
         jointRounded: true,
         getPath: (d) => getSegmentPath(d),
@@ -382,18 +479,41 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
           if (selectedSegment && selectedSegment.seg_id === d.seg_id) {
             return [255, 255, 255, 255]; // Crisp white highlight when selected
           }
+
+          const cat = getConditionCategory(d);
+
+          // If a condition filter is active (blue, green, yellow, red)
+          if (conditionColorFilter && conditionColorFilter !== 'all') {
+            if (cat === conditionColorFilter) {
+              // Highlighted condition: full opacity, vivid color
+              if (cat === 'blue') return [56, 189, 248, 255];
+              if (cat === 'green') return [34, 197, 94, 255];
+              if (cat === 'yellow') return [250, 204, 21, 255];
+              return [239, 68, 68, 255];
+            } else {
+              // Dimmed non-matching condition
+              return [148, 163, 184, 32];
+            }
+          }
+
+          // Default: all conditions visible with natural colors
+          if (cat === 'blue') return [56, 189, 248, 240];
           const sScore = typeof d.score === 'number' && !isNaN(d.score) ? d.score : (d.pv_rating ? d.pv_rating / 100 : 0.75);
           return getScoreRGBA(sScore, 245);
         },
         getWidth: (d) => {
           if (selectedSegment && selectedSegment.seg_id === d.seg_id) {
-            return 6;
+            return 6.5;
+          }
+          if (conditionColorFilter && conditionColorFilter !== 'all') {
+            const cat = getConditionCategory(d);
+            return cat === conditionColorFilter ? 4.0 : 1.2;
           }
           return 2.8;
         },
         updateTriggers: {
-          getColor: [selectedSegment?.seg_id],
-          getWidth: [selectedSegment?.seg_id]
+          getColor: [selectedSegment?.seg_id, conditionColorFilter],
+          getWidth: [selectedSegment?.seg_id, conditionColorFilter]
         },
         onClick: (info) => {
           if (info.object) {
@@ -403,9 +523,13 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       })
     );
 
-    // 5. Warning Beacon Pins: ONLY on Critical/High-Hazard segments (no clutter on normal roads)
+    // 5. Warning Beacon Pins: ONLY on Critical/High-Hazard segments
     const hazardSegments = segments.filter(
       (s) => {
+        const cat = getConditionCategory(s);
+        if (conditionColorFilter && conditionColorFilter !== 'all') {
+          return cat === conditionColorFilter && (cat === 'red' || cat === 'blue' || (selectedSegment && selectedSegment.seg_id === s.seg_id));
+        }
         const sScore = typeof s.score === 'number' && !isNaN(s.score) ? s.score : (s.pv_rating ? s.pv_rating / 100 : 0.75);
         return (sScore < 0.45) || (s.pred_crack && s.pred_crack > 0.4) || (selectedSegment && selectedSegment.seg_id === s.seg_id);
       }
@@ -469,7 +593,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     }
 
     overlayRef.current.setProps({ layers });
-  }, [segments, selectedSegment, onSelectSegment]);
+  }, [segments, selectedSegment, onSelectSegment, conditionColorFilter]);
 
   return (
     <div className="map-view-wrapper" ref={mapWrapperRef}>
