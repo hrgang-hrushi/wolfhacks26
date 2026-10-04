@@ -174,6 +174,8 @@ def create_app(pool=None, *, clock=None, settings=None):
 
     @app.exception_handler(psycopg.Error)
     async def _db(request: Request, exc: psycopg.Error):
+        if isinstance(exc, psycopg.errors.LockNotAvailable):      # a load is copying: it holds the tables until it commits
+            return await _loading(request, Loading("a load is copying"))
         return unavailable(config.classify(exc))
 
     @app.exception_handler(PoolTimeout)
@@ -214,10 +216,12 @@ def create_app(pool=None, *, clock=None, settings=None):
             return respond(queries.road(conn, seg_id))
 
     @app.get("/api/alerts")
-    def alerts(as_of: str | None = None):
+    def alerts(as_of: str | None = None, hours: int = 2):
         when = queries.parse_time(as_of) if as_of else None
+        if hours not in (1, 2):
+            raise queries.BadRequest("hours must be 1 or 2")
         with reading() as conn:
-            return respond(queries.alerts(conn, when, clock()))
+            return respond(queries.alerts(conn, when, clock(), hours))
 
     @app.get("/api/alerts/peaks")
     def alert_peaks(limit: int = 10):

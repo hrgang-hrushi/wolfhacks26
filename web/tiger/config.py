@@ -96,6 +96,17 @@ def classify(exc):
     return "unavailable"
 
 
+def describe(exc):
+    """Any database error as one fixed sentence. The driver's own text is never printed: it can name the host,
+    the port and the user."""
+    if isinstance(exc, DatabaseUnavailable):
+        return f"{exc} ({exc.kind})"
+    kind = classify(exc)
+    state = getattr(exc, "sqlstate", None)
+    text = MESSAGES[kind] if kind != "unavailable" else "the database reported an error"
+    return f"{text} (code {state})" if state else text
+
+
 def extension_schema(conn):
     """Schema that holds TimescaleDB's functions ('public' on a stock install)."""
     row = conn.execute("SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace "
@@ -272,14 +283,18 @@ def main(argv=None):
         return 2
     state = reachability(url)
     if args.probe and state == "ok":
-        conn = connect(url, autocommit=True)
         try:
-            for k, v in probe(conn).items():
-                print(f"{k}: {v}")
-            for k, v in try_features(conn).items():
-                print(f"feature {k}: {v}")
-        finally:
-            conn.close()
+            conn = connect(url, autocommit=True)
+            try:
+                for k, v in probe(conn).items():
+                    print(f"{k}: {v}")
+                for k, v in try_features(conn).items():
+                    print(f"feature {k}: {v}")
+            finally:
+                conn.close()
+        except (psycopg.Error, DatabaseUnavailable) as e:
+            print(describe(e))
+            return 2
     else:
         print(state)
     return 0 if state == "ok" else 2

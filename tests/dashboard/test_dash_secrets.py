@@ -311,6 +311,51 @@ def test_S10_a_successful_load_and_check_print_nothing_of_the_address(db_url, re
         dash.drop_schema(db_url, name)
 
 
+DRIVER_TEXT = ('connection to server at "db.example.com" (203.0.113.9), port 31358 failed: FATAL:  password authentication '
+               'failed for user "tsdbadmin"')
+
+
+@pytest.mark.parametrize("module, target", [("load", "load"), ("verify", "run"), ("replay", "replay"), ("replay", "clear")])
+def test_S10_a_database_error_part_way_prints_one_fixed_sentence_not_the_drivers_text(module, target, monkeypatch, capsys, dash):
+    import importlib
+    import psycopg
+    mod = importlib.import_module(f"web.tiger.{module}")
+
+    def fail(*a, **k):
+        raise psycopg.OperationalError(DRIVER_TEXT)
+    monkeypatch.setenv(config.ENV_KEY, dash.fake_url())
+    monkeypatch.setattr(mod, target, fail)
+    assert mod.main(["--clear"] if target == "clear" else []) == 2
+    out = capsys.readouterr()
+    for secret in ("db.example.com", "203.0.113.9", "31358", "tsdbadmin", "pw-marker", "user-marker"):
+        assert secret not in out.out + out.err
+    assert out.out.strip() in (config.MESSAGES["login"], config.MESSAGES["network"], "the database reported an error")
+
+
+def test_S10_describe_never_returns_the_drivers_text():
+    import psycopg
+    assert config.describe(psycopg.OperationalError(DRIVER_TEXT)) == config.MESSAGES["login"]
+    assert config.describe(psycopg.OperationalError("something else about host db.example.com")) == "the database reported an error"
+    assert config.describe(config.DatabaseUnavailable("network")) == f"{config.MESSAGES['network']} (network)"
+
+
+def test_the_tests_that_talk_to_the_real_service_never_run_unless_asked_for_by_name(dash):
+    """Even with a connection setting present and the `network` marker selected, they skip without TIGER_LIVE_TESTS=1."""
+    r = run_py(["-m", "pytest", "tests/dashboard/test_dash_live.py", "-m", "network", "-q", "-rs", "-p", "no:cacheprovider"],
+               env={config.ENV_KEY: dash.fake_url()})                   # an address that would fail loudly if it were used
+    assert "5 skipped" in r.stdout and "TIGER_LIVE_TESTS=1" in r.stdout and "failed" not in r.stdout, r.stdout[-600:]
+    whole = run_py(["-m", "pytest", "tests/dashboard/test_dash_live.py", "-q", "-p", "no:cacheprovider"],
+                   env={config.ENV_KEY: dash.fake_url()})                # and with no marker chosen at all
+    assert "5 skipped" in whole.stdout and "failed" not in whole.stdout
+
+
+def test_S8_there_is_no_switch_that_lets_the_database_tests_reach_another_machine(dash):
+    with pytest.raises(config.ConfigError, match="refusing the test database"):
+        dash.open_test_database({"TIGER_TEST_DATABASE_URL": "postgresql://postgres@db.example.com:5432/postgres",
+                                 "TIGER_TEST_ALLOW_REMOTE": "1"})
+    assert "ALLOW_REMOTE" not in Path("tests/dashboard/conftest.py").read_text()
+
+
 def _free_port():
     import socket
     with socket.socket() as s:

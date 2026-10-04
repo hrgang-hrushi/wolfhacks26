@@ -20,6 +20,8 @@ import argparse
 import time as clock_time
 from datetime import datetime, timedelta, timezone
 
+import psycopg
+
 from web.tiger import config
 
 DEFAULT_START = datetime(2026, 9, 27, 15, 0, tzinfo=timezone.utc)     # the peak hour of the late-September flooding
@@ -58,6 +60,7 @@ def replay(url, *, window_start=DEFAULT_START, window_end=DEFAULT_END, now=None,
     pause = minutes * 60.0 / batches
     span = (window_end - window_start) / batches
     counts = {table: 0 for table in COPY}
+    in_window = {}
     conn = config.connect(url, schema=schema)
     admin = config.connect(url, autocommit=True, schema=schema)
     try:
@@ -65,6 +68,10 @@ def replay(url, *, window_start=DEFAULT_START, window_end=DEFAULT_END, now=None,
         conn.commit()
         if not status or status[0] != "complete":
             raise RuntimeError("the latest load is not complete: load first, then replay")
+        for table in COPY:
+            in_window[table] = conn.execute(f"SELECT count(*) FROM {table} WHERE replay_of IS NULL AND time >= %s AND time <= %s",
+                                            [window_start, window_end]).fetchone()[0]
+        conn.commit()
         for i in range(batches):
             a = window_start + span * i - (timedelta(microseconds=1) if i == 0 else timedelta(0))   # the first batch includes the start
             b = window_end if i == batches - 1 else window_start + span * (i + 1)
@@ -77,7 +84,9 @@ def replay(url, *, window_start=DEFAULT_START, window_end=DEFAULT_END, now=None,
     finally:
         conn.close()
         admin.close()
-    return {"rows": counts, "shift_seconds": shift.total_seconds(), "window": [window_start, window_end],
+    # a replayed row that would land exactly on an existing row's key is left out, never written over it
+    skipped = {table: in_window[table] - counts[table] for table in COPY}
+    return {"rows": counts, "skipped": skipped, "shift_seconds": shift.total_seconds(), "window": [window_start, window_end],
             "lands": [window_start + shift, now], "batches": batches}
 
 
@@ -125,9 +134,14 @@ def main(argv=None):
     except config.ConfigError as e:
         print(e)
         return 2
-    except config.DatabaseUnavailable as e:
-        print(f"{e} ({e.kind})")
+    except (config.DatabaseUnavailable, psycopg.Error) as e:
+        print(config.describe(e))
         return 2
+    except RuntimeError as e:
+        print(e)
+        return 1
+    if any(out["skipped"].values()):
+        print(f"left out {out['skipped']}: a row already sits at that time")
     print(f"replayed {out['rows']} in {out['batches']} batches; the window now ends at {out['lands'][1]:%Y-%m-%d %H:%M} UTC")
     return 0
 

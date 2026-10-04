@@ -444,32 +444,43 @@ def test_S4_a_load_changes_no_source_file(db_url, empty_schema, fixture_root, da
 
 
 def test_S4_the_loader_has_no_code_that_writes_a_data_file():
-    for module in ("build", "verify"):
-        src = Path(f"web/tiger/{module}.py").read_text()
-        assert ".to_parquet(" not in src and ".to_csv(" not in src and "open(" not in src and ".write_" not in src, module
+    import inspect
+    sources = {m: Path(f"web/tiger/{m}.py").read_text() for m in ("build", "verify", "replay")}
+    # load.py also holds dump(), which writes the console files into a folder the caller names; everything else in it is checked
+    sources.update({f"load.{f.__name__}": inspect.getsource(f) for f in (load.load, load.copy_table, load.refresh,
+                                                                         load.compress_chunks, load.compression_stats)})
+    for name, src in sources.items():
+        assert ".to_parquet(" not in src and ".to_csv(" not in src and "open(" not in src and ".write_" not in src, name
 
 
 # ------------------------------------------------------------------------------------------------ the console fallback
 
 def test_the_files_for_tigers_browser_console_load_the_same_data(db_url, empty_schema, fixture_root, tmp_path, dash, monkeypatch, built):
     """When the database port is blocked: CSV files and two SQL scripts, run by hand in the console over 443."""
-    monkeypatch.setenv(config.SCHEMA_KEY, empty_schema)
+    monkeypatch.delenv(config.SCHEMA_KEY, raising=False)
     with dash.sunnyday_out(fixture_root):
-        assert load.dump(fixture_root, tmp_path) == built.counts
+        assert load.dump(fixture_root, tmp_path, schema=empty_schema) == built.counts
+    assert f"SET search_path = {empty_schema}, public;" in (tmp_path / "setup.sql").read_text()   # the schema asked for
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted([f"{t}.csv" for t in schema.TABLES] + ["setup.sql", "after_load.sql"])
     conn = config.connect(db_url, autocommit=True)
     try:
         config.assert_local(conn)
         for line in (tmp_path / "setup.sql").read_text().splitlines():
             conn.execute(line)
+        for job_id, *_ in schema.jobs(conn, empty_schema):
+            conn.execute("SELECT alter_job(%s, scheduled => false)", [job_id])
+        assert conn.execute("SELECT status FROM load_manifest ORDER BY id DESC LIMIT 1").fetchone() == ("loaded",)
+        assert conn.execute("SELECT count(*) FROM roads").fetchone() == (0,)      # setup empties the tables: a reload is clean
         for table in schema.TABLES:
             text = (tmp_path / f"{table}.csv").read_text()
             assert text.splitlines()[0] == ",".join(schema.columns(table))
             with conn.cursor().copy(sql.SQL("COPY {} ({}) FROM STDIN WITH (FORMAT csv, HEADER true)").format(
                     sql.Identifier(table), sql.SQL(", ").join(map(sql.Identifier, schema.columns(table))))) as copy:
                 copy.write(text)
+            assert conn.execute("SELECT status FROM load_manifest ORDER BY id DESC LIMIT 1").fetchone() == ("loaded",)
         for line in (tmp_path / "after_load.sql").read_text().splitlines():
             conn.execute(line)
+        assert conn.execute("SELECT status FROM load_manifest ORDER BY id DESC LIMIT 1").fetchone() == ("complete",)
     finally:
         conn.close()
     with dash.sunnyday_out(fixture_root):
@@ -506,6 +517,7 @@ def test_X1_the_window_is_copied_shifted_to_end_now_and_labelled(db_url, fresh_s
     out, naps = do_replay(db_url, fresh_schema)
     cams, sens = in_window(built.tables["camera_readings"]), in_window(built.tables["sensor_levels"])
     assert out["rows"] == {"sensor_levels": len(sens), "camera_readings": len(cams)} == {"sensor_levels": 164, "camera_readings": 40}
+    assert out["skipped"] == {"sensor_levels": 0, "camera_readings": 0}
     assert naps == [15.0, 15.0, 15.0]                                      # one minute in four batches: three pauses
     for table, originals in (("camera_readings", cams), ("sensor_levels", sens)):
         rows = q(sql.SQL("SELECT time, replay_of FROM {} WHERE replay_of IS NOT NULL").format(sql.Identifier(table)))
@@ -577,19 +589,29 @@ def test_X5_a_replay_in_an_hour_that_holds_real_rows_leaves_them_alone(db_url, f
     before = [q(real_rows.format(v)) for v in ("camera_hourly", "sensor_hourly")]
     with service_client(db_url, fresh_schema, NOW) as c:
         peaks_before = c.get("/api/alerts/peaks", params={"limit": 100}).json()
-    mixed_now = datetime(2026, 9, 26, 16, 0, tzinfo=timezone.utc)          # the replay lands on 26 September, where real rows are
-    out, _ = do_replay(db_url, fresh_schema, now=mixed_now)
-    assert out["rows"]["camera_readings"] == 40
-    assert out["rows"]["sensor_levels"] == 0                               # a real reading already sits at each of those times
-    mixed = q("SELECT count(*) FROM (SELECT bucket, camera_id FROM camera_hourly GROUP BY 1, 2 HAVING count(DISTINCT is_replay) = 2) m")
-    assert mixed[0][0] > 0                                                 # one camera, one hour, real and replayed side by side
+    mixed_now = datetime(2026, 9, 26, 16, 3, tzinfo=timezone.utc)          # the replay lands on 26 September, where real rows are,
+    out, _ = do_replay(db_url, fresh_schema, now=mixed_now)                # three minutes off the sensors' six-minute grid
+    assert out["rows"] == {"sensor_levels": 164, "camera_readings": 40} and not any(out["skipped"].values())
+    for view, key in (("camera_hourly", "camera_id"), ("sensor_hourly", "station")):
+        mixed = q(f"SELECT count(*) FROM (SELECT bucket, {key} FROM {view} GROUP BY 1, 2 HAVING count(DISTINCT is_replay) = 2) m")
+        assert mixed[0][0] > 0, view                                       # one hour, real and replayed side by side
     assert [q(real_rows.format(v)) for v in ("camera_hourly", "sensor_hourly")] == before
     with service_client(db_url, fresh_schema, NOW) as c:
         assert c.get("/api/alerts/peaks", params={"limit": 100}).json() == peaks_before
     with dash.sunnyday_out(fixture_root):
         results = {c.name: c for c in verify.run(db_url, fresh_schema, fixture_root)}
     assert all(c.ok for c in results.values()), [c for c in results.values() if not c.ok]
-    assert results["storm replay rows"].detail.startswith("40 present")
+    assert results["storm replay rows"].detail.startswith("204 present")
+
+
+def test_X5_a_replayed_row_never_overwrites_a_real_one_and_the_count_left_out_is_reported(db_url, fresh_schema, run):
+    q = run(fresh_schema)
+    real = q("SELECT station, time, level_m FROM sensor_levels ORDER BY 1, 2")
+    exactly_a_day = datetime(2026, 9, 26, 16, 0, tzinfo=timezone.utc)      # every shifted sensor time meets a real reading
+    out, _ = do_replay(db_url, fresh_schema, now=exactly_a_day)
+    assert out["rows"]["sensor_levels"] == 0 and out["skipped"]["sensor_levels"] == 164
+    assert out["rows"]["camera_readings"] == 40 and out["skipped"]["camera_readings"] == 0     # another file name: no clash
+    assert q("SELECT station, time, level_m FROM sensor_levels ORDER BY 1, 2") == real
 
 
 def test_X2_with_the_default_window_the_alert_is_live_from_the_first_batch(db_url, fresh_schema):

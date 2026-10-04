@@ -30,7 +30,20 @@ PULLED_AT = "2026-10-03T20:22:30"
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "db: needs the local TimescaleDB test container (see web/README.md)")
+    config.addinivalue_line("markers", "db: needs the local TimescaleDB test container (see web/tiger/README.md)")
+
+
+def pytest_collection_modifyitems(config, items):
+    """The `network` tests here talk to the real Tiger service (one of them creates and drops a probe schema there).
+    They run only when asked for by name: TIGER_LIVE_TESTS=1. A plain run never touches the real service, even once
+    data/raw/tiger.env exists."""
+    if os.environ.get("TIGER_LIVE_TESTS") == "1":
+        return
+    skip = pytest.mark.skip(reason="talks to the real Tiger service: set TIGER_LIVE_TESTS=1 to run it")
+    here = str(Path(__file__).parent)
+    for item in items:
+        if "network" in item.keywords and str(item.fspath).startswith(here):
+            item.add_marker(skip)
 
 
 def fake_url(password="pw-marker", user="user-marker", host="127.0.0.1", port=1, db="postgres"):
@@ -246,16 +259,13 @@ def open_test_database(env):
     """The checks every database test session starts with. Returns the address. Never drops anything."""
     from web.tiger import config
     url = env.get("TIGER_TEST_DATABASE_URL") or LOCAL_URL
-    remote_ok = env.get("TIGER_TEST_ALLOW_REMOTE") == "1"
-    if not remote_ok:
-        config.require_local(url, env=env)
+    config.require_local(url, env=env)                 # there is no switch that lets these tests reach another machine
     try:
         conn = config.connect(url, autocommit=True, connect_timeout=3)
     except config.DatabaseUnavailable:
-        pytest.skip("local test database is not running (see web/README.md)")
+        pytest.skip("local test database is not running (see web/tiger/README.md)")
     try:
-        if not remote_ok:
-            config.assert_local(conn)
+        config.assert_local(conn)
     finally:
         conn.close()
     return url

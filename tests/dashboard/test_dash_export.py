@@ -93,6 +93,12 @@ def test_E3_one_cell_as_text(value, text):
     assert export.format_value(value) == text
 
 
+def test_E3_a_numpy_boolean_is_written_the_same_way():
+    import numpy as np
+    assert export.format_value(np.bool_(True)) == "true" and export.format_value(np.bool_(False)) == "false"
+    assert export.format_value(np.float64(73.4)) == "73.4" and export.format_value(np.int64(2025)) == "2025"
+
+
 def test_E6_flood_is_blank_outside_the_zone_and_the_flags_are_there(written):
     f, roads = written["frame"], written["roads"].sort_values("seg_id").reset_index(drop=True)
     outside = f.flood_scored == "false"

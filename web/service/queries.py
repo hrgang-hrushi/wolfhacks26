@@ -171,11 +171,13 @@ def _reading(row, keys):
     return None if row is None else {k: row[k] for k in keys}
 
 
-def alerts(conn, as_of=None, now=None):
-    """Camera flags and sensor alerts for the clock hour holding `as_of` and the hour before.
+def alerts(conn, as_of=None, now=None, hours=2):
+    """Camera flags and sensor alerts for the clock hour holding `as_of` and, with hours=2 (the default), the hour before.
 
     The hourly summaries pick the cameras and stations; for those few, the raw readings up to `as_of` give the worst
     reading and the latest reading, each with its own time. A camera whose only flag is after `as_of` is not listed."""
+    if hours not in (1, 2):
+        raise BadRequest("hours must be 1 or 2")
     now = now or datetime.now(timezone.utc)
     given = as_of is not None
     as_of = as_of or latest_reading(conn)
@@ -184,11 +186,11 @@ def alerts(conn, as_of=None, now=None):
     if as_of is None:
         return {**base, "live": False, "window_start": None}
     hour = as_of.replace(minute=0, second=0, microsecond=0)
-    start = hour - timedelta(hours=1)
-    base.update(window_start=start, live=bool(timedelta(0) <= now - as_of <= timedelta(hours=1)))
+    start = hour - timedelta(hours=hours - 1)
+    base.update(window_start=start, window_hours=hours, live=bool(timedelta(0) <= now - as_of <= timedelta(hours=1)))
 
     cams = _dicts(conn.execute(
-        "SELECT DISTINCT h.camera_id, h.is_replay FROM camera_hourly h WHERE h.bucket IN (%s, %s) AND h.worst_p_flooded >= %s",
+        "SELECT DISTINCT h.camera_id, h.is_replay FROM camera_hourly h WHERE h.bucket >= %s AND h.bucket <= %s AND h.worst_p_flooded >= %s",
         [start, hour, FLAG_P]))
     reading_keys = ["time", "p_flooded", "depth_pred_cm", "depth_measured_cm"]
     for c in cams:
@@ -200,10 +202,12 @@ def alerts(conn, as_of=None, now=None):
             continue                                                  # its flag came after `as_of`
         latest = _dicts(conn.execute(f"SELECT time, p_flooded, depth_pred_cm, depth_measured_cm {scope} "
                                      "ORDER BY time DESC LIMIT 1", params))
-        info = _dicts(conn.execute(
+        found = _dicts(conn.execute(
             "SELECT c.camera_id, c.name, c.lat, c.lon, c.role, c.known_dry, c.seg_id, c.seg_dist_m, r.route, r.county, "
             "r.rating, r.repair_bucket, r.priority_rank FROM cameras c LEFT JOIN roads r ON r.seg_id = c.seg_id "
-            "WHERE c.camera_id = %s", [c["camera_id"]]))[0]
+            "WHERE c.camera_id = %s", [c["camera_id"]]))
+        info = found[0] if found else {"camera_id": c["camera_id"], "name": None, "lat": None, "lon": None, "role": None,
+                                       "known_dry": False, "seg_id": None, "seg_dist_m": None}   # a reading with no camera row
         base["camera_alerts"].append({
             "camera_id": info["camera_id"], "name": info["name"], "lat": info["lat"], "lon": info["lon"],
             "role": info["role"], "known_dry": info["known_dry"],
@@ -217,7 +221,7 @@ def alerts(conn, as_of=None, now=None):
     base["camera_alerts"].sort(key=lambda a: (a["known_dry"], -a["worst"]["p_flooded"], a["camera_id"]))
 
     stations = _dicts(conn.execute(
-        "SELECT DISTINCT h.station, h.is_replay FROM sensor_hourly h WHERE h.bucket IN (%s, %s) AND h.worst_depth_on_road_cm >= %s",
+        "SELECT DISTINCT h.station, h.is_replay FROM sensor_hourly h WHERE h.bucket >= %s AND h.bucket <= %s AND h.worst_depth_on_road_cm >= %s",
         [start, hour, FLOODED_CM]))
     sensor_keys = ["time", "depth_on_road_cm", "level_m"]
     for s in stations:
@@ -253,8 +257,9 @@ def alert_peaks(conn, limit=10):
         "ORDER BY coalesce(cam.camera_flags, 0) + coalesce(sen.sensor_alerts, 0) DESC, bucket DESC LIMIT %s",
         [FLAG_P, FLOODED_CM, min(limit, 100)]))
     for r in rows:
-        r["as_of"] = r["hour"] + timedelta(minutes=59, seconds=59)      # ask /api/alerts for this to see the hour
-    return {"hours": rows, "note": "ranked by camera flags from cameras not known dry, plus sensor alerts"}
+        r["as_of"] = r["hour"] + timedelta(minutes=59, seconds=59)
+    return {"hours": rows, "note": "ranked by camera flags from cameras not known dry, plus sensor alerts, counted in that "
+                                   "one hour; ask /api/alerts with the given as_of and hours=1 to see exactly that hour"}
 
 
 def camera_history(conn, camera_id, start=None, end=None):

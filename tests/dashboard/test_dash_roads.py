@@ -247,6 +247,25 @@ def test_R12_no_rank_key_is_a_crash_or_traffic_column():
     assert not any(word in key for key in build.RANK_KEYS for word in ("crash", "fatal", "serious", "aadt", "safety"))
 
 
+def test_R12_the_listed_keys_are_the_ones_the_rank_really_uses(roads, monkeypatch):
+    monkeypatch.setattr(build, "RANK_KEYS", ("seg_id",))
+    by_id = roads.assign(rank=build.rank(roads)).sort_values("rank").seg_id.tolist()
+    assert by_id == sorted(roads.seg_id) and by_id != roads.sort_values("priority_rank").seg_id.tolist()
+    monkeypatch.setattr(build, "RANK_KEYS", ("-pred_rate", "seg_id"))
+    fastest = roads.assign(rank=build.rank(roads)).sort_values("rank").pred_rate.tolist()
+    assert fastest == sorted(roads.pred_rate, reverse=True)
+
+
+def test_R12_two_roads_tied_on_every_key_are_ordered_by_id_whatever_their_crash_rate():
+    def table(crash_a, crash_b):
+        d = pd.DataFrame({"seg_id": ["ncdot:b:0.000", "ncdot:a:0.000"], "pred_years_to_poor": [0.0, 0.0],
+                          "rating": [40.0, 40.0], "pred_rate": [1.0, 1.0], "crash_per_mvm": [crash_b, crash_a]})
+        d["repair_bucket"] = build.repair_bucket(d.pred_years_to_poor)
+        return d
+    for crash_a, crash_b in ((0.0, 99.0), (99.0, 0.0), (np.nan, 5.0)):
+        assert build.rank(table(crash_a, crash_b)).tolist() == [2, 1]      # a before b, every time
+
+
 def test_R12_crash_rate_does_not_move_the_rank(roads):
     worst_first = roads.sort_values("priority_rank")
     opposite = roads.assign(crash_per_mvm=roads.priority_rank.astype(float))          # safest roads ranked first

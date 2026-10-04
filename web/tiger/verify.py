@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import psycopg
 from psycopg import sql
 
 from web.tiger import build, config
@@ -214,8 +215,8 @@ def main(argv=None):
     except config.ConfigError as e:
         print(e)
         return 2
-    except config.DatabaseUnavailable as e:
-        print(f"{e} ({e.kind})")
+    except (config.DatabaseUnavailable, psycopg.Error) as e:
+        print(config.describe(e))
         return 2
     for c in results:
         print(f"{'ok  ' if c.ok else 'FAIL'} {c.name}: {c.detail}")

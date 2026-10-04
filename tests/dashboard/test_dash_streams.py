@@ -116,9 +116,11 @@ def test_T1_T4_T5_real_camera_numbers(real, real_root):
     assert len(dry) == 1_191 and len(joined) - len(dry) == 1_902
     # How many frames the reader flags depends on which model wrote the file (10 on dry stills with the first
     # reader, 9 after the flood chat's fine-tune on 2026-10-03), so the counts are checked against the file itself.
-    flagged_dry = int((src[src.role == "extra"].p_flooded > 0.5).sum())
-    assert int((dry.p_flooded > 0.5).sum()) == flagged_dry and 0 < flagged_dry < 60       # false alarms stay under 5%
-    assert int((joined[~joined.known_dry].p_flooded > 0.5).sum()) == int((src[src.role == "cv"].p_flooded > 0.5).sum()) > 100
+    flagged_dry = int((src[src.role == "extra"].p_flooded >= 0.5).sum())               # 0.5 is where the service flags
+    assert int((dry.p_flooded >= 0.5).sum()) == flagged_dry and 0 < flagged_dry < 60      # false alarms stay under 5%
+    assert int((joined[~joined.known_dry].p_flooded >= 0.5).sum()) == int((src[src.role == "cv"].p_flooded >= 0.5).sum()) > 100
+    assert np.allclose(r.sort_values(["site", "time", "file"]).p_flooded.values,
+                       src.sort_values(["site", "time_utc", "file"]).p_flooded.values)       # every value carried through
 
 
 # ------------------------------------------------------------------------------------------------ potholes: T6 to T8
@@ -283,6 +285,10 @@ def test_T13_the_load_record_describes_every_file_that_was_read(built, fixture_r
     names = set(built.fingerprints)
     assert set(build.SOURCES.values()) <= names and len(names) == len(build.SOURCES) + 5      # five sensor files
     assert all(len(v["sha256"]) == 64 and v["bytes"] > 0 for v in built.fingerprints.values())
+    rows = {name: v["rows"] for name, v in built.fingerprints.items()}
+    assert rows["handoff/predictions_geo.parquet"] == 300 and rows["data/raw/pothole_reports.parquet"] == 40
+    assert rows["data/processed/flood_camera_depth.parquet"] == 190 and rows["data/raw/pothole_reports.meta.json"] is None
+    assert rows["data/raw/sunnyday/levels/BF_01.json"] == 960 and rows["data/raw/sunnyday/levels/CB_01B.json"] == 0
     assert built.counts == {k: len(v) for k, v in built.tables.items()}
     assert list(built.tables) == list(schema.TABLES)
 

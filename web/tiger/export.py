@@ -61,12 +61,12 @@ def format_value(v):
     """One cell as text. Blank is an empty field, never 0 or 'nan'. Floats are rounded to 6 decimals."""
     if v is None:
         return ""
-    if isinstance(v, bool):
+    if isinstance(v, bool) or type(v).__name__ in ("bool", "bool_"):   # numpy's boolean too, without importing numpy
         return "true" if v else "false"
     if isinstance(v, float):
         if v != v or v in (float("inf"), float("-inf")):
             return ""
-        return repr(round(v, 6))
+        return repr(round(float(v), 6))                             # float(): a numpy float would print its type name
     return str(v)
 
 

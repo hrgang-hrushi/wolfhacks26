@@ -52,11 +52,22 @@ SEGMENT_COLUMNS = ["seg_id", "pv_ROUTEID", "pv_ROUTE", "pv_COUNTY", "pv_BEG_MP",
                    "in_helene_zone", "y_helene_failed", "mid_x", "mid_y"]
 
 
+def _file_rows(path):
+    """Rows in a source file: a parquet file's row count, a sensor file's raw series length, else None."""
+    if path.suffix == ".parquet":
+        import pyarrow.parquet as pq
+        return int(pq.ParquetFile(path).metadata.num_rows)
+    if path.parent.name == "levels":
+        return _raw_series_length(path)
+    return None
+
+
 def fingerprints(root):
-    """{relative path: {sha256, bytes}} for every file the build reads."""
+    """{relative path: {sha256, bytes, rows}} for every file the build reads."""
     root = Path(root)
     files = list(SOURCES.values()) + sorted(str(p.relative_to(root)) for p in (root / SENSOR_DIR).glob("*.json"))
-    return {f: {"sha256": sha256_file(root / f), "bytes": (root / f).stat().st_size} for f in files}
+    return {f: {"sha256": sha256_file(root / f), "bytes": (root / f).stat().st_size, "rows": _file_rows(root / f)}
+            for f in files}
 
 
 def same_ids(left, right, name):
@@ -76,12 +87,16 @@ def repair_bucket(years):
 
 
 def rank(d):
-    """1 = fix first. Sorted by RANK_KEYS, blanks last."""
-    keys = d[["pred_years_to_poor", "rating", "seg_id"]].copy()
-    keys["bucket_order"] = pd.Series(d.repair_bucket.values, index=d.index).map({b: i for i, b in enumerate(schema.BUCKETS)})
-    keys["neg_rate"] = -d.pred_rate
-    order = keys.sort_values(["bucket_order", "pred_years_to_poor", "rating", "neg_rate", "seg_id"],
-                             na_position="last", kind="mergesort").index
+    """1 = fix first. Sorted by RANK_KEYS and nothing else, blanks last. A key written with a minus sorts high to low."""
+    keys = pd.DataFrame(index=d.index)
+    for key in RANK_KEYS:
+        if key == "bucket_order":
+            keys[key] = pd.Series(d.repair_bucket.values, index=d.index).map({b: i for i, b in enumerate(schema.BUCKETS)})
+        elif key.startswith("-"):
+            keys[key] = -d[key[1:]].astype("float64")
+        else:
+            keys[key] = d[key].astype(object) if key == "seg_id" else d[key]
+    order = keys.sort_values(list(RANK_KEYS), na_position="last", kind="mergesort").index
     out = pd.Series(np.arange(1, len(d) + 1), index=order)
     return out.reindex(d.index).astype("int64").values
 

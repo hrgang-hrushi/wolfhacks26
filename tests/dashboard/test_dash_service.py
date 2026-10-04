@@ -82,6 +82,37 @@ def test_A7_a_non_finite_number_never_reaches_a_reply():
     assert json.loads(body, parse_constant=lambda t: pytest.fail(t)) == {"a": None, "b": [None, {"c": None}], "d": [1, 2]}
 
 
+def test_A9_an_alert_for_a_camera_with_no_camera_row_is_still_returned():
+    """A reading whose camera is missing from the camera table must not turn the whole reply into an error."""
+    class Cursor:
+        def __init__(self, names, rows):
+            self.description = [type("C", (), {"name": n}) for n in names]
+            self._rows = rows
+
+        def fetchall(self):
+            return self._rows
+
+        def fetchone(self):
+            return self._rows[0] if self._rows else None
+
+    t = datetime(2026, 9, 27, 15, 6, tzinfo=UTC)
+
+    class Conn:
+        def execute(self, query, params=None):
+            text = query if isinstance(query, str) else str(query)
+            if "FROM camera_hourly" in text:
+                return Cursor(["camera_id", "is_replay"], [("GHOST", False)])
+            if "FROM camera_readings" in text and "p_flooded DESC" in text:
+                return Cursor(["time", "p_flooded", "depth_pred_cm", "depth_measured_cm", "replay_of"], [(t, 0.9, 9.0, None, None)])
+            if "FROM camera_readings" in text:
+                return Cursor(["time", "p_flooded", "depth_pred_cm", "depth_measured_cm"], [(t, 0.9, 9.0, None)])
+            return Cursor(["x"], [])                                      # no camera row, no sensor alerts
+
+    body = queries.alerts(Conn(), datetime(2026, 9, 27, 15, 30, tzinfo=UTC), NEXT_DAY)
+    assert [a["camera_id"] for a in body["camera_alerts"]] == ["GHOST"]
+    assert body["camera_alerts"][0]["name"] is None and body["camera_alerts"][0]["road"] is None
+
+
 @pytest.mark.parametrize("text", ["2026-09-27T15:30:00", "yesterday", "", "2026-13-45T00:00:00Z"])
 def test_A9_a_time_without_a_zone_or_that_does_not_parse_is_rejected(text):
     with pytest.raises(queries.BadRequest):
@@ -130,7 +161,7 @@ def test_A12_a_dead_database_gives_a_503_quickly_and_leaks_nothing(dead_client):
     started = time.time()
     r = dead_client.get("/api/worklist")
     took = time.time() - started
-    assert r.status_code == 503 and took < 2.5
+    assert r.status_code == 503 and took < 2.0                             # the one-second limit plus one second
     body = strict(r)
     assert body["error"] == "database unavailable" and body["kind"] in ("network", "unavailable")
     for secret in ("pw-marker", "user-marker", "127.0.0.1", "postgresql"):
@@ -410,6 +441,17 @@ def test_A9_an_early_flag_and_a_later_dry_reading_each_keep_their_own_time(clien
 
 
 @pytest.mark.db
+def test_A9_the_window_is_two_hours_unless_one_is_asked_for(client):
+    two = strict(client.get("/api/alerts", params={"as_of": "2026-09-25T15:10:00Z"}))
+    one = strict(client.get("/api/alerts", params={"as_of": "2026-09-25T15:10:00Z", "hours": 1}))
+    assert (two["window_start"], two["window_hours"]) == ("2026-09-25T14:00:00Z", 2)
+    assert (one["window_start"], one["window_hours"]) == ("2026-09-25T15:00:00Z", 1)
+    assert [a["camera_id"] for a in two["camera_alerts"]] == ["BF_01"] and one["camera_alerts"] == []    # its flag was at 14:00
+    for bad in (0, 3, 24):
+        assert client.get("/api/alerts", params={"hours": bad}).status_code == 400
+
+
+@pytest.mark.db
 def test_A9_a_flag_that_comes_after_the_asked_time_is_not_listed(client):
     before = strict(client.get("/api/alerts", params={"as_of": "2026-09-26T12:59:00Z"}))
     after = strict(client.get("/api/alerts", params={"as_of": "2026-09-26T13:00:00Z"}))
@@ -463,8 +505,12 @@ def test_A11_the_peak_hours_leave_known_dry_flags_out_of_the_ranking(client):
     dry_hour = next(h for h in hours if h["hour"] == "2026-10-03T18:00:00Z")
     assert dry_hour["camera_flags"] == 0 and dry_hour["known_dry_flags"] == 2
     assert hours.index(dry_hour) > 0                                        # two false alarms do not make a peak
-    replay = strict(client.get("/api/alerts", params={"as_of": top["as_of"]}))
-    assert len(replay["camera_alerts"]) == top["camera_flags"] and len(replay["sensor_alerts"]) == top["sensor_alerts"]
+    for hour in hours:                                                     # asking for exactly that hour gives exactly that count
+        one = strict(client.get("/api/alerts", params={"as_of": hour["as_of"], "hours": 1}))
+        assert one["window_start"] == hour["hour"] and one["window_hours"] == 1
+        assert len(one["sensor_alerts"]) == hour["sensor_alerts"]
+        assert len([a for a in one["camera_alerts"] if not a["known_dry"]]) == hour["camera_flags"]
+        assert len([a for a in one["camera_alerts"] if a["known_dry"]]) == hour["known_dry_flags"]
 
 
 @pytest.mark.db
@@ -541,6 +587,23 @@ def test_A16_while_a_load_is_not_complete_the_data_routes_say_loading(point, db_
         assert strict(c.get("/api/summary"))["load"]["status"] == "loaded"
         assert strict(c.get("/api/health"))["load_status"] == "loaded"
         assert strict(c.get("/api/stats"))["load"]["status"] == "loaded"
+
+
+@pytest.mark.db
+def test_A16_while_a_load_holds_the_tables_the_reply_is_loading_not_an_error(db_url, fresh_schema):
+    holder = config.connect(db_url, schema=fresh_schema)                   # what a load's copy step does: lock, then work
+    try:
+        holder.execute("LOCK TABLE roads IN ACCESS EXCLUSIVE MODE")
+        with make_client(db_url, fresh_schema, lock_timeout_ms=300) as c:
+            started = time.time()
+            r = c.get("/api/worklist")
+            assert r.status_code == 503 and strict(r)["error"] == "loading" and time.time() - started < 3
+            assert strict(c.get("/api/health"))["ok"] is True              # the load record itself is not locked
+    finally:
+        holder.rollback()
+        holder.close()
+    with make_client(db_url, fresh_schema) as c:
+        assert c.get("/api/worklist").status_code == 200                   # and it answers again once the lock is gone
 
 
 @pytest.mark.db

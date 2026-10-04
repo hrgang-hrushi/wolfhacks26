@@ -19,6 +19,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
 
@@ -108,7 +109,10 @@ def load(url, root=Path("."), schema=None, *, schedule_jobs=True, compress=True,
                     _before_commit()
             conn.commit()
         except BaseException:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except psycopg.Error:
+                pass                                    # a broken connection: keep the first error
             raise
         finally:
             conn.close()
@@ -137,8 +141,12 @@ def load(url, root=Path("."), schema=None, *, schedule_jobs=True, compress=True,
         admin.close()
 
 
-def dump(root, out_dir):
-    """Per-table CSV files and two SQL scripts, for loading through Tiger's browser console when its port is blocked."""
+def dump(root, out_dir, schema=None):
+    """Per-table CSV files and two SQL scripts, for loading through Tiger's browser console when its port is blocked.
+
+    Order in the console: run setup.sql (it creates everything, empties the tables and writes a load record with
+    status `loaded`, so the service answers "loading"), import each CSV into its table, run after_load.sql (it
+    refreshes the summaries, compresses, and sets the record to `complete`). Running the three again reloads cleanly."""
     import csv
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -150,9 +158,12 @@ def dump(root, out_dir):
             w.writerow(cols)
             for row in build.to_rows(frame, cols):
                 w.writerow(["" if v is None else (v.isoformat() if hasattr(v, "isoformat") else v) for v in row])
-    name = config.schema_name()
+    name = schema or config.schema_name()
     setup = [f"CREATE SCHEMA IF NOT EXISTS {name};", f"SET search_path = {name}, public;"]
     setup += [text + ";" for _, text in tables.statements()]
+    setup.append("TRUNCATE " + ", ".join(DATA_TABLES) + ";")
+    setup.append("INSERT INTO load_manifest (status, sources, row_counts, code_version) VALUES ('loaded', "
+                 f"'{json.dumps(built.fingerprints)}'::jsonb, '{json.dumps(built.counts)}'::jsonb, '{code_version()}');")
     (out_dir / "setup.sql").write_text("\n".join(setup) + "\n")
     after = [f"SET search_path = {name}, public;"]
     after += [f"CALL refresh_continuous_aggregate('{v}', NULL, NULL);" for v in tables.SUMMARIES]
@@ -160,8 +171,8 @@ def dump(root, out_dir):
         after.append(f"DO $$ DECLARE c regclass; BEGIN FOR c IN SELECT show_chunks('{table}', older_than => "
                      f"(SELECT max(time) FROM {table}) - INTERVAL '{h['chunk']}') LOOP "
                      f"CALL convert_to_columnstore(c, if_not_columnstore => true); END LOOP; END $$;")
-    after.append("INSERT INTO load_manifest (status, finished_at, sources, row_counts, code_version) VALUES ('complete', now(), "
-                 f"'{json.dumps(built.fingerprints)}'::jsonb, '{json.dumps(built.counts)}'::jsonb, '{code_version()}');")
+    after.append("UPDATE load_manifest SET status = 'complete', finished_at = now() "
+                 "WHERE id = (SELECT max(id) FROM load_manifest) AND status = 'loaded';")
     (out_dir / "after_load.sql").write_text("\n".join(after) + "\n")
     return built.counts
 
@@ -172,7 +183,7 @@ def main(argv=None):
     ap.add_argument("--dump-dir", default=None, help="write CSV files and SQL scripts here instead of loading")
     args = ap.parse_args(argv)
     if args.dump_dir:
-        counts = dump(Path("."), args.dump_dir)
+        counts = dump(Path("."), args.dump_dir, schema=args.schema)
         print(f"wrote {len(counts)} CSV files and two SQL scripts: {counts}")
         return 0
     try:
@@ -187,6 +198,9 @@ def main(argv=None):
     except tables.SetupRefused as e:
         print(e)
         return 3
+    except psycopg.Error as e:
+        print(config.describe(e))
+        return 2
     print(f"schema {s['schema']}: {s['status']}")
     for table, n in s["counts"].items():
         print(f"  {table}: {n:,} rows")
