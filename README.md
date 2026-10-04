@@ -173,15 +173,12 @@ The web app in `web/` is one Vite + React app with two views. Both show the real
 - **`/m`**, the phone dashboard: map with condition and flood views, and the Helene backtest.
 - **`/`** sends narrow screens to `/m` and everything else to `/gov`.
 
-There is no backend. The app reads static JSON files that a Python script builds from the prediction file.
+There is no backend. The app reads static JSON files that a Python script builds from the prediction file. A built copy is committed in `web/public/data/` (about 50 MB), so the dashboards work from a fresh clone and on a hosting service that builds from the repo.
 
 ### Run it locally
 
 ```bash
-# 1. from the repo root: build the data files (writes web/public/data/, about 50 MB, git-ignored)
-uv run python scripts/build_web_data.py
-
-# 2. start the app
+# 1. start the app
 cd web
 npm install
 npm run dev
@@ -189,7 +186,7 @@ npm run dev
 
 Open `http://localhost:5173/gov` or `http://localhost:5173/m`.
 
-The build script always needs `handoff/predictions_geo.parquet`, which is in the repo. Route names, ratings and the Helene backtest come from files under `data/raw/`, which are not in the repo, so the data files have to be built on a machine that has them. `web/README.md` describes the data files, the optional Google Maps setup for `/m`, and how to deploy.
+To rebuild the data files after the predictions change, run `uv run python scripts/build_web_data.py` from the repo root and commit the result. The script always needs `handoff/predictions_geo.parquet`, which is in the repo. Route names, ratings and the Helene backtest come from files under `data/raw/`, which are not in the repo, so a rebuild has to happen on a machine that has them. `web/README.md` describes the data files, the optional Google Maps setup for `/m`, and how to deploy.
 
 ### Optional API
 

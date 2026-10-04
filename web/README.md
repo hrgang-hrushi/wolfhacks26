@@ -22,7 +22,7 @@ npm run dev
 
 Open `http://localhost:5173/gov` or `http://localhost:5173/m`.
 
-`web/public/data/` is **git-ignored and must be built on a machine that has the data**. The script always needs `handoff/predictions_geo.parquet` (committed). Route names, county, mileposts, rating, NCDOT treatment and cost come from `data/raw/ncdot_joined.parquet`, and the Helene backtest from `data/raw/helene_labels.parquet`. Neither of those two is committed. Without them the script still runs, says what it left out, and the dashboards hide those parts.
+A built copy of `web/public/data/` **is committed**, so step 1 is only needed after the predictions change; commit the rebuilt files when you run it. A rebuild has to happen on a machine that has the data. The script always needs `handoff/predictions_geo.parquet` (committed). Route names, county, mileposts, rating, NCDOT treatment and cost come from `data/raw/ncdot_joined.parquet`, and the Helene backtest from `data/raw/helene_labels.parquet`. Neither of those two is committed. Without them the script still runs, says what it left out, and the dashboards hide those parts.
 
 ## What the data files are
 
@@ -55,7 +55,7 @@ The Google path has not been run with a real key. The MapLibre path is the one t
 
 ## Deploy
 
-The site is fully static, but the data files cannot be rebuilt on a hosting service (the source files are not in the repo). So: **build on this machine, then upload `web/dist`.**
+The site is fully static. The data files cannot be rebuilt on a hosting service (the source files are not in the repo), but a built copy is committed in `web/public/data/`, so a host that builds from the repo ships it. You can also **build on this machine, then upload `web/dist`**:
 
 ```bash
 uv run python scripts/build_web_data.py     # from the repo root
