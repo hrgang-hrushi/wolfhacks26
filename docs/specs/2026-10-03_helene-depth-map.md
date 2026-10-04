@@ -177,12 +177,12 @@ Review file: `docs/reports/2026-10-03_helene-depth-map-plan-review.md`. Eight fi
 9. **AC6, bridge anchor.** `ncdot:40001338011:0.000` is "not assessed" rather than "under 1 m": five of its points are set aside (the three within 60 m of bridge 100726 and two on the bank beside them; the first read 4.1 m), and its remaining points are too far from the stream line.
 10. **Points file.** It also carries `lift_m`, `near_bridge` and `too_deep`.
 11. **G3** checks an allow-list of this change's paths, including files not yet committed, and only speaks on branch `helene-depth`.
-12. **Test counts.** 81 unit tests, not 80 (C13). Full suite: 663 passed, 2 skipped, both before and after `main` (at `277154f`) was merged into the branch.
+12. **Test counts.** 81 unit tests, not 80 (C13). Full suite: 663 passed, 2 skipped, both before and after `main` at `277154f` was merged into the branch; 684 passed, 2 skipped after the later merge of `main` at `c71592c`, which brought 21 tests of its own.
 13. **One rule for the distance to the nearest mark (after the audits).** D9 and D14 measured it along the stream line only. That let a road point 290 m to the side of a mark, or outside a bend, count as "0 m from a mark, high confidence": in the first build 261 assessed segments showed "0 m", 216 of them high. The distance is now measured along the line to the spot beside the road point and then across to the point; where that spot is a mark itself (a bend, an end, or exactly level with a mark) it is the straight line to the mark. Confidence, the distance bands of the hidden-mark table and the typical-miss lookup all use it. Depths did not change. Segments with high confidence went from 1,395 to 1,118; no high-confidence road point is now more than 250 m from a mark. The first fix (`f868917`) covered only bends and ends; the second review round and the Codex audit both showed the gap beside a straight stretch and exactly level with a mark, closed in `7ce6726`. C3, C8 and C9 pin it.
 14. **D24 as built.** The depth script refuses any output whose file name does not start with `flood_helene_depth` (a name check, inside whatever output folder it is given; F8 drives it through the writer). The ground script writes only tile files and `manifest.json` into the tiles folder it is given, by default `data/processed/dem10_helene/`; it has no separate guard.
 15. **Reading the marks.** Beyond D1: a mark with no point number is dropped and counted (it cannot be placed on its line); a mark whose geometry is not a point is counted as outside the box; marks with a blank id are kept apart, not merged; grade names are matched without regard to letter case or stray spaces. None of these cases occurs in the real file (all drop counts are 0). Marks graded "ALTH" (104, meaning unknown) draw the line, as D3 implies.
 16. **A range for every distance band (after the review).** AC3 asks for the miss per band "with counts and a range"; the first build gave a range only for the overall figure. Each band now carries its own range, and N4 checks it.
-17. **Which code built the files.** The notes file records the commit and whether the two scripts differed from it. The first build ran before the first commit, so its notes named the base commit; the files were rebuilt from the committed code (last from `7ce6726`) and the notes now say so (N12).
+17. **Which code built the files.** The notes file records the commit and whether the two scripts differed from it. The first build ran before the first commit, so its notes named the base commit; the files were rebuilt from the committed code (last from `fe6fce6`, after `main` was merged in) and the notes now say so (N12).
 18. **Only the marks that carry weight are counted (after the Codex audit).** A point that takes one mark's level alone (a bend, an end, or exactly level with a mark) used to record both ends of its stretch as the marks behind it. It now records that one mark. `n_helene_depth_marks` fell for 294 assessed segments; 100 segments rest on a single mark. C11 pins it.
 
 ## Results (2026-10-03)
@@ -224,7 +224,7 @@ Confidence is high for 1,118 and low for 484. Among segments with water the midd
 
 **Nothing else changed (AC8).** Checked two ways. The run itself fingerprints its five shared inputs before and after (marks, bridge list, `segments.parquet`, `segments_geom.parquet`, `dem/dem.tif`) and refuses to write if any moved; both lists are in the notes file. Separately, a shell `shasum` of seven shared files (those five plus `segments_targets.parquet` and `terrain.parquet`), taken before any code was written and again after the last build, is identical. `git diff --name-only main...HEAD` lists only this change's 17 files.
 
-**Tests (AC1).** `tests/helene_depth`: 81 unit, 12 real-data, 1 live, all passing. Full suite: 663 passed, 2 skipped.
+**Tests (AC1).** `tests/helene_depth`: 81 unit, 12 real-data, 1 live, all passing. Full suite: 684 passed, 2 skipped on the final merged branch (663 before `main` at `c71592c` was merged in).
 
 **For `README.md`** (not edited; another chat owns it). A status row:
 
@@ -272,4 +272,11 @@ A limitation line:
 | 1 | A point exactly level with a mark still reported 0 m and high confidence (the bend fix tested "past the mark", not "on it") | Fixed with the single distance rule: Deviations 13; C9 covers the exact case and a hair off it |
 | 2 | A point taking one mark's level alone counted both ends of its stretch as supporting marks (294 segments) | Fixed: Deviations 18; C11 |
 
-Codex audit, round 2: recorded below once run.
+**Codex audit, round 2 (on `65cdf0d`): Acceptable overall.** Plan adherence, Scope discipline and Review compliance Excellent; Test coverage, Freeze integrity, Regression check and Documentation Acceptable. It confirmed both round-1 defects corrected with regression assertions, rebuilt both tables and the validation file byte-for-byte in memory, and found the five shared-input fingerprints matching. Two notes:
+
+| # | Note | What was done |
+|---|---|---|
+| 1 | Its sandbox could not create temporary folders, so it ran 12 real-data and 29 unit tests itself and took the rest from the record | Nothing to fix; the full suite was run here after every change |
+| 2 | Two comments in `helene_depth.py` still said the distance was "along the line" | Corrected in `2eb119d` (comments only; the rebuilt outputs are byte-identical) |
+
+**Final state.** `main` at `c71592c` merged into the branch (`fe6fce6`); the map rebuilt from that commit, identical to the build that was audited; `tests/helene_depth`: 93 passed; full suite: 684 passed, 2 skipped (the 591 that pass on `main` at `c71592c`, plus this change's 93).
