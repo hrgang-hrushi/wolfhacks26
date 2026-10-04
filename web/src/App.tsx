@@ -25,10 +25,11 @@ export function App() {
   const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Background sync with live API if running (http://127.0.0.1:8000)
+  // Background sync with live API (relative /api in Vercel or dev proxy, or VITE_API_BASE_URL)
   useEffect(() => {
     let isMounted = true;
-    fetch('http://127.0.0.1:8000/api/segments?limit=2500')
+    const apiBase = import.meta.env.VITE_API_BASE_URL ?? '';
+    fetch(`${apiBase}/api/segments?limit=2500`)
       .then(res => res.json())
       .then(data => {
         if (isMounted && data && Array.isArray(data.segments) && data.segments.length > 0) {

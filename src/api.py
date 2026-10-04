@@ -35,8 +35,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-DATA_PATH = Path("handoff/predictions_geo.parquet")
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_PATH = BASE_DIR / "handoff" / "predictions_geo.parquet"
+if not DATA_PATH.exists():
+    DATA_PATH = Path("handoff/predictions_geo.parquet")
 
 # In-memory spatial index and data cache
 _df: Optional[pd.DataFrame] = None
