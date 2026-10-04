@@ -642,14 +642,14 @@ html, body, #root {
 
 /* ==========================================================================
    Page-Level U-Shape Ambient Glow (Bottom-Left, Bottom, Bottom-Right)
-   Indicates Pavement Rating Under Entire Page:
+   Indicates Pavement Rating Under Entire Page (Behind All Widgets):
    Green (Safe), Yellow (Caution), Red (Danger), Blue (Helene Flood Hazard)
    ========================================================================== */
 .page-u-frame-glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 4;
+  z-index: 0;
   overflow: hidden;
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -660,19 +660,19 @@ html, body, #root {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 62%;
+  height: 65%;
   pointer-events: none;
-  border-left: 2px solid var(--page-glow-border, rgba(34, 197, 94, 0.55));
-  border-right: 2px solid var(--page-glow-border, rgba(34, 197, 94, 0.55));
-  border-bottom: 2px solid var(--page-glow-border, rgba(34, 197, 94, 0.55));
+  border-left: 3px solid var(--page-glow-border, rgba(34, 197, 94, 0.70));
+  border-right: 3px solid var(--page-glow-border, rgba(34, 197, 94, 0.70));
+  border-bottom: 3px solid var(--page-glow-border, rgba(34, 197, 94, 0.70));
   border-top: none;
   box-shadow:
-    inset 24px 0 42px -6px var(--page-glow-color, rgba(34, 197, 94, 0.35)),
-    inset -24px 0 42px -6px var(--page-glow-color, rgba(34, 197, 94, 0.35)),
-    inset 0 -32px 54px -6px var(--page-glow-color, rgba(34, 197, 94, 0.44)),
-    0 0 32px var(--page-glow-ambient, rgba(34, 197, 94, 0.25));
-  mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.65) 45%, rgba(0, 0, 0, 0) 100%);
-  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.65) 45%, rgba(0, 0, 0, 0) 100%);
+    inset 32px 0 56px -4px var(--page-glow-color, rgba(34, 197, 94, 0.45)),
+    inset -32px 0 56px -4px var(--page-glow-color, rgba(34, 197, 94, 0.45)),
+    inset 0 -42px 72px -6px var(--page-glow-color, rgba(34, 197, 94, 0.55)),
+    0 0 44px var(--page-glow-ambient, rgba(34, 197, 94, 0.35));
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.8) 45%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.8) 45%, rgba(0, 0, 0, 0) 100%);
   transition: all 0.5s ease-in-out;
 }
 
@@ -682,9 +682,9 @@ html, body, #root {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 48%;
+  height: 52%;
   pointer-events: none;
-  background: radial-gradient(ellipse 90% 50% at 50% 100%, var(--page-glow-radial, rgba(34, 197, 94, 0.14)) 0%, transparent 80%);
+  background: radial-gradient(ellipse 92% 56% at 50% 100%, var(--page-glow-radial, rgba(34, 197, 94, 0.22)) 0%, transparent 80%);
   transition: all 0.5s ease-in-out;
 }
 
@@ -693,15 +693,15 @@ html, body, #root {
 .page-u-frame-glow.rating-safe,
 .page-u-glow.rating-safe,
 .page-rating-safe {
-  --page-glow-border: rgba(34, 197, 94, 0.60);
-  --page-glow-color: rgba(34, 197, 94, 0.40);
-  --page-glow-ambient: rgba(34, 197, 94, 0.25);
-  --page-glow-radial: rgba(34, 197, 94, 0.15);
-  --glow-svg-drop: rgba(34, 197, 94, 0.26);
-  --glow-blur-1: rgba(34, 197, 94, 0.15);
-  --glow-blur-2: rgba(74, 222, 128, 0.08);
-  --glow-blur-3: rgba(134, 239, 172, 0.03);
-  --glow-blur-linear: rgba(34, 197, 94, 0.07);
+  --page-glow-border: rgba(34, 197, 94, 0.75);
+  --page-glow-color: rgba(34, 197, 94, 0.52);
+  --page-glow-ambient: rgba(34, 197, 94, 0.35);
+  --page-glow-radial: rgba(34, 197, 94, 0.24);
+  --glow-svg-drop: rgba(34, 197, 94, 0.35);
+  --glow-blur-1: rgba(34, 197, 94, 0.24);
+  --glow-blur-2: rgba(74, 222, 128, 0.14);
+  --glow-blur-3: rgba(134, 239, 172, 0.05);
+  --glow-blur-linear: rgba(34, 197, 94, 0.12);
 }
 
 /* Yellow: Caution Condition */
@@ -709,15 +709,15 @@ html, body, #root {
 .page-u-frame-glow.rating-caution,
 .page-u-glow.rating-caution,
 .page-rating-caution {
-  --page-glow-border: rgba(234, 179, 8, 0.62);
-  --page-glow-color: rgba(234, 179, 8, 0.44);
-  --page-glow-ambient: rgba(234, 179, 8, 0.28);
-  --page-glow-radial: rgba(234, 179, 8, 0.17);
-  --glow-svg-drop: rgba(234, 179, 8, 0.28);
-  --glow-blur-1: rgba(234, 179, 8, 0.16);
-  --glow-blur-2: rgba(250, 204, 21, 0.09);
-  --glow-blur-3: rgba(253, 224, 71, 0.03);
-  --glow-blur-linear: rgba(234, 179, 8, 0.08);
+  --page-glow-border: rgba(234, 179, 8, 0.78);
+  --page-glow-color: rgba(234, 179, 8, 0.55);
+  --page-glow-ambient: rgba(234, 179, 8, 0.38);
+  --page-glow-radial: rgba(234, 179, 8, 0.26);
+  --glow-svg-drop: rgba(234, 179, 8, 0.36);
+  --glow-blur-1: rgba(234, 179, 8, 0.26);
+  --glow-blur-2: rgba(250, 204, 21, 0.15);
+  --glow-blur-3: rgba(253, 224, 71, 0.06);
+  --glow-blur-linear: rgba(234, 179, 8, 0.13);
 }
 
 /* Red: Danger Condition */
@@ -725,15 +725,15 @@ html, body, #root {
 .page-u-frame-glow.rating-danger,
 .page-u-glow.rating-danger,
 .page-rating-danger {
-  --page-glow-border: rgba(239, 68, 68, 0.70);
-  --page-glow-color: rgba(239, 68, 68, 0.50);
-  --page-glow-ambient: rgba(239, 68, 68, 0.32);
-  --page-glow-radial: rgba(239, 68, 68, 0.19);
-  --glow-svg-drop: rgba(239, 68, 68, 0.32);
-  --glow-blur-1: rgba(239, 68, 68, 0.17);
-  --glow-blur-2: rgba(248, 113, 113, 0.09);
-  --glow-blur-3: rgba(252, 165, 165, 0.03);
-  --glow-blur-linear: rgba(239, 68, 68, 0.08);
+  --page-glow-border: rgba(239, 68, 68, 0.85);
+  --page-glow-color: rgba(239, 68, 68, 0.62);
+  --page-glow-ambient: rgba(239, 68, 68, 0.44);
+  --page-glow-radial: rgba(239, 68, 68, 0.30);
+  --glow-svg-drop: rgba(239, 68, 68, 0.42);
+  --glow-blur-1: rgba(239, 68, 68, 0.28);
+  --glow-blur-2: rgba(248, 113, 113, 0.16);
+  --glow-blur-3: rgba(252, 165, 165, 0.07);
+  --glow-blur-linear: rgba(239, 68, 68, 0.14);
 }
 
 /* Blue: Helene / Flood Hazard Zone */
@@ -741,15 +741,15 @@ html, body, #root {
 .page-u-frame-glow.rating-blue,
 .page-u-glow.rating-blue,
 .page-rating-blue {
-  --page-glow-border: rgba(14, 165, 233, 0.62);
-  --page-glow-color: rgba(14, 165, 233, 0.44);
-  --page-glow-ambient: rgba(14, 165, 233, 0.28);
-  --page-glow-radial: rgba(14, 165, 233, 0.17);
-  --glow-svg-drop: rgba(14, 165, 233, 0.28);
-  --glow-blur-1: rgba(14, 165, 233, 0.16);
-  --glow-blur-2: rgba(56, 189, 248, 0.09);
-  --glow-blur-3: rgba(125, 211, 252, 0.03);
-  --glow-blur-linear: rgba(14, 165, 233, 0.08);
+  --page-glow-border: rgba(14, 165, 233, 0.78);
+  --page-glow-color: rgba(14, 165, 233, 0.55);
+  --page-glow-ambient: rgba(14, 165, 233, 0.38);
+  --page-glow-radial: rgba(14, 165, 233, 0.26);
+  --glow-svg-drop: rgba(14, 165, 233, 0.36);
+  --glow-blur-1: rgba(14, 165, 233, 0.26);
+  --glow-blur-2: rgba(56, 189, 248, 0.15);
+  --glow-blur-3: rgba(125, 211, 252, 0.06);
+  --glow-blur-linear: rgba(14, 165, 233, 0.13);
 }
 
 /* ==========================================================================
