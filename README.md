@@ -2,7 +2,11 @@
 
 **Which North Carolina roads will fail next, including the ones nobody inspects.**
 
-Built at the NC State hackathon, October 3–4, 2026.
+Built at the NC State hackathon, October 3–4, 2026, for the Center for Geospatial Analytics track.
+
+**Try it:** [agency dashboard](https://wolfhacks26-omega.vercel.app/gov) · [phone view](https://wolfhacks26-omega.vercel.app/m) · [executive view](https://wolfhacks26-omega.vercel.app/dashboard)
+
+![The agency dashboard: all 112,443 state road segments on a map of North Carolina, with a ranked work queue below](docs/devpost/01-statewide.jpg)
 
 ## Most roads have no one watching them
 
@@ -16,11 +20,11 @@ Our idea: learn from the inspected roads what age, traffic and the shape of the 
 
 ## End goals
 
-What this project is meant to become. The predictions exist today and a web dashboard is in `web/`. The data feed for map companies is not built yet.
+What this project is meant to become. The predictions exist today and the web dashboards are live (links above; code in `web/`). The data feed for map companies is not built yet.
 
 | Goal | What it does | Where it stands |
 |---|---|---|
-| **Repair dashboard for officials** | A ranked work list for road agencies: fix now, fix within a year, plan within five, with alerts when a road crosses a threshold. | Predictions exist for all 112,443 state road stretches. Production web dashboard is available in `web/`. |
+| **Repair dashboard for officials** | A ranked work list for road agencies: fix now, fix within a year, plan within five, with alerts when a road crosses a threshold. | Predictions exist for all 112,443 state road stretches. The agency dashboard is live at `/gov`, with a ranked work queue, work orders, CSV export and a list of roads over a threshold. |
 | **Safer-route data for map companies** | A per-road risk file that navigation apps can read, so drivers are routed around rough pavement and flood-prone roads. | The held-out prediction file with road shapes exists (`handoff/predictions_geo.parquet`), and a per-road risk file with a column dictionary can be exported (`web/tiger/export.py`). No routing integration yet. |
 | **Budget planner** | Ranks repairs by benefit per dollar and shows what waiting costs. | NCDOT's data carries a recommended treatment and a cost estimate per road. Not built. |
 | **Storm readiness** | Before a forecast storm, lists the roads most likely to wash out, so crews can stage equipment and plan detours. | The flood model found 18 damaged roads among its 50 riskiest in the Helene zone, against about 2 by chance. |
@@ -83,9 +87,9 @@ Knowing the shape of the land barely changes the wear estimate. It clearly helps
 
 Fine-tuning makes the flooded-or-not call clearly better and leaves the depth estimate about the same. On 1,191 NCDOT traffic-camera stills from a rainy day with no floods, the fine-tuned reader wrongly flagged 9. The two fine-tuned rows were trained with different settings (the new-day row at a larger image size and more passes), so compare them with care.
 
-## What is being built right now
+## What was built
 
-Status on the evening of October 3, 2026.
+Status at submission, October 4, 2026.
 
 | Track | Status | What it is |
 |---|---|---|
@@ -94,7 +98,8 @@ Status on the evening of October 3, 2026.
 | Real pothole evidence | Done | Pothole reports from Charlotte and Raleigh matched to roads, plus graded stills from public NCDOT cameras. In Charlotte the roads we rank worst draw about three times the reports of the best. Results are under "Does it work?". |
 | Flood depth from cameras | Done, first version | A reader trained on photos of flooded coastal roads from late September 2026, each with a measured water level. On a camera it has never seen it catches 91% of flooded photos. Results are under "Does it work?". |
 | Crash counts and estimated traffic | Done | Added for every road, for the repair ranking (`handoff/traffic_crash.parquet`). They did not improve the wear, cracking or flood predictions, so the model is unchanged. |
-| Agency and phone dashboards | Done, not deployed | An agency view at `/gov` and a phone view at `/m`, both on the real predictions for every road. See "Web dashboards and API" below. |
+| Agency and phone dashboards | Done, live | An agency view at `/gov` and a phone view at `/m`, both on the real predictions for every road, hosted at `wolfhacks26-omega.vercel.app`. See "Web dashboards and API" below. |
+| Executive view | Design demo, live | `/dashboard`: a concept for safest-route navigation with live weather. Its route comparisons and budget cards are illustrative, not model output. |
 | Database-backed service | Built and tested on a local database; not yet loaded into Tiger Data | A read-only service over Postgres + TimescaleDB (`web/tiger/`, `web/service/`): the ranked work list, road details, flood alerts from hourly summaries, database statistics and a downloadable per-road risk file. No page reads it yet. |
 | Helene flood depth on roads | Done | A water depth in metres for the 1,602 road segments near surveyed high-water marks in 12 mountain counties; 648 had water. Checked by hiding marks and guessing them back (typical miss 0.27 m) and against 190 tape-measured depths (0.37 m). |
 
@@ -167,13 +172,21 @@ Targets, folds, feature lists and the out-of-fold loop live in `src/model/common
 
 ## Web dashboards and API
 
-The web app in `web/` is one Vite + React app with two views. Both show the real predictions for all 112,443 state road segments.
+The web app in `web/` is one Vite + React app with three views, live at [wolfhacks26-omega.vercel.app](https://wolfhacks26-omega.vercel.app). It redeploys on every push to `main`.
 
-- **`/gov`**, the agency dashboard (desktop): map, ranked work queue, work orders, storm readiness, alerts and how the model was tested.
+- **`/gov`**, the agency dashboard (desktop): map, ranked work queue, work orders, storm readiness, alerts and how the model was tested. Light and dark themes, resizable panels.
 - **`/m`**, the phone dashboard: map with condition and flood views, and the Helene backtest.
+- **`/dashboard`**, the executive view: a design demo of safest-route navigation with live weather from OpenWeather. Its map draws real road segments; the route comparisons and budget cards are illustrative, not model output.
 - **`/`** sends narrow screens to `/m` and everything else to `/gov`.
 
-There is no backend. The app reads static JSON files that a Python script builds from the prediction file. A built copy is committed in `web/public/data/` (about 50 MB), so the dashboards work from a fresh clone and on a hosting service that builds from the repo.
+`/gov` and `/m` show the real predictions for all 112,443 state road segments and need no backend. They read static JSON files that a Python script builds from the prediction file. A built copy is committed in `web/public/data/` (about 50 MB), so the dashboards work from a fresh clone and on a hosting service that builds from the repo. `/dashboard` calls a small FastAPI service in `server/`, which Vercel hosts under `/api`.
+
+| | |
+|---|---|
+| ![One road in Wake County with its forecast and NCDOT record](docs/devpost/02-wake-road.jpg) | ![Storm readiness: the 50 riskiest roads in the Helene zone](docs/devpost/03-storm.jpg) |
+| ![Dark mode, cracking risk in Mecklenburg County](docs/devpost/05-dark-charlotte.jpg) | ![Phone view: condition map, flood map and the Helene backtest](docs/devpost/06-phone.jpg) |
+
+Devpost copy and the demo video script are in `docs/DEVPOST.md` and `docs/VIDEO_SCRIPT.md`.
 
 ### Run it locally
 
