@@ -68,7 +68,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
     return () => { active = false; };
   }, [activeCity]);
 
-  // Close dropdowns and search suggestions when clicking outside
+  // Close dropdowns and search suggestions when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (topBarRef.current && !topBarRef.current.contains(e.target as Node)) {
@@ -78,8 +78,18 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
         setIsSearchFocused(false);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpenDropdown(null);
+        setIsSearchFocused(false);
+      }
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   // Mapbox Geocoding lookup for broader North Carolina locations (debounced)
@@ -160,9 +170,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
   };
 
   const handleSelectCity = (city: string) => {
-    if (city === 'Raleigh' || city === 'Asheville') {
-      onZoomCity(city);
-    }
+    onZoomCity(city);
     const firstInCity = segments.find(s => s.city.toLowerCase() === city.toLowerCase());
     if (firstInCity) onSelectSegment(firstInCity);
     gisMapRef.current?.flyToCity(city);
@@ -403,7 +411,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           </div>
 
           {/* 1. Network / Insurance Dropdown */}
-          <div className="pixel-filter-wrap">
+          <div className={`pixel-filter-wrap ${openDropdown === 'insurance' ? 'is-open' : ''}`}>
             <button
               type="button"
               className={`pixel-filter-btn ${openDropdown === 'insurance' ? 'active' : ''}`}
@@ -445,7 +453,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           </div>
 
           {/* 2. Region / State Dropdown */}
-          <div className="pixel-filter-wrap">
+          <div className={`pixel-filter-wrap ${openDropdown === 'state' ? 'is-open' : ''}`}>
             <button
               type="button"
               className={`pixel-filter-btn ${openDropdown === 'state' ? 'active' : ''}`}
@@ -515,7 +523,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           </div>
 
           {/* 3. City Corridor Dropdown */}
-          <div className="pixel-filter-wrap">
+          <div className={`pixel-filter-wrap ${openDropdown === 'city' ? 'is-open' : ''}`}>
             <button
               type="button"
               className={`pixel-filter-btn ${openDropdown === 'city' ? 'active' : ''}`}
@@ -562,7 +570,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           </div>
 
           {/* 4. District (NCDOT Divisions) Dropdown */}
-          <div className="pixel-filter-wrap">
+          <div className={`pixel-filter-wrap ${openDropdown === 'district' ? 'is-open' : ''}`}>
             <button
               type="button"
               className={`pixel-filter-btn ${openDropdown === 'district' ? 'active' : ''}`}
@@ -574,7 +582,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
               <ChevronDown size={14} className="pixel-filter-chevron" />
             </button>
             {openDropdown === 'district' && (
-              <div className="pixel-dropdown-menu">
+              <div className="pixel-dropdown-menu menu-align-right">
                 {[
                   { id: 'All', label: 'All Divisions (Statewide 1–14)', badge: 'All', badgeColor: 'blue', coordKey: 'Statewide' },
                   { id: 'Div 5 & 7', label: 'Division 5 & 7 (Triangle & Triad)', badge: 'Div 5/7', badgeColor: 'green', coordKey: 'Div 5 & 7' },
@@ -605,7 +613,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           </div>
 
           {/* 5. Condition Dropdown (Blue, Green, Yellow, Red) */}
-          <div className="pixel-filter-wrap">
+          <div className={`pixel-filter-wrap ${openDropdown === 'condition' ? 'is-open' : ''}`}>
             <button
               type="button"
               className={`pixel-filter-btn condition-filter-btn ${openDropdown === 'condition' ? 'active' : ''} ${conditionColorFilter !== 'all' ? `active-filter-${conditionColorFilter}` : ''}`}
@@ -624,7 +632,7 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
               <ChevronDown size={14} className="pixel-filter-chevron" />
             </button>
             {openDropdown === 'condition' && (
-              <div className="pixel-dropdown-menu condition-dropdown-menu">
+              <div className="pixel-dropdown-menu condition-dropdown-menu menu-align-right">
                 <button
                   type="button"
                   className={`pixel-dropdown-item ${conditionColorFilter === 'all' ? 'selected' : ''}`}

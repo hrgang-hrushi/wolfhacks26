@@ -209,21 +209,15 @@ html, body, #root {
 /* Top Floating Controls Bar on Map */
 .pixel-map-top-bar {
   position: absolute;
-  top: 10px;
+  top: 12px;
   left: 16px;
   right: 16px;
-  height: 44px;
   display: flex;
   align-items: center;
   gap: 10px;
   pointer-events: auto;
-  z-index: 20;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.pixel-map-top-bar::-webkit-scrollbar {
-  display: none;
+  z-index: 50;
+  overflow: visible;
 }
 
 .pixel-search-container {
@@ -438,11 +432,18 @@ html, body, #root {
 .pixel-filters-cluster {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  overflow: visible;
+  flex-shrink: 0;
 }
 
 .pixel-filter-wrap {
   position: relative;
+  overflow: visible;
+}
+
+.pixel-filter-wrap.is-open {
+  z-index: 60;
 }
 
 .pixel-filter-btn {
@@ -500,25 +501,31 @@ html, body, #root {
 
 .pixel-dropdown-menu {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   left: 0;
-  background: rgba(255, 255, 255, 0.98);
+  background: #ffffff;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-radius: 14px;
-  box-shadow: 0 16px 36px -6px rgba(15, 23, 42, 0.16), 0 6px 14px -3px rgba(15, 23, 42, 0.08);
-  border: 1px solid rgba(0, 0, 0, 0.09);
+  box-shadow: 0 16px 36px -6px rgba(15, 23, 42, 0.22), 0 6px 16px -3px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.12);
   padding: 6px;
   min-width: 250px;
-  max-height: 380px;
+  max-height: 400px;
   overflow-y: auto;
   overflow-x: hidden;
-  z-index: 50;
+  z-index: 9999;
   display: flex;
   flex-direction: column;
   gap: 3px;
   animation: dropdownSmoothOpen 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform-origin: top left;
+}
+
+.pixel-dropdown-menu.menu-align-right {
+  left: auto;
+  right: 0;
+  transform-origin: top right;
 }
 
 /* Slick slim scrollbar for long dropdowns */
