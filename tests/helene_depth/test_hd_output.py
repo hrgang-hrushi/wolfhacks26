@@ -81,6 +81,7 @@ def test_F5_the_loader_refuses_an_output_that_changed(built_root):
     assert set(meta["sha256"]) == {hd.DEPTH, hd.POINTS, hd.VALID, "marks", "bridges", "manifest", "seg_ids"}
     assert meta["sha256"][hd.DEPTH] == dem.sha256(built_root.p.out / hd.DEPTH)
     assert meta["inputs_before"] == meta["inputs_after"] and meta["inputs_before"]["marks"] == dem.sha256(built_root.p.marks)
+    assert "git_commit" in meta and "git_code_differs_from_commit" in meta  # which code built the files
     with open(built_root.p.out / hd.DEPTH, "ab") as f:
         f.write(b" ")
     with pytest.raises(hd.DepthError, match="flood_helene_depth.parquet"):
@@ -117,13 +118,20 @@ def test_F7_every_output_column_is_banned_as_a_model_input():
             check_features(["pv_LENGTH", c])
 
 
-def test_F8_only_our_own_files_can_be_written(tmp_path):
+def test_F8_only_our_own_files_can_be_written(tmp_path, monkeypatch):
     for name in ("segments.parquet", "flood_camera_depth.parquet", "predictions.parquet", "terrain.parquet"):
         with pytest.raises(hd.DepthError, match="only flood_helene_depth"):
             hd._own(tmp_path / name)
     assert all(hd._own(tmp_path / name).name.startswith("flood_helene_depth") for name in hd.OUTPUTS)
     assert hd.OUTPUTS[-1] == hd.META and dem.OUT.name == "dem10_helene" and hd.paths().tiles == dem.OUT
     assert hd.paths().out.name == "processed"
+    # and the writer itself refuses: if it stopped asking, a foreign name would get written
+    import hd_helpers as H2
+
+    monkeypatch.setattr(hd, "OUTPUTS", (hd.POINTS, "segments.parquet", hd.VALID, hd.META))
+    with pytest.raises(hd.DepthError, match="refusing to write segments.parquet"):
+        hd.write_outputs(tmp_path, H2.mk_pts([1.0, 1.0]), H2.mk_pts([1.0, 1.0]), {}, {"sha256": {}})
+    assert list(tmp_path.iterdir()) == []  # refused before anything was staged
 
 
 def test_F9_a_reading_deeper_than_15_m_is_left_out_and_many_of_them_stop_the_run(tmp_path, monkeypatch):

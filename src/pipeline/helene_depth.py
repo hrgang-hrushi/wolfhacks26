@@ -126,12 +126,14 @@ def load_marks(path=None):
         raise DepthError(f"{path.name} lacks the column(s) {missing}")
     if g.crs is not None and g.crs.to_epsg() != 4326:
         g = g.to_crs(4326)
-    has_point = g.geometry.notna() & ~g.geometry.is_empty
-    lon = np.where(has_point, g.geometry.x, np.nan)
-    lat = np.where(has_point, g.geometry.y, np.nan)
+    has_point = (g.geometry.notna() & ~g.geometry.is_empty & (g.geometry.geom_type == "Point")).values
+    lon, lat = np.full(len(g), np.nan), np.full(len(g), np.nan)
+    lon[has_point], lat[has_point] = g.geometry[has_point].x, g.geometry[has_point].y
+    ids = g["HWM_ID"]
+    ids = np.where(ids.isna(), [f"row{i}" for i in range(len(g))], ids.astype(str))  # a blank id is not a repeat
     tape = pd.to_numeric(g["Measured_Height__ft_"], errors="coerce") * FT
     d = pd.DataFrame({
-        "mark_id": g["HWM_ID"].astype(str).values,
+        "mark_id": ids,
         "stream": g["Stream"].fillna("?").astype(str).str.strip().values,
         "watershed": g["Watershed"].fillna("?").astype(str).str.strip().values,
         "point_no": pd.to_numeric(g["Point_Number_on_Stream"], errors="coerce").values,
@@ -157,7 +159,7 @@ def load_marks(path=None):
         raise DepthError(f"{path.name} holds no usable marks ({counts})")
     d = d.copy()
     d["x"], d["y"] = _TO_M.transform(d.lon.values, d.lat.values)
-    d["draws"] = ~d.quality.isin(S["NO_LINE_GRADES"])
+    d["draws"] = ~d.quality.str.lower().isin([q.lower() for q in S["NO_LINE_GRADES"]])
     d = d.sort_values(["group", "point_no", "mark_id"], kind="stable").reset_index(drop=True)
     counts.update(kept=int(len(d)), draw_the_line=int(d.draws.sum()), taped=int(d.tape_m.notna().sum()),
                   groups=int(d.group.nunique()))  # fmt: skip
@@ -294,6 +296,10 @@ def _locate(P, lines, px, py, chunk=500) -> pd.DataFrame:
             hi_end = cu > plen
             at_end = ((cu < 0) & P["term_lo"][cand]) | (hi_end & P["term_hi"][cand]) | P["single"][cand]
             along = np.minimum(cuc, plen - cuc)
+            # where the nearest spot is a mark itself (a bend, or the end of the line) the point is `best`
+            # metres from that mark in a straight line; reporting 0 would claim it sits on the mark
+            at_mark = (cu < 0) | hi_end | P["single"][cand]
+            dist = np.where(at_mark, best, along)
             # how far the drawn level has moved from the nearer mark's own level: between two marks that differ
             # by many metres (a dam, a fall, a steep reach) a straight line is a guess
             slope = np.divide(np.abs(P["zk1"][cand] - P["zk"][cand]), plen, out=np.zeros_like(plen), where=plen > 0)
@@ -313,11 +319,11 @@ def _locate(P, lines, px, py, chunk=500) -> pd.DataFrame:
             sl = slice(a, b)
             out["assessed"][sl] = ok
             out["wse"][sl] = np.where(ok, wse, np.nan)
-            out["along_m"][sl] = np.where(ok, np.where(end, 0.0, along[r, w]), np.nan)
+            out["along_m"][sl] = np.where(ok, dist[r, w], np.nan)
             out["side_m"][sl] = np.where(ok, masked[r, w], np.nan)
             out["lift_m"][sl] = np.where(ok, lift[r, w], np.nan)
             out["end_rule"][sl] = ok & end
-            out["high"][sl] = ok & ~end & (along[r, w] <= S["HIGH_CONF_M"])
+            out["high"][sl] = ok & ~end & (dist[r, w] <= S["HIGH_CONF_M"])
             out["line"][sl] = np.where(ok, P["line"][j], -1)
             out["v0"][sl] = np.where(ok, v0, -1)
             out["v1"][sl] = np.where(ok & ~end, k + 1, -1)
@@ -493,6 +499,8 @@ def set_aside(ground, part, step_m, near_bridge, rules=RULES) -> np.ndarray:
 
 # ---- depth and the per-segment summary (D11, D13, D14) ----
 def band(depth) -> str:
+    if depth != depth:
+        raise ValueError("no depth to put in a band")
     if depth <= 0:
         return "dry"
     a, b, c = S["BANDS_M"]
@@ -666,9 +674,11 @@ def band_table(hm) -> list:
     d = d[d.band < len(edges) - 1].sort_values(["mark_id", "band", "stretch"], kind="stable").drop_duplicates(["mark_id", "band"])
     out = []
     for b in range(len(edges) - 1):
-        st = miss_stats(d.miss[d.band == b])
+        rows = d[d.band == b]
+        st = miss_stats(rows.miss)
         out.append({"band": f"{edges[b]}-{edges[b + 1]} m", "lo": edges[b], "hi": edges[b + 1], "n": st["n"],
-                    "median": st["median"], "p90": st["p90"], "too_few": st["n"] < S["MIN_BAND_N"]})  # fmt: skip
+                    "median": st["median"], "p90": st["p90"], "range95": boot_range(rows.miss, rows.group),
+                    "too_few": st["n"] < S["MIN_BAND_N"]})  # fmt: skip
     return out
 
 
@@ -846,11 +856,17 @@ def load_depth(root=ROOT) -> pd.DataFrame:
 
 
 def _commit(root):
+    """(commit, dirty): the commit the checkout is on, and whether these two scripts differ from it."""
+    def git(*args):
+        r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=20)
+        return r.stdout if r.returncode == 0 else None
+
     try:
-        r = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=20)
-        return r.stdout.strip() or None if r.returncode == 0 else None
+        head = git("rev-parse", "HEAD")
+        changed = git("status", "--porcelain", "--", "src/pipeline/helene_depth.py", "src/pipeline/helene_dem10.py")
+        return (head.strip() or None if head else None), (None if head is None or changed is None else bool(changed.strip()))
     except Exception:
-        return None
+        return None, None
 
 
 def run(root=ROOT, validate_only=False, skip_30m=False, say=print) -> dict:
@@ -886,9 +902,10 @@ def run(root=ROOT, validate_only=False, skip_30m=False, say=print) -> dict:
     if after != before:
         changed = [k for k in shared if before[k] != after[k]]
         raise DepthError(f"a shared input changed while this ran ({changed}); nothing was written")
+    commit, dirty = _commit(root)
     meta = {
         "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-        "git_commit": _commit(root), "settings": SETTINGS, "marks": mark_counts, "build": validation["build"],
+        "git_commit": commit, "git_code_differs_from_commit": dirty, "settings": SETTINGS, "marks": mark_counts, "build": validation["build"],
         "skip_30m_check": bool(skip_30m), "inputs_before": before, "inputs_after": after,
         "headline": {"hidden_mark_median_m": hm["overall"]["median"], "tape_end_to_end_median_m": e2e["median"],
                      "tape_ground_only_median_m": tape["ground_only"]["median"]},

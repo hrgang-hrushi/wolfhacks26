@@ -31,8 +31,9 @@ def test_C3_a_point_takes_its_level_from_the_nearest_spot_on_the_line():
     assert r.wse == pytest.approx(102.0) and r.side_m == pytest.approx(50.0) and (r.v0, r.v1) == (0, 1)
     r = at(lines, 450, 300)  # nearest spot is on the second leg, three quarters up
     assert r.wse == pytest.approx(107.0) and (r.v0, r.v1) == (1, 2)
-    r = at(lines, 450, -30)  # outside the bend: the corner mark itself
-    assert r.wse == pytest.approx(104.0) and r.along_m == pytest.approx(0.0) and not r.end_rule
+    r = at(lines, 450, -30)  # outside the bend: the corner mark itself, 58 m away in a straight line
+    assert r.wse == pytest.approx(104.0) and not r.end_rule and r.lift_m == 0.0
+    assert r.along_m == pytest.approx(np.hypot(50, 30)) == pytest.approx(r.side_m)  # not 0: it is not on the mark
 
 
 def test_C4_between_two_streams_the_nearer_live_one_wins():
@@ -89,6 +90,13 @@ def test_C9_confidence_is_high_within_250_m_of_a_mark():
     r = at(lines, 251, 5)
     assert r.assessed and not r.high
     assert at(lines, 751, 5).high  # 249 m from the other mark
+    # where the nearest spot on the line is a mark itself, the distance is the straight line to that mark
+    bend = [H.mk_line("A", [(0, 0, 100.0), (400, 0, 100.4), (400, 400, 100.8)])]
+    near, far = at(bend, 400 + 141.4, -141.4), at(bend, 400 + 205, -205)  # 200 m and 290 m outside the corner
+    assert near.assessed and near.along_m == pytest.approx(200, abs=0.1) and near.high and near.wse == pytest.approx(100.4)
+    assert far.assessed and far.along_m == pytest.approx(289.9, abs=0.1) and not far.high  # was "0 m, high"
+    end = at(bend, -60, 0)  # past the first mark: 60 m from it, low confidence
+    assert end.end_rule and end.along_m == pytest.approx(60.0) and not end.high
 
 
 def test_C10_a_point_too_far_to_the_side_is_not_assessed_rather_than_dry():

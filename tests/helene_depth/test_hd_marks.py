@@ -29,8 +29,10 @@ def test_A3_a_mark_outside_the_box_is_dropped_and_counted(tmp_path):
     out["geometry"]["coordinates"] = [-80.0, 35.5]  # east of the box
     nowhere = H.mark(3, 0, 0, 600.0)
     nowhere["geometry"] = None
-    marks, counts = H.marks_from(tmp_path, [H.mark(1, 0, 0, 600.0), out, nowhere])
-    assert list(marks.mark_id) == ["1"] and counts["outside_box"] == 2
+    line = H.mark(4, 0, 0, 600.0)  # a mark must be a point; anything else has no usable location
+    line["geometry"] = {"type": "LineString", "coordinates": [[-82.5, 35.5], [-82.4, 35.6]]}
+    marks, counts = H.marks_from(tmp_path, [H.mark(1, 0, 0, 600.0), out, nowhere, line])
+    assert list(marks.mark_id) == ["1"] and counts["outside_box"] == 3
 
 
 def test_A4_two_creeks_with_one_name_stay_separate(tmp_path):
@@ -72,11 +74,15 @@ def test_A8_a_repeated_mark_id_is_used_once(tmp_path):
     marks, counts = H.marks_from(tmp_path, [first, again, H.mark(8, 100, 0, 601.0)])
     assert list(marks.mark_id) == ["7", "8"] and counts["repeated_id"] == 1
     assert marks.wse_m.iloc[0] == pytest.approx(600.0)  # the first one in the file is the one kept
+    a, b = H.mark(1, 0, 0, 600.0), H.mark(2, 100, 0, 601.0)  # two marks with a blank id are two marks, not a repeat
+    a["properties"]["HWM_ID"] = b["properties"]["HWM_ID"] = None
+    marks, counts = H.marks_from(tmp_path, [a, b, H.mark(3, 200, 0, 602.0)])
+    assert len(marks) == 3 and counts["repeated_id"] == 0 and marks.mark_id.is_unique
 
 
 def test_A9_poorly_graded_marks_do_not_draw_the_line(tmp_path, monkeypatch):
     feats = [H.mark(1, 0, 0, 600.0), H.mark(2, 100, 0, 650.0, quality="Poor"),
-             H.mark(3, 200, 0, 660.0, quality="Very Poor"), H.mark(4, 300, 0, 603.0, quality="Fair")]  # fmt: skip
+             H.mark(3, 200, 0, 660.0, quality="very poor "), H.mark(4, 300, 0, 603.0, quality="Fair")]  # fmt: skip
     marks, counts = H.marks_from(tmp_path, feats)
     assert list(marks.draws) == [True, False, False, True] and counts["draw_the_line"] == 2
     (line,) = hd.build_lines(marks)

@@ -66,6 +66,8 @@ def test_D5_water_below_the_ground_is_dry_never_negative(tmp_path):
     assert r.y_helene_depth_assessed and r.y_helene_depth_max_m == 0.0 and r.y_helene_depth_band == "dry"
     assert r.y_helene_depth_wet_share == 0.0 and r.y_helene_depth_point_max_m == 0.0
     assert [hd.band(v) for v in (0, 0.29, 0.3, 0.99, 1.0, 2.0, 7)] == ["dry", "under 0.3 m", "0.3 to 1 m", "0.3 to 1 m", "1 to 2 m", "over 2 m", "over 2 m"]
+    with pytest.raises(ValueError):
+        hd.band(float("nan"))  # a missing depth is never given a band
 
 
 def test_D6_a_road_with_one_low_end_reports_the_low_end_not_the_midpoint(tmp_path):
@@ -173,8 +175,8 @@ def test_D14_a_segment_with_no_neighbouring_kept_points_is_blank_not_zero():
     r = one(per, "s1")
     assert not r.y_helene_depth_assessed and r.n_helene_depth_points == 3
     row = hd.table(per, ["s0", "s1"]).set_index("seg_id").loc["s1"]
-    assert not row.y_helene_depth_assessed and np.isnan(row.y_helene_depth_max_m) and row.y_helene_depth_band is not "dry"
-    assert row.isna()["y_helene_depth_band"]
+    assert not row.y_helene_depth_assessed and np.isnan(row.y_helene_depth_max_m)
+    assert row.isna()["y_helene_depth_band"] and row.isna()["y_helene_depth_conf"]
 
 
 def test_D15_messy_structure_types_are_sorted_into_bridges_and_culverts():

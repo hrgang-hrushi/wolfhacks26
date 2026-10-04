@@ -59,6 +59,8 @@ def test_N4_hidden_mark_miss(real):
     lo, hi = hm["overall"]["range95"]
     assert lo <= hm["overall"]["median"] <= hi
     assert all(not b["too_few"] for b in hm["by_band"])
+    for b in hm["by_band"]:  # every distance band carries its own range
+        assert b["range95"][0] <= b["median"] <= b["range95"][1]
 
 
 def test_N5_end_to_end_miss_against_the_tape(real):
@@ -119,6 +121,11 @@ def test_N12_shared_inputs_were_not_changed_by_the_run(real):
     assert dem.sha256(P.marks) == meta["inputs_before"]["marks"]
     assert dem.sha256(P.bridges) == meta["inputs_before"]["bridges"]
     assert dem.sha256(P.seg_geom) == meta["inputs_before"]["segments_geom"]
+    if P.dem30.exists():  # the 30 m ground other code reads
+        assert dem.sha256(P.dem30) == meta["inputs_before"]["dem30"]
+    # segments.parquet is not compared with today's file: other work adds columns to it, and what matters
+    # here, that it holds the same roads in the same order, is what load_depth checks
+    assert meta["git_code_differs_from_commit"] is False
 
 
 @pytest.mark.network

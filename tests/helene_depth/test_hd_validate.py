@@ -196,7 +196,9 @@ def test_E14_no_evidence_means_refusal_not_a_pass(tmp_path, mini_root):
 def test_E15_an_empty_distance_band_reports_no_marks_and_gives_a_blank_typical_miss():
     bands = hd.band_table(_hm(40, 50.0))
     far = bands[3]
-    assert far == {"band": "500-1000 m", "lo": 500, "hi": 1000, "n": 0, "median": None, "p90": None, "too_few": True}
+    assert far == {"band": "500-1000 m", "lo": 500, "hi": 1000, "n": 0, "median": None, "p90": None,
+                   "range95": [None, None], "too_few": True}  # fmt: skip
+    assert bands[0]["range95"] == [pytest.approx(0.4), pytest.approx(0.4)]
     assert hd._typical_miss(bands, 50.0) == pytest.approx(0.4) and np.isnan(hd._typical_miss(bands, 700.0))
     pts = H.mk_pts([1.0, 1.0], along=[700.0, 700.0])
     r = hd.summarise(pts, [H.mk_line("A", [(0, 0, 1.0), (9, 0, 1.0)])], bands).iloc[0]
