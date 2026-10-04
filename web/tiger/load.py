@@ -84,7 +84,7 @@ def compression_stats(conn):
 
 def load(url, root=Path("."), schema=None, *, schedule_jobs=True, compress=True, stop_after=None, _before_commit=None):
     """Build from `root`, then load. Returns a summary dict. `stop_after` stops a load at a known point (tests only)."""
-    name = schema or config.schema_name()
+    name = config.check_schema_name(schema) if schema else config.schema_name()
     if stop_after not in (None, *STOP_POINTS):
         raise ValueError(f"stop_after must be one of {STOP_POINTS}")
     t0 = time.time()
@@ -148,9 +148,10 @@ def dump(root, out_dir, schema=None):
     status `loaded`, so the service answers "loading"), import each CSV into its table, run after_load.sql (it
     refreshes the summaries, compresses, and sets the record to `complete`). Running the three again reloads cleanly."""
     import csv
+    name = config.check_schema_name(schema) if schema else config.schema_name()   # before anything is written
     out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     built = build.build_all(root)
+    out_dir.mkdir(parents=True, exist_ok=True)
     for table, frame in built.tables.items():
         cols = tables.columns(table)
         with open(out_dir / f"{table}.csv", "w", newline="") as f:
@@ -158,12 +159,13 @@ def dump(root, out_dir, schema=None):
             w.writerow(cols)
             for row in build.to_rows(frame, cols):
                 w.writerow(["" if v is None else (v.isoformat() if hasattr(v, "isoformat") else v) for v in row])
-    name = schema or config.schema_name()
     setup = [f"CREATE SCHEMA IF NOT EXISTS {name};", f"SET search_path = {name}, public;"]
     setup += [text + ";" for _, text in tables.statements()]
-    setup.append("TRUNCATE " + ", ".join(DATA_TABLES) + ";")
+    # the console runs each statement on its own: the record goes in first, so the tables are never empty under a
+    # load that still reads as complete
     setup.append("INSERT INTO load_manifest (status, sources, row_counts, code_version) VALUES ('loaded', "
                  f"'{json.dumps(built.fingerprints)}'::jsonb, '{json.dumps(built.counts)}'::jsonb, '{code_version()}');")
+    setup.append("TRUNCATE " + ", ".join(DATA_TABLES) + ";")
     (out_dir / "setup.sql").write_text("\n".join(setup) + "\n")
     after = [f"SET search_path = {name}, public;"]
     after += [f"CALL refresh_continuous_aggregate('{v}', NULL, NULL);" for v in tables.SUMMARIES]

@@ -53,7 +53,7 @@ def replay(url, *, window_start=DEFAULT_START, window_end=DEFAULT_END, now=None,
     """Feed the window's rows in, shifted to end at `now`. Returns the counts and the shift."""
     if window_end <= window_start:
         raise ValueError("the window must end after it starts")
-    schema = schema or config.schema_name()
+    schema = config.check_schema_name(schema) if schema else config.schema_name()
     now = now or datetime.now(timezone.utc)
     shift = now - window_end
     batches = batches or max(1, int(round(minutes * 6)))               # about one batch every ten seconds
@@ -92,7 +92,7 @@ def replay(url, *, window_start=DEFAULT_START, window_end=DEFAULT_END, now=None,
 
 def clear(url, schema=None):
     """Remove every replayed row and bring the hourly summaries back to the real data."""
-    schema = schema or config.schema_name()
+    schema = config.check_schema_name(schema) if schema else config.schema_name()
     conn = config.connect(url, schema=schema)
     admin = config.connect(url, autocommit=True, schema=schema)
     try:

@@ -224,3 +224,19 @@ Non-blocking findings, all fixed in the next commit unless noted:
 10. Weak tests: R12 checked a constant the rank did not read (the rank now sorts by `RANK_KEYS` itself, and a tie test was added); T5 used `>` where the service flags at `>=`; A12 allowed 2.5 s where the spec says 2. Fixed. A17's mid-stream cases call the page generator directly, which the reviewer notes is true by construction now that each page is its own checkout: left as is.
 11. Documentation nits (`unavailable` from `--check`, 80 against 81 ms, the alert example's envelope). Fixed.
 
+### Claude critique, round 2 (`d38201f`): Overall Fail, on AC2 and AC3 only
+
+Scorecard: every dimension Acceptable except Test coverage, which stays **Fail** because the `db` tests cannot be run (AC2) and the real service was never loaded (AC3). The reviewer's words: "Nothing else blocks." It confirmed each round-1 finding as fixed and ran the tests that need no database (206 passed).
+
+Non-blocking findings from round 2, fixed in the commit after it:
+
+1. In the console files the tables were emptied before the `loaded` record was written, leaving a moment where empty tables read as complete. The record now goes in first.
+2. A schema name given on the command line went into SQL text unchecked. Every entry point now runs it through the same plain-name check, with a test.
+3. The live-test skip matched on a path prefix; it now compares resolved paths.
+
+Left as they are, and why: X2's "shows without a refresh" cannot be told apart from the replay's own refresh (D12 is the test for rows appearing with no refresh at all); S4's real-file half is the fingerprint comparison done by hand under AC7; S11 can only fail if a sweep of old test schemas is added back, which is the thing it guards; A17's mid-stream cases call the page generator directly. The plan file still mentions the removed `TIGER_TEST_ALLOW_REMOTE` switch; Deviations 11 records its removal.
+
+### Codex audit: not run yet
+
+Held until the `db` tests can run again. It would fail on AC2 for a reason no code change can fix, and each Codex run is rationed.
+

@@ -72,12 +72,16 @@ def database_url(env=None, env_file=None):
     return value
 
 
+def check_schema_name(name):
+    """A schema name is put into SQL text in a few places, so it has to be a plain lower-case name."""
+    if not isinstance(name, str) or not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", name):
+        raise ConfigError("the schema must be a plain lower-case name (letters, digits and underscores)")
+    return name
+
+
 def schema_name(env=None):
     env = os.environ if env is None else env
-    name = (env.get(SCHEMA_KEY) or DEFAULT_SCHEMA).strip()
-    if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", name):
-        raise ConfigError(f"{SCHEMA_KEY} must be a plain lower-case name")
-    return name
+    return check_schema_name((env.get(SCHEMA_KEY) or DEFAULT_SCHEMA).strip())
 
 
 def classify(exc):

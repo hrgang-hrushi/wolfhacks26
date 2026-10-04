@@ -133,10 +133,18 @@ def test_S3_there_is_no_default_address():
     assert "localhost:" not in src and "127.0.0.1:" not in src      # no fallback address in the module
 
 
-def test_S3_the_schema_name_must_be_plain():
+def test_S3_the_schema_name_must_be_plain(tmp_path):
     assert config.schema_name(env={}) == "unwatched"
     with pytest.raises(config.ConfigError):
         config.schema_name(env={config.SCHEMA_KEY: 'x"; DROP SCHEMA public; --'})
+    from web.tiger import load, replay
+    hostile = "public; DROP TABLE roads; --"
+    for call in (lambda: load.dump(tmp_path, tmp_path / "out", schema=hostile),          # the name goes into SQL text there
+                 lambda: load.load("unused", tmp_path, schema=hostile),
+                 lambda: replay.replay("unused", schema=hostile), lambda: replay.clear("unused", schema=hostile)):
+        with pytest.raises(config.ConfigError, match="plain lower-case name"):
+            call()
+    assert not (tmp_path / "out").exists()                                # refused before anything was written
 
 
 # ------------------------------------------------------------------------------------------------ S5, S9

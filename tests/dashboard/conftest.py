@@ -40,9 +40,9 @@ def pytest_collection_modifyitems(config, items):
     if os.environ.get("TIGER_LIVE_TESTS") == "1":
         return
     skip = pytest.mark.skip(reason="talks to the real Tiger service: set TIGER_LIVE_TESTS=1 to run it")
-    here = str(Path(__file__).parent)
+    here = Path(__file__).resolve().parent
     for item in items:
-        if "network" in item.keywords and str(item.fspath).startswith(here):
+        if "network" in item.keywords and here in Path(str(item.fspath)).resolve().parents:
             item.add_marker(skip)
 
 
