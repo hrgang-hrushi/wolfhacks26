@@ -56,7 +56,7 @@ Both together, at 267 taped marks: typical miss 0.50 m, one in ten off by more t
   3. it lies on a steep bank next to a set-aside point: walking away from a set-aside point, each further point is set aside while the ground climbs more than 2 m per 30 m; the point at the top of the climb is kept.
   Set-aside points count toward nothing. A missing bridge list stops the run.
 - **D13 Headline depth.** `y_helene_depth_max_m` is the deepest water held by two neighbouring kept points (the larger of min(depth_i, depth_i+1) over neighbouring pairs). One lone deep point cannot set it. The raw single-point maximum is kept beside it.
-- **D14 Per-segment columns.** `seg_id`, `y_helene_depth_assessed` (true when at least two neighbouring points were kept, which is what a headline needs), `y_helene_depth_max_m`, `y_helene_depth_point_max_m`, `y_helene_depth_wet_share` (kept points with depth above 0 divided by kept points), `y_helene_depth_band` (`dry`, `under 0.3 m`, `0.3 to 1 m`, `1 to 2 m`, `over 2 m`, from the headline), `y_helene_depth_conf` (`high` or `low`), `y_helene_depth_mark_dist_m` (distance along the line to the nearest mark: the larger of the two for the pair that set the headline; the median over kept points when dry), `y_helene_depth_typical_miss_m` (the typical miss for that distance, from the hidden-mark table; blank when that band has under 30 marks), `y_helene_depth_stream`, `n_helene_depth_marks` (distinct marks behind the kept points), `n_helene_depth_points` (kept points), `n_helene_depth_set_aside`. Ties are settled the same way every time: the headline pair is the first pair in road order that reaches the maximum; the distance, confidence and stream come from that pair (the stream of its deeper point, the first point when equal); when dry, the stream is the most common among kept points, alphabetical on a tie. `y_helene_depth_conf` is `high` when both points of the pair that set the headline have a mark within 250 m along the line and neither falls under the 100 m end rule (when dry: at least half of the kept points). Not assessed: every `y_` value blank except `y_helene_depth_assessed = False`; `n_helene_depth_marks` 0.
+- **D14 Per-segment columns.** `seg_id`, `y_helene_depth_assessed` (true when at least two neighbouring points were kept, which is what a headline needs), `y_helene_depth_max_m`, `y_helene_depth_point_max_m`, `y_helene_depth_wet_share` (kept points with depth above 0 divided by kept points), `y_helene_depth_band` (`dry`, `under 0.3 m`, `0.3 to 1 m`, `1 to 2 m`, `over 2 m`, from the headline), `y_helene_depth_conf` (`high` or `low`), `y_helene_depth_mark_dist_m` (distance along the line to the nearest mark: the larger of the two for the pair that set the headline; the median over kept points when dry; how the distance is measured changed after the audits: see Deviations 13), `y_helene_depth_typical_miss_m` (the typical miss for that distance, from the hidden-mark table; blank when that band has under 30 marks), `y_helene_depth_stream`, `n_helene_depth_marks` (distinct marks behind the kept points), `n_helene_depth_points` (kept points), `n_helene_depth_set_aside`. Ties are settled the same way every time: the headline pair is the first pair in road order that reaches the maximum; the distance, confidence and stream come from that pair (the stream of its deeper point, the first point when equal); when dry, the stream is the most common among kept points, alphabetical on a tie. `y_helene_depth_conf` is `high` when both points of the pair that set the headline have a mark within 250 m along the line and neither falls under the 100 m end rule (when dry: at least half of the kept points). Not assessed: every `y_` value blank except `y_helene_depth_assessed = False`; `n_helene_depth_marks` 0.
 - **D15 Names ban themselves.** Every column but `seg_id` starts with `y_` or `n_`, so `src.model.common.check_features` rejects them as model inputs. This is an outcome of the storm, not a clue.
 - **D16 Output.** `data/processed/flood_helene_depth.parquet`: one row per segment in the order of `data/processed/segments.parquet` (112,443). `data/processed/flood_helene_depth_points.parquet`: one row per sampled road point (segment, position, ground, water level, depth, flags). The two tables, the validation file and the notes file are all staged under temporary names and renamed only when all four are ready, notes last; a failure while staging leaves the previous files untouched. A depth above 15 m among kept points stops the run and names the segment. (Changed at execution: see Deviations 3.)
 - **D17 Hidden-mark test.** For each line-drawing mark, hide every line-drawing mark of its stream within a stretch of 0, 250 or 500 m along the line (0 hides only the mark itself), redraw that stream's line, and guess the mark's level with the same code that serves road points. The headline is the stretch-0 run. The table by distance uses, per mark and distance band (0-100, 100-250, 250-500, 500-1,000 m), the result from the smallest stretch that lands in that band. A band with under 30 marks is reported as "too few" (an empty band as 0 marks). If the stretch-0 run yields fewer than 30 guesses in total the build refuses, because no error number can be stated. Poor and Very Poor marks are guessed from the full lines and scored apart. The typical miss is also listed per stream group, so a stream whose survey numbering folds back on itself shows up by name.
@@ -178,11 +178,12 @@ Review file: `docs/reports/2026-10-03_helene-depth-map-plan-review.md`. Eight fi
 10. **Points file.** It also carries `lift_m`, `near_bridge` and `too_deep`.
 11. **G3** checks an allow-list of this change's paths, including files not yet committed, and only speaks on branch `helene-depth`.
 12. **Test counts.** 81 unit tests, not 80 (C13). Full suite: 663 passed, 2 skipped, both before and after `main` (at `277154f`) was merged into the branch.
-13. **Distance to a mark at a bend (after the review).** Where the nearest spot on a line is a mark itself, at a bend or at the end of a line, the first build reported the distance to the nearest mark as 0 m, although the road point could be up to 300 m from that mark. 261 assessed segments showed "0 m", 216 of them with high confidence. The distance is now the straight line to that mark; confidence and the typical-miss lookup follow it. Depths did not change; 43 segments moved from high to low confidence (1,395 to 1,352). C3 and C9 pin it.
+13. **One rule for the distance to the nearest mark (after the audits).** D9 and D14 measured it along the stream line only. That let a road point 290 m to the side of a mark, or outside a bend, count as "0 m from a mark, high confidence": in the first build 261 assessed segments showed "0 m", 216 of them high. The distance is now measured along the line to the spot beside the road point and then across to the point; where that spot is a mark itself (a bend, an end, or exactly level with a mark) it is the straight line to the mark. Confidence, the distance bands of the hidden-mark table and the typical-miss lookup all use it. Depths did not change. Segments with high confidence went from 1,395 to 1,118; no high-confidence road point is now more than 250 m from a mark. The first fix (`f868917`) covered only bends and ends; the second review round and the Codex audit both showed the gap beside a straight stretch and exactly level with a mark, closed in `7ce6726`. C3, C8 and C9 pin it.
 14. **D24 as built.** The depth script refuses any output whose file name does not start with `flood_helene_depth` (a name check, inside whatever output folder it is given; F8 drives it through the writer). The ground script writes only tile files and `manifest.json` into the tiles folder it is given, by default `data/processed/dem10_helene/`; it has no separate guard.
 15. **Reading the marks.** Beyond D1: a mark with no point number is dropped and counted (it cannot be placed on its line); a mark whose geometry is not a point is counted as outside the box; marks with a blank id are kept apart, not merged; grade names are matched without regard to letter case or stray spaces. None of these cases occurs in the real file (all drop counts are 0). Marks graded "ALTH" (104, meaning unknown) draw the line, as D3 implies.
 16. **A range for every distance band (after the review).** AC3 asks for the miss per band "with counts and a range"; the first build gave a range only for the overall figure. Each band now carries its own range, and N4 checks it.
-17. **Which code built the files.** The notes file records the commit and whether the two scripts differed from it. The first build ran before the first commit, so its notes named the base commit; the files were rebuilt from commit `f868917` and the notes now say so (N12).
+17. **Which code built the files.** The notes file records the commit and whether the two scripts differed from it. The first build ran before the first commit, so its notes named the base commit; the files were rebuilt from the committed code (last from `7ce6726`) and the notes now say so (N12).
+18. **Only the marks that carry weight are counted (after the Codex audit).** A point that takes one mark's level alone (a bend, an end, or exactly level with a mark) used to record both ends of its stretch as the marks behind it. It now records that one mark. `n_helene_depth_marks` fell for 294 assessed segments; 100 segments rest on a single mark. C11 pins it.
 
 ## Results (2026-10-03)
 
@@ -192,12 +193,14 @@ Review file: `docs/reports/2026-10-03_helene-depth-map-plan-review.md`. Eight fi
 
 | Nearest remaining mark | Typical miss | 95% range | One in ten misses by more than | Marks |
 |---|---|---|---|---|
-| Within 100 m | 0.23 m | 0.18 to 0.28 m | 0.94 m | 693 |
-| 100 to 250 m | 0.31 m | 0.26 to 0.40 m | 1.08 m | 474 |
-| 250 to 500 m | 0.36 m | 0.31 to 0.48 m | 1.10 m | 374 |
-| 500 m to 1 km | 0.39 m | 0.29 to 0.46 m | 1.11 m | 163 |
+| Within 100 m | 0.20 m | 0.17 to 0.25 m | 0.77 m | 597 |
+| 100 to 250 m | 0.31 m | 0.26 to 0.42 m | 1.19 m | 462 |
+| 250 to 500 m | 0.38 m | 0.32 to 0.50 m | 1.14 m | 466 |
+| 500 m to 1 km | 0.38 m | 0.29 to 0.47 m | 1.26 m | 202 |
 
-Before the level-change rule the same table read 0.24, 0.40, 0.58 and 0.78 m, and 0.37 m overall (1,610 marks). Poor and Very Poor marks, scored apart: 0.44 m (88 marks). No stream with five or more guessed marks has a typical miss above 1 m.
+The distance is the one of Deviations 13. A mark is counted once per band, so the rows add up to more than 1,199.
+
+Before the level-change rule the table (then by distance along the line only) read 0.24, 0.40, 0.58 and 0.78 m, and 0.37 m overall (1,610 marks). Poor and Very Poor marks, scored apart: 0.44 m (88 marks). No stream with five or more guessed marks has a typical miss above 1 m.
 
 **Against the tape (AC4).** Ground only: 0.24 m (280 marks; one in ten off by more than 1.30 m). End to end, with the mark's level guessed from its neighbours: 0.37 m (190 marks; 95% range 0.27 to 0.55 m; one in ten off by more than 1.36 m). The end-to-end estimate leans 0.20 m deep. The typical taped depth is 1.04 m, so the miss is roughly a third of a typical depth.
 
@@ -211,9 +214,9 @@ Before the level-change rule the same table read 0.24, 0.40, 0.58 and 0.78 m, an
 | 1 to 2 m | 175 |
 | Over 2 m | 262 |
 
-Confidence is high for 1,352 and low for 250. Among segments with water the middle depth is 1.7 m, one in ten is above 4.6 m and the deepest is 9.7 m (Little Crabtree Creek, low confidence). The other 110,841 segments are blank.
+Confidence is high for 1,118 and low for 484. Among segments with water the middle depth is 1.7 m, one in ten is above 4.6 m and the deepest is 9.7 m (Little Crabtree Creek, low confidence). The other 110,841 segments are blank.
 
-**Known places (AC6).** Biltmore Village (`ncdot:21000025011:7.235`): 4.2 m, high confidence. Pack Square: not assessed. The bridge-end segment: not assessed, river-end points set aside.
+**Known places (AC6).** Biltmore Village (`ncdot:21000025011:7.235`): 4.2 m, high confidence, 14 marks behind it. Pack Square: not assessed. The bridge-end segment: not assessed, river-end points set aside.
 
 **Against the failure labels (D21, not a gate).** Of 573 assessed segments with at least 0.3 m of water, 37.5% are marked failed in Helene; of 954 dry ones, 11.5%.
 
@@ -233,7 +236,7 @@ A limitation line:
 
 ## Audits
 
-**Claude critique, round 1 (on `4666360`): Acceptable overall**, every dimension Acceptable. It rebuilt the three output files in memory from the committed code and got the same bytes, and matched every Results number to the files. Fourteen findings, none forcing a downgrade; all were acted on in `f868917` and in this text:
+**Claude critique, round 1 (on `4666360`): Acceptable overall**, every dimension Acceptable. It rebuilt the three output files in memory from the committed code and got the same bytes, and matched the Results numbers to the files except where findings 5, 6 and 8 say otherwise. Fourteen findings, none forcing a downgrade; all were acted on in `f868917` and in this text:
 
 | # | Finding | What was done |
 |---|---|---|
@@ -252,4 +255,21 @@ A limitation line:
 | 13 | `band` would label a missing depth "over 2 m" (not reachable) | It now raises; D5 checks |
 | 14 | Replies are accepted with one extra cell, while three are fetched | Left as is: one cell is what interpolation needs; D4's reply rule says "covers the tile" |
 
-Codex audit: recorded below once run.
+**Claude critique, round 2 (on `1b9de00`): Acceptable overall.** All 14 round-1 findings confirmed resolved, the outputs again rebuilt byte-identical in memory, every Results number matched. One new finding and four nits:
+
+| # | Finding | What was done |
+|---|---|---|
+| 1 | The bend fix left the same gap beside a straight stretch: 1,708 high-confidence road points lay more than 250 m to the side of the line | One distance rule everywhere: Deviations 13 (`7ce6726`) |
+| n1 | This section overstated what round 1 had matched | Corrected above |
+| n2 | D14 had no pointer to Deviations 13 | Added |
+| n3 | The full-suite count could not be checked by the reviewer | Run again after each fix: 663 passed, 2 skipped |
+| n4 | N12 would fail, not skip, where git cannot be asked | N12 now accepts "unknown" |
+
+**Codex audit, round 1 (on `1b9de00`): Fail overall** (Plan adherence Fail; Scope, Review compliance and Documentation Excellent; the rest Acceptable). File: `docs/specs/2026-10-03_helene-depth-map-audit.md` holds the latest round. It rebuilt the outputs byte-for-byte in memory and found two defects:
+
+| # | Finding | What was done |
+|---|---|---|
+| 1 | A point exactly level with a mark still reported 0 m and high confidence (the bend fix tested "past the mark", not "on it") | Fixed with the single distance rule: Deviations 13; C9 covers the exact case and a hair off it |
+| 2 | A point taking one mark's level alone counted both ends of its stretch as supporting marks (294 segments) | Fixed: Deviations 18; C11 |
+
+Codex audit, round 2: recorded below once run.

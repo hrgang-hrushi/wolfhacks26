@@ -65,11 +65,11 @@ The marks file can be pulled again without a login from `https://services.arcgis
 | `y_helene_depth_point_max_m` | Deepest single point |
 | `y_helene_depth_wet_share` | Share of the assessed points under water |
 | `y_helene_depth_band` | `dry`, `under 0.3 m`, `0.3 to 1 m`, `1 to 2 m`, `over 2 m` |
-| `y_helene_depth_conf` | `high` when both points that set the depth have a mark within 250 m and neither lies past the end of a stream line; otherwise `low` |
-| `y_helene_depth_mark_dist_m` | Distance to the nearest mark: along the stream line, or straight to the mark where the nearest spot on the line is a mark itself (a bend or an end) |
+| `y_helene_depth_conf` | `high` when both points that set the depth are within 250 m of a mark (by the distance below) and neither lies past the end of a stream line; otherwise `low` |
+| `y_helene_depth_mark_dist_m` | Distance from the road to the nearest mark: along the stream line to the spot beside the road, then across to the road. A road 290 m to the side of a mark is 290 m from it, not 0 |
 | `y_helene_depth_typical_miss_m` | Typical miss at that distance, from the hidden-mark test |
 | `y_helene_depth_stream` | The stream whose marks were used |
-| `n_helene_depth_marks` | Marks behind the estimate |
+| `n_helene_depth_marks` | Marks whose levels the estimate was drawn from (a road level with one mark rests on that mark alone) |
 | `n_helene_depth_points` | Road points used |
 | `n_helene_depth_set_aside` | Road points set aside as bridges |
 
@@ -88,13 +88,13 @@ Guessing a hidden mark from its neighbours: 0.22 m with a mark within 100 m, 0.5
 |---|---|
 | 10 m against 30 m ground, 280 taped depths | 0.24 m against 0.61 m |
 | Hidden marks, typical miss | 0.27 m (1,199 marks; range 0.23 to 0.33 m) |
-| ... with a mark within 100 m | 0.23 m (range 0.18 to 0.28) |
-| ... 100 to 250 m | 0.31 m (0.26 to 0.40) |
-| ... 250 to 500 m | 0.36 m (0.31 to 0.48) |
-| ... 500 m to 1 km | 0.39 m (0.29 to 0.46) |
+| ... with a mark within 100 m | 0.20 m (range 0.17 to 0.25) |
+| ... 100 to 250 m | 0.31 m (0.26 to 0.42) |
+| ... 250 to 500 m | 0.38 m (0.32 to 0.50) |
+| ... 500 m to 1 km | 0.38 m (0.29 to 0.47) |
 | End to end against the tape | 0.37 m (190 marks; one in ten off by more than 1.4 m) |
 
-1,602 segments assessed out of 112,443; 648 had water (75 under 0.3 m, 136 from 0.3 to 1 m, 175 from 1 to 2 m, 262 over 2 m). Biltmore Village reads 4.2 m. Of the segments with at least 0.3 m of water, 37.5% are marked failed in Helene, against 11.5% of the dry ones.
+1,602 segments assessed out of 112,443; 648 had water (75 under 0.3 m, 136 from 0.3 to 1 m, 175 from 1 to 2 m, 262 over 2 m). Confidence is high for 1,118 of them and low for 484. Biltmore Village reads 4.2 m. Of the segments with at least 0.3 m of water, 37.5% are marked failed in Helene, against 11.5% of the dry ones.
 
 The 0.24 m figure is with the interpolation the build uses. Read the way the USGS point service reads (the cell that holds the point), the same tiles give 0.20 m.
 
