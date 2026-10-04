@@ -54,6 +54,7 @@ import { casedLayers, pinLayer, roadLayers, selectionLayers, visibleSegs, widthS
 import MapLibreDeck from '../lib/MapLibreDeck';
 import { NC_VIEW, type MapHandle, type MapView } from '../lib/mapTypes';
 import { pinLabelLayer } from '../lib/pinLabels';
+import { useTiger, type AlertsReply, type CameraAlert } from '../lib/tiger';
 import { MODES, useGovPrefs, useTheme, type KpiKey } from '../lib/prefs';
 import { useDetail } from '../lib/hooks';
 import { Legend } from '../lib/ui';
@@ -65,13 +66,14 @@ import { DisplayMenu, Splitter } from './Layout';
 import { CountySelect, FilterButton, FilterChips, LayerSwitch, SearchBox } from './MapControls';
 import { SegmentPanel } from './SegmentPanel';
 import { PrintStorm, StormPanel } from './StormPanel';
+import { DatabasePanel, FloodWatch } from './Tiger';
 import { TransparencyPanel } from './TransparencyPanel';
 import { OrderPanel, PrintOrder, WorkOrdersTable } from './WorkOrders';
 import { WorkQueue } from './WorkQueue';
 import './gov.css';
 
-type Side = 'road' | 'order' | 'storm' | 'model';
-type Bottom = 'queue' | 'orders' | 'alerts';
+type Side = 'road' | 'order' | 'storm' | 'model' | 'db';
+type Bottom = 'queue' | 'orders' | 'alerts' | 'watch';
 type PrintJob = { kind: 'order'; order: WorkOrder } | { kind: 'storm'; rows: Row[] };
 
 const MAX_SHARDS = 40;
@@ -84,6 +86,9 @@ const MIN_BOTTOM_H = 120;
 const DISPATCH_CASING: RGBA = [29, 78, 216, 255];
 const ORDER_CASING: RGBA = [124, 58, 237, 255];
 const STORM_PIN: RGBA = [153, 27, 27, 255];
+const WATCH_CAMERA: RGBA = [220, 38, 38, 255];
+const WATCH_DRY: RGBA = [148, 163, 184, 235];
+const WATCH_SENSOR: RGBA = [37, 99, 235, 255];
 
 function isPathItem(o: unknown): o is PathItem {
   return typeof o === 'object' && o !== null && 'seg' in o;
@@ -132,6 +137,10 @@ export default function GovApp() {
   const [target, setTarget] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // The Tiger Data database is optional: without it these two views are simply not offered.
+  const tigerState = useTiger();
+  const tigerOn = tigerState.kind !== 'off' && tigerState.kind !== 'checking';
+  const [watch, setWatch] = useState<AlertsReply | null>(null);
 
   const [queueData, setQueueData] = useState<{ county: string; rows: Row[]; perTier: number | null } | null>(null);
   const [storm, setStorm] = useState<{ rows: Row[]; min: number } | null>(null);
@@ -276,6 +285,18 @@ export default function GovApp() {
     [stormMode, storm, stormN],
   );
 
+  // Flood watch: flagged cameras and alerting water-level stations, while that tab is open.
+  const watchPins = useMemo<Pin[]>(() => {
+    if (bottom !== 'watch' || !watch) return [];
+    const cams = watch.camera_alerts
+      .filter((a) => a.lon != null && a.lat != null)
+      .map((a) => ({ id: `cam-${a.camera_id}-${a.replay}`, c: [a.lon!, a.lat!] as [number, number], color: a.known_dry ? WATCH_DRY : WATCH_CAMERA, radius: a.known_dry ? 6 : 9 }));
+    const sensors = watch.sensor_alerts
+      .filter((s) => s.lon != null && s.lat != null)
+      .map((s) => ({ id: `sen-${s.station}-${s.replay}`, c: [s.lon!, s.lat!] as [number, number], color: WATCH_SENSOR, radius: 9 }));
+    return [...cams, ...sensors];
+  }, [bottom, watch]);
+
   const layers = useMemo<Layer[]>(() => {
     const out: Layer[] = roadLayers({ shards: road.shards, mode, filter, onPick: pickSeg, widthScale, dim: stormMode });
     out.push(...casedLayers('dispatched', dispatched, mode, DISPATCH_CASING, 10, 4, pickSeg));
@@ -285,8 +306,19 @@ export default function GovApp() {
       out.push(pinLayer('storm', stormPins, (p) => void pickRow(p.row, true)));
       if (stormPins[0].label) out.push(pinLabelLayer('storm', stormPins));
     }
+    if (watchPins.length) out.push(pinLayer('watch', watchPins, (p) => mapRef.current?.flyTo(p.c[0], p.c[1], 14), theme.dark));
     return out;
-  }, [road.shards, mode, filter, pickSeg, widthScale, stormMode, dispatched, openOrderSegs, selection, stormPins, pickRow, theme.dark]);
+  }, [road.shards, mode, filter, pickSeg, widthScale, stormMode, dispatched, openOrderSegs, selection, stormPins, pickRow, theme.dark, watchPins]);
+
+  const pickCamera = useCallback(
+    (a: CameraAlert) => {
+      if (a.lon == null || a.lat == null) return;
+      // A camera matched to a state road opens that road; otherwise the map just goes to the camera.
+      if (a.road) void pickRow({ id: a.road.seg_id, c: [a.lon, a.lat] } as Row, true);
+      mapRef.current?.flyTo(a.lon, a.lat, 14);
+    },
+    [pickRow],
+  );
 
   const getTooltip = useCallback(
     (info: PickingInfo) => {
@@ -651,8 +683,9 @@ export default function GovApp() {
                 [
                   ['road', 'Road'],
                   ['order', 'Work order'],
-                  ['storm', 'Storm readiness'],
+                  ['storm', tigerOn ? 'Storm' : 'Storm readiness'],
                   ['model', 'Model'],
+                  ...(tigerOn ? [['db', 'Database']] : []),
                 ] as [Side, string][]
               ).map(([k, label]) => (
                 <button key={k} type="button" role="tab" aria-selected={side === k} className={side === k ? 'on' : ''} onClick={() => (k === 'storm' ? enterStorm() : setSide(k))}>
@@ -709,6 +742,7 @@ export default function GovApp() {
                 />
               )}
               {side === 'model' && <TransparencyPanel stats={stats} />}
+              {side === 'db' && <DatabasePanel state={tigerState} />}
             </div>
           </aside>
           )}
@@ -735,6 +769,7 @@ export default function GovApp() {
                 ['queue', 'Work queue'],
                 ['orders', `Work orders (${wo.orders.length})`],
                 ['alerts', 'Alerts'],
+                ...(tigerOn ? [['watch', 'Flood watch']] : []),
               ] as [Bottom, string][]
             ).map(([k, label]) => (
               <button key={k} type="button" role="tab" aria-selected={bottom === k} className={bottom === k ? 'on' : ''} onClick={() => setBottom(k)}>
@@ -783,6 +818,14 @@ export default function GovApp() {
             {bottom === 'orders' && <WorkOrdersTable orders={wo.orders} crews={wo.crews} activeId={activeOrderId} onOpen={openOrder} />}
             {bottom === 'alerts' && (
               <AlertsPanel stats={stats} queueRows={queue.rows} stormRows={storm?.rows ?? null} stormMin={storm?.min ?? 0.5} county={filters.county} onPick={(r) => void pickRow(r)} />
+            )}
+            {bottom === 'watch' && (
+              <FloodWatch
+                state={tigerState}
+                onAlerts={setWatch}
+                onPickCamera={pickCamera}
+                onPickSensor={(s) => s.lon != null && s.lat != null && mapRef.current?.flyTo(s.lon, s.lat, 14)}
+              />
             )}
           </div>
           )}

@@ -1,12 +1,21 @@
 # Unwatched Roads: web dashboards
 
-One Vite + React app with two routes:
+One Vite + React app with three routes:
 
 - **`/gov`** agency dashboard (desktop): map, ranked work queue, work orders, storm readiness, alerts, model transparency.
 - **`/m`** judge dashboard (phone): map, Condition / Flood / Model in action, with the Helene backtest reveal.
+- **`/dashboard`** executive dashboard: a statewide map and three summary cards.
 - **`/`** sends narrow screens to `/m` and everything else to `/gov`.
 
-There is no backend. The app reads static JSON from `public/data/`, which a Python script builds from the prediction file.
+`/gov` and `/m` read static JSON from `public/data/`, which a Python script builds from the prediction file. They need no backend. `/dashboard` calls the API in `server/main.py` (`/api/segments/bbox` and friends) and falls back to a bundled sample of roads when it is not there. When that API has a Tiger Data database behind it, `/gov` also shows a flood watch and a database panel (`docs/features/TIGER_DASHBOARD.md`).
+
+## Display settings
+
+- **Theme.** Light, dark or match the device, from the moon button on `/gov` and `/m` or the settings button on `/gov`. Light is the default. The choice is kept in the browser and applied before first paint (`src/lib/prefs.ts`, and a small script in `index.html`).
+- **Panels on `/gov`.** Drag the divider between the map and the side panel, or between the map and the bottom panel, to resize. Double-click a divider to reset it. Each panel can be hidden and shown again, and the bottom panel can be maximised.
+- **What shows on `/gov`.** The settings button chooses table density, which summary tiles show, which work queue columns show, and whether the map legend and hints show. "Reset layout" puts everything back.
+- **Keys on `/gov`.** `/` focuses the search box, `1` to `4` change what the map is coloured by, `Esc` clears the selection.
+- **Links.** Selecting a road on `/gov` puts `?seg=...&at=...` in the address bar; that link reopens the same road.
 
 ## Run it locally
 

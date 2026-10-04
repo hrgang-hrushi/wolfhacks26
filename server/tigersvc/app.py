@@ -1,3 +1,4 @@
+# GENERATED from web/service/app.py by scripts/sync_tiger_service.py. Edit that file, then rerun the script.
 """The read-only data service in front of the Tiger Data database.
 
 Run:   web/.venv/bin/uvicorn web.service.app:app --host 0.0.0.0 --port 8000 --workers 1
@@ -27,8 +28,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from psycopg_pool import ConnectionPool, PoolClosed, PoolTimeout
 
-from web.service import queries
-from web.tiger import config, export
+from tigersvc import queries
+from tigersvc import config, export
 
 RISK_PAGE = 5000
 LOGGERS = ("psycopg.pool", "psycopg")

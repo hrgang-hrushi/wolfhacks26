@@ -1,6 +1,6 @@
 # Tiger Data database and data service
 
-Status: built and tested on a local TimescaleDB on 2026-10-03. Not yet loaded into the real Tiger Data service (the connection setting was not on the machine and the venue network blocks the service's port). No frontend reads it yet. Living document; the run spec for the first build is `docs/specs/2026-10-03_tiger-dashboard.md` and its plan is `docs/reports/2026-10-03_tiger-dashboard-plan.md`. How to run each command is in `web/tiger/README.md`.
+Status: built and tested on a local TimescaleDB on 2026-10-03. Since 2026-10-04 the hosted API can serve it under `/api/tiger` and the `/gov` dashboard reads it (see "On the hosted site" below). Not yet loaded into the real Tiger Data service: the connection setting is not on the machine, so the screens that read it have only been seen with sample replies, never against a real database. Living document; the run spec for the first build is `docs/specs/2026-10-03_tiger-dashboard.md` and its plan is `docs/reports/2026-10-03_tiger-dashboard-plan.md`. How to run each command is in `web/tiger/README.md`.
 
 ## What it is
 
@@ -127,6 +127,32 @@ Whether crash rate belongs in this file is an open question for the user.
 
 The real readings are from late September, so nothing in the database changes on its own during a demo. `python -m web.tiger.replay` copies the real sensor and camera rows of the storm's peak hour (2026-09-27 15:00 to 16:00 UTC) into the tables with their times shifted to end now, a few at a time. The hourly summaries and `/api/alerts` update as the rows arrive, and the alert reads as live from the first batch. Every replayed row keeps its original time in `replay_of` and is labelled as a replay wherever it appears. Replayed rows never count toward the peak hours or the check command. A replayed row that would land exactly on an existing row's time is left out, never written over it, and the command reports how many it left out. `--clear` removes them.
 
+## On the hosted site
+
+The hosted API (`server/main.py`, deployed by Vercel from the `server/` folder) attaches this service under `/api/tiger` when the host has `TIGER_DATABASE_URL` set. Vercel reaches the database's port even though the venue network does not.
+
+| Route | What it is |
+|---|---|
+| `/api/tiger/status` | `{"configured": true or false, "state": ...}`. Always answers, database or not |
+| `/api/tiger/health`, `/summary`, `/worklist`, `/road`, `/alerts`, `/alerts/peaks`, `/camera_history`, `/stats`, `/export/risk.csv`, `/export/dictionary` | the routes in the table above, with `/api/tiger` in place of `/api` |
+
+Without the setting, `/api/tiger/status` says `configured: false`, the other routes are 404, and nothing else on the site changes.
+
+The hosting service builds the API from `server/` alone, so the service's modules are copied there by `python scripts/sync_tiger_service.py` (into `server/tigersvc/`). `web/` is the source of truth; a test fails if the copy is out of date.
+
+What `/gov` shows when the database is connected (`web/src/gov/Tiger.tsx`, `web/src/lib/tiger.ts`):
+
+- **Flood watch** (a tab in the bottom panel): flagged cameras and alerting water-level stations for the newest two hours, asked again every 15 seconds, so a storm replay shows up as it arrives. The busiest recorded hours are listed beside it; choosing one opens that hour. Flagged cameras and stations are pinned on the map. A camera matched to a state road opens that road. Known-dry NCDOT stills are listed apart as known false alarms, and replayed rows are labelled.
+- **Database** (a tab in the side panel): rows, time chunks, compressed chunks and bytes before and after for each time-stamped table; the running summaries; the database size and versions; and the risk-file download.
+
+When the setting is absent the two tabs are not offered at all. When the database does not answer, or a load is in progress, the tabs say so and check again every 45 seconds.
+
+To turn it on:
+
+1. Put the connection string in `data/raw/tiger.env` (see `web/tiger/README.md`).
+2. Load the data. On a network that reaches the port: `py -m web.tiger.load`, then `py -m web.tiger.verify`. From the venue network: `py -m web.tiger.load --dump-dir data/processed/tiger_dump`, then in the Tiger console run `setup.sql`, import each CSV into its table, and run `after_load.sql`.
+3. In the Vercel project, add the environment variable `TIGER_DATABASE_URL` with the same connection string, and redeploy.
+
 ## Reaching the real database
 
 The venue network blocks the port Tiger services listen on. In order: test the port (`--check`); use a phone hotspot; else load through Tiger's browser console from files the loader writes (`--dump-dir`). The service itself has to run on a host that can reach the database and is reached by a page over 443. Hosting, pushing and the domain need the user's yes.
@@ -143,6 +169,8 @@ The venue network blocks the port Tiger services listen on. In order: test the p
 | Risk file | `web/tiger/export.py` |
 | Storm replay | `web/tiger/replay.py` |
 | Service | `web/service/app.py`, `web/service/queries.py` |
+| The copy the hosted API imports | `server/tigersvc/` (written by `scripts/sync_tiger_service.py`) |
+| Screens that read it | `web/src/gov/Tiger.tsx`, `web/src/lib/tiger.ts` |
 | How to run | `web/tiger/README.md` |
 | Tests | `tests/dashboard/` |
 | Dependencies | `web/requirements.txt`, installed in `web/.venv` |

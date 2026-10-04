@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -300,6 +301,40 @@ app.add_middleware(
 )
 
 
+# =============================================================================
+# Tiger Data (optional)
+# =============================================================================
+# The camera and sensor flood readings, the ranked work list and the risk file live in a Tiger Data
+# (Postgres + TimescaleDB) database. Its read-only service (server/tigersvc, copied from web/ by
+# scripts/sync_tiger_service.py) is attached under /api/tiger when TIGER_DATABASE_URL is set on the
+# host. Without that setting, or if the service cannot start, every other route works as before.
+
+
+def _attach_tiger(api: FastAPI) -> str:
+    if not os.environ.get("TIGER_DATABASE_URL", "").strip():
+        return "not configured"
+    try:
+        from tigersvc import app as tiger
+
+        # A hosted function sleeps between requests: connect on first use, and test a connection before lending it.
+        settings = tiger.Settings(pool_min=0, pool_max=2, check_connections=True, pool_wait=6.0)
+        pool, settings.schema = tiger.make_pool(settings)
+        api.mount("/api/tiger", tiger.create_app(pool, settings=settings, prefix=""))
+        return "attached"
+    except Exception as exc:  # the road API must keep working; the driver's text can name the host, so it is not logged
+        logger.warning("Tiger Data service not attached (%s)", type(exc).__name__)
+        return "failed to start"
+
+
+@app.get("/api/tiger/status")
+def tiger_status():
+    """Whether the Tiger Data routes exist on this deployment. /api/tiger/health then says if the database answers."""
+    return {"configured": TIGER_STATE == "attached", "state": TIGER_STATE}
+
+
+TIGER_STATE = _attach_tiger(app)
+
+
 ROUTE_CORRIDORS = {
     "asheville-helene": {
         "id": "asheville-helene",
@@ -450,6 +485,7 @@ def root():
             "/api/segments/{seg_id}",
             "/api/routes/corridors",
             "/api/routes/safe-route",
+            "/api/tiger/status",
         ],
     }
 

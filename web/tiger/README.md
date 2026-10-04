@@ -58,6 +58,16 @@ web/.venv/bin/uvicorn web.service.app:app --host 0.0.0.0 --port 8000 --workers 1
 `http://127.0.0.1:8000/docs` lists every route and lets you try it. It uses port 8000, the same as `src/api.py`; run one
 or the other.
 
+## The hosted API
+
+The site's API (`server/main.py`) serves these same routes under `/api/tiger` when its host has `TIGER_DATABASE_URL` set, and `/gov` then shows a flood watch and a database panel. It imports a copy of the service from `server/tigersvc/`, because the hosting service builds from `server/` alone. After changing `web/service/*.py`, `web/tiger/config.py`, `export.py` or `schema.py`:
+
+```
+python scripts/sync_tiger_service.py
+```
+
+`tests/web/test_tiger_sync.py` fails while the copy is out of date. Details: `docs/features/TIGER_DASHBOARD.md`, "On the hosted site".
+
 ## When the venue network blocks the database port
 
 Tiger services listen on a high port and this network blocks those. In order: `--check`; a phone hotspot; else

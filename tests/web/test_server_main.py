@@ -8,7 +8,8 @@ import pytest
 pytest.importorskip("fastapi")  # the pipeline environment does not carry the web server
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "server"))
+# server/ is the hosted API's own root. It goes last on the path so nothing here shadows the repo's packages.
+sys.path.append(str(ROOT / "server"))
 import main  # noqa: E402
 
 
@@ -87,3 +88,28 @@ def test_requests_are_capped_and_checked():
     assert client.get("/api/segments/bbox", params={"minx": "nan", "miny": 35, "maxx": -78, "maxy": 36}).status_code == 422
     assert client.get("/api/segments/bbox", params={"minx": -78, "miny": 35, "maxx": -79, "maxy": 36}).status_code == 422
     assert client.get("/api/health").json()["status"] == "ok"
+
+
+def test_tiger_routes_are_absent_without_the_setting():
+    from fastapi.testclient import TestClient
+
+    client = TestClient(main.app)
+    if main.TIGER_STATE == "not configured":
+        assert client.get("/api/tiger/status").json() == {"configured": False, "state": "not configured"}
+        assert client.get("/api/tiger/health").status_code == 404
+    assert client.get("/api/stats").status_code == 200          # the road API works either way
+
+
+def test_tiger_service_attaches_and_reports_an_unreachable_database(monkeypatch):
+    """With the setting present the service mounts at once, and a database that does not answer is a clean 503."""
+    pytest.importorskip("psycopg_pool")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("TIGER_DATABASE_URL", "postgresql://nobody@127.0.0.1:9/none")   # nothing listens on port 9
+    api = FastAPI()
+    assert main._attach_tiger(api) == "attached"
+    reply = TestClient(api).get("/api/tiger/health")
+    assert reply.status_code == 503
+    body = reply.json()
+    assert body["error"] == "database unavailable" and "127.0.0.1" not in reply.text
