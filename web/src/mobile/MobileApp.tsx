@@ -6,7 +6,7 @@
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Layer } from '@deck.gl/core';
-import { Building2, Info, LocateFixed, X } from 'lucide-react';
+import { Building2, Info, LocateFixed, Moon, Sun, X } from 'lucide-react';
 import {
   cellsForBounds,
   distanceToSeg,
@@ -23,6 +23,7 @@ import {
 import { pinLayer, roadLayers, selectionLayers, widthScaleForZoom, type Pin } from '../lib/layers';
 import { boundsFor, googleConfigured, NC_BOUNDS, PLACES, type MapHandle, type MapView } from '../lib/mapTypes';
 import { useDetail, useMediaQuery } from '../lib/hooks';
+import { useTheme } from '../lib/prefs';
 import { Legend } from '../lib/ui';
 import { useRoadData, useStats } from '../lib/useRoadData';
 import { AboutSheet } from './AboutSheet';
@@ -61,7 +62,8 @@ function inNC(lng: number, lat: number): boolean {
 
 export default function MobileApp() {
   const { stats, error } = useStats();
-  const dark = false; // Unified with Executive Dashboard light theme specification
+  // Light unless the visitor switches; the choice is shared with /gov and kept in this browser.
+  const { dark, toggle: toggleTheme } = useTheme();
   const narrow = useMediaQuery('(max-width: 600px)');
   const mapRef = useRef<MapHandle>(null);
 
@@ -317,6 +319,9 @@ export default function MobileApp() {
           >
             <Building2 size={18} />
           </a>
+          <button type="button" className="m-icon-btn" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} title={dark ? 'Light mode' : 'Dark mode'} onClick={toggleTheme}>
+            {dark ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
           <button type="button" className="m-icon-btn" aria-label="About this model" onClick={() => setAboutOpen(true)}>
             <Info size={18} />
           </button>

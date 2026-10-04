@@ -6,6 +6,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import {
+  HO_RATE,
   TIERS,
   countyName,
   parseId,
@@ -284,6 +285,20 @@ export function stormCsv(rows: Row[], stats: Stats | null): string {
     rows.map((r) => [
       r.rank ?? '', routeName(r.id), countyName(r.id, stats) ?? '', r.bmp ?? parseId(r.id).mp, r.emp ?? '',
       r.fr ?? '', r.to ?? '', r.flood ?? '', r.id, r.c[0], r.c[1], '', '', '',
+    ]),
+  );
+}
+
+/** The work queue as it is filtered and sorted on screen. An empty field means unknown or not assessed. */
+export function queueCsv(rows: Row[], stats: Stats | null): string {
+  return csv(
+    ['route', 'county', 'from_mp', 'to_mp', 'tier', 'priority_score', 'years_to_poor', 'wear_heldout', 'cracking_probability',
+      'flood_score', 'rating', 'survey_year', 'vehicles_per_day', 'traffic_source', 'ncdot_treatment', 'ncdot_cost', 'seg_id',
+      'longitude', 'latitude'],
+    rows.map((r) => [
+      routeName(r.id), countyName(r.id, stats) ?? '', r.bmp ?? parseId(r.id).mp, r.emp ?? '', TIERS[r.t].label, r.s, r.ytp ?? '',
+      r.ho & HO_RATE ? 'yes' : 'no', r.crack, r.hz ? (r.flood ?? '') : '', r.rtg ?? '', r.sy ?? '', r.aadt ?? '', r.as ?? '',
+      r.trt ?? '', r.cost ?? '', r.id, r.c[0], r.c[1],
     ]),
   );
 }

@@ -7,6 +7,18 @@
     <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
     <title>Unwatched Roads</title>
     <meta name="description" content="Which North Carolina roads fail next, even the ones nobody inspects. Predicted wear, cracking and Helene flood-failure risk for 112,443 state road stretches." />
+    <script>
+      // Apply the saved colour theme before first paint (the same rule as src/lib/prefs.ts).
+      (function () {
+        var pref = 'light';
+        try {
+          pref = (JSON.parse(localStorage.getItem('ur.theme')) || {}).pref || 'light';
+        } catch (e) {}
+        var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

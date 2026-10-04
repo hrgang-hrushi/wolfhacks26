@@ -7,7 +7,25 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Layer, PickingInfo } from '@deck.gl/core';
-import { Bell, ClipboardList, CloudRain, Home, ListOrdered, ShieldCheck, Smartphone, X } from 'lucide-react';
+import {
+  Bell,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  CloudRain,
+  Home,
+  LayoutDashboard,
+  ListOrdered,
+  Maximize2,
+  Minimize2,
+  Moon,
+  PanelRightClose,
+  PanelRightOpen,
+  ShieldCheck,
+  Smartphone,
+  Sun,
+  X,
+} from 'lucide-react';
 import {
   TIERS,
   countyName,
@@ -36,12 +54,14 @@ import { casedLayers, pinLayer, roadLayers, selectionLayers, visibleSegs, widthS
 import MapLibreDeck from '../lib/MapLibreDeck';
 import { NC_VIEW, type MapHandle, type MapView } from '../lib/mapTypes';
 import { pinLabelLayer } from '../lib/pinLabels';
+import { useGovPrefs, useTheme, type KpiKey } from '../lib/prefs';
 import { useDetail } from '../lib/hooks';
 import { Legend } from '../lib/ui';
 import { useRoadData, useStats } from '../lib/useRoadData';
 import { orderSegToSeg, orders as orderStore, toOrderSeg, useWorkOrders, type OrderSeg, type WorkOrder } from '../lib/workOrders';
 import { AlertsPanel } from './AlertsPanel';
 import { DEFAULT_FILTERS, mapFilter, parseRouteQuery, type Filters } from './filters';
+import { DisplayMenu, Splitter } from './Layout';
 import { CountySelect, FilterButton, FilterChips, LayerSwitch, SearchBox } from './MapControls';
 import { SegmentPanel } from './SegmentPanel';
 import { PrintStorm, StormPanel } from './StormPanel';
@@ -56,6 +76,11 @@ type PrintJob = { kind: 'order'; order: WorkOrder } | { kind: 'storm'; rows: Row
 
 const MAX_SHARDS = 40;
 const MAX_BOX_SELECT = 500;
+/** The map never gets narrower or shorter than this while a divider is dragged. */
+const MIN_MAP_W = 340;
+const MIN_MAP_H = 190;
+const MIN_SIDE_W = 280;
+const MIN_BOTTOM_H = 120;
 const DISPATCH_CASING: RGBA = [29, 78, 216, 255];
 const ORDER_CASING: RGBA = [124, 58, 237, 255];
 const STORM_PIN: RGBA = [153, 27, 27, 255];
@@ -67,8 +92,15 @@ function isPathItem(o: unknown): o is PathItem {
 export default function GovApp() {
   const { stats, error } = useStats();
   const wo = useWorkOrders();
+  const theme = useTheme();
+  const { prefs, setPrefs, resetPrefs } = useGovPrefs();
   const mapRef = useRef<MapHandle>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const topRef = useRef<HTMLElement>(null);
+  const midRef = useRef<HTMLDivElement>(null);
+  const sideRef = useRef<HTMLElement>(null);
+  const bottomRef = useRef<HTMLElement>(null);
 
   const [view, setView] = useState<MapView | null>(null);
   const road = useRoadData(stats, view, MAX_SHARDS);
@@ -77,8 +109,23 @@ export default function GovApp() {
   const [selection, setSelection] = useState<Seg[]>([]);
   const detail = useDetail(selection.length === 1 ? selection[0] : null, stats);
 
-  const [side, setSide] = useState<Side>('road');
-  const [bottom, setBottom] = useState<Bottom>('queue');
+  const [side, setSideTab] = useState<Side>('road');
+  const [bottom, setBottomTab] = useState<Bottom>('queue');
+  // Choosing a tab, or anything that fills a panel, brings a hidden panel back.
+  const setSide = useCallback(
+    (s: Side) => {
+      setSideTab(s);
+      setPrefs({ sideOpen: true });
+    },
+    [setPrefs],
+  );
+  const setBottom = useCallback(
+    (b: Bottom) => {
+      setBottomTab(b);
+      setPrefs({ bottomOpen: true });
+    },
+    [setPrefs],
+  );
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [target, setTarget] = useState('');
   const [busy, setBusy] = useState(false);
@@ -127,10 +174,13 @@ export default function GovApp() {
   }, [side, bottom, storm]);
 
   // ---- selection ---------------------------------------------------------------
-  const pickSeg = useCallback((seg: Seg) => {
-    setSelection([seg]);
-    setSide('road');
-  }, []);
+  const pickSeg = useCallback(
+    (seg: Seg) => {
+      setSelection([seg]);
+      setSide('road');
+    },
+    [setSide],
+  );
 
   const zoomTo = useCallback((seg: { paths: number[][] }) => {
     const [lng, lat] = midOf(seg.paths);
@@ -146,16 +196,19 @@ export default function GovApp() {
       setSelection([seg]);
       if (!keepSide) setSide('road');
     },
-    [stats],
+    [stats, setSide],
   );
 
   // ---- work orders ---------------------------------------------------------------
-  const openOrder = useCallback((id: string) => {
-    setActiveOrderId(id);
-    setTarget(id);
-    setSide('order');
-    setBottom('orders');
-  }, []);
+  const openOrder = useCallback(
+    (id: string) => {
+      setActiveOrderId(id);
+      setTarget(id);
+      setSide('order');
+      setBottom('orders');
+    },
+    [setSide, setBottom],
+  );
 
   const addSegs = useCallback(
     async (segs: Seg[]) => {
@@ -212,13 +265,13 @@ export default function GovApp() {
     const out: Layer[] = roadLayers({ shards: road.shards, mode, filter, onPick: pickSeg, widthScale, dim: stormMode });
     out.push(...casedLayers('dispatched', dispatched, mode, DISPATCH_CASING, 10, 4, pickSeg));
     out.push(...casedLayers('open-order', openOrderSegs, mode, ORDER_CASING, 10, 4, pickSeg));
-    out.push(...selectionLayers('sel', selection, mode, false));
+    out.push(...selectionLayers('sel', selection, mode, theme.dark));
     if (stormPins.length) {
       out.push(pinLayer('storm', stormPins, (p) => void pickRow(p.row, true)));
       if (stormPins[0].label) out.push(pinLabelLayer('storm', stormPins));
     }
     return out;
-  }, [road.shards, mode, filter, pickSeg, widthScale, stormMode, dispatched, openOrderSegs, selection, stormPins, pickRow]);
+  }, [road.shards, mode, filter, pickSeg, widthScale, stormMode, dispatched, openOrderSegs, selection, stormPins, pickRow, theme.dark]);
 
   const getTooltip = useCallback(
     (info: PickingInfo) => {
@@ -371,18 +424,48 @@ export default function GovApp() {
     { key: 'model', label: 'Model transparency', icon: <ShieldCheck size={20} />, on: side === 'model', go: () => setSide('model') },
   ];
 
-  const kpis = stats
-    ? [
-        { label: 'State roads', value: fmtInt(stats.total), note: 'stretches scored' },
-        { label: 'Fix now', value: fmtInt(stats.tiers.fix_now), note: `${fmtPct(stats.tiers.fix_now / stats.total, 1)} of roads`, tone: 'red' },
-        { label: 'Fix within a year', value: fmtInt(stats.tiers.within_year), note: `${fmtPct(stats.tiers.within_year / stats.total, 1)} of roads`, tone: 'orange' },
-        { label: 'High flood score', value: fmtInt(stats.helene.high_flood), note: `of ${fmtInt(stats.helene.zone)} in Helene zone` },
-        { label: 'Held-out', value: fmtPct(stats.heldout.rate / stats.total), note: 'of wear predictions' },
-      ]
-    : [];
+  const share = (n: number) => (stats ? `${fmtPct(n / stats.total, 1)} of roads` : '');
+  const kpiDefs: Record<KpiKey, { label: string; value: string; note: string; tone?: string }> | null = stats
+    ? {
+        total: { label: 'State roads', value: fmtInt(stats.total), note: 'stretches scored' },
+        fix_now: { label: 'Fix now', value: fmtInt(stats.tiers.fix_now), note: share(stats.tiers.fix_now), tone: 'red' },
+        within_year: { label: 'Fix within a year', value: fmtInt(stats.tiers.within_year), note: share(stats.tiers.within_year), tone: 'orange' },
+        within_five: { label: 'Plan within five years', value: fmtInt(stats.tiers.within_five), note: share(stats.tiers.within_five), tone: 'amber' },
+        high_flood: { label: 'High flood score', value: fmtInt(stats.helene.high_flood), note: `of ${fmtInt(stats.helene.zone)} in Helene zone` },
+        heldout: { label: 'Held-out', value: fmtPct(stats.heldout.rate / stats.total), note: 'of wear predictions' },
+        no_ytp: { label: 'No estimate', value: fmtInt(stats.no_ytp), note: 'rating out of date' },
+      }
+    : null;
+  const kpis = kpiDefs && prefs.showKpis ? prefs.kpis.map((k) => kpiDefs[k]) : [];
+
+  // ---- panel sizes -------------------------------------------------------------------------
+  // Dragging writes the size straight onto the frame; the choice is saved when the drag ends.
+  const sizeVars = {
+    ...(prefs.sideW != null ? { '--g-side-w': `${prefs.sideW}px` } : {}),
+    ...(prefs.bottomH != null ? { '--g-bottom-h': `${prefs.bottomH}px` } : {}),
+  } as React.CSSProperties;
+  const sideLimits = (): [number, number] => [MIN_SIDE_W, (midRef.current?.clientWidth ?? 0) - MIN_MAP_W];
+  const bottomLimits = (): [number, number] => [
+    MIN_BOTTOM_H,
+    (mainRef.current?.clientHeight ?? 0) - (topRef.current?.offsetHeight ?? 0) - MIN_MAP_H,
+  ];
+  // The tallest the bottom panel can go, kept in state so the maximise button knows which way it points.
+  const [bottomMax, setBottomMax] = useState(0);
+  useEffect(() => {
+    const main = mainRef.current;
+    const top = topRef.current;
+    if (!main || !top) return;
+    const measure = () => setBottomMax(main.clientHeight - top.offsetHeight - MIN_MAP_H);
+    const ro = new ResizeObserver(measure);
+    ro.observe(main);
+    ro.observe(top);
+    measure();
+    return () => ro.disconnect();
+  }, []);
+  const bottomMaxed = prefs.bottomH != null && bottomMax > 0 && prefs.bottomH >= bottomMax - 4;
 
   return (
-    <div className="g-root">
+    <div className={`g-root ${prefs.density === 'compact' ? 'g-compact' : ''}`}>
       <nav className="g-rail" aria-label="Sections">
         <div className="g-logo" title="Unwatched Roads">
           UR
@@ -393,16 +476,20 @@ export default function GovApp() {
           </button>
         ))}
         <span className="g-rail-gap" />
+        <button type="button" title={theme.dark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label={theme.dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={theme.toggle}>
+          {theme.dark ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
+        <DisplayMenu prefs={prefs} onPrefs={setPrefs} onReset={resetPrefs} theme={theme.pref} onTheme={theme.setPref} />
         <a href={`${import.meta.env.BASE_URL}dashboard`} title="Executive view (/dashboard)" aria-label="Executive view (/dashboard)">
-          <Home size={20} />
+          <LayoutDashboard size={20} />
         </a>
         <a href={`${import.meta.env.BASE_URL}m`} title="Phone view for judges (/m)" aria-label="Phone view for judges (/m)">
           <Smartphone size={20} />
         </a>
       </nav>
 
-      <main className="g-main">
-        <header className="g-top">
+      <main className="g-main" ref={mainRef} style={sizeVars}>
+        <header className="g-top" ref={topRef}>
           <div className="g-title">
             <h1>Unwatched Roads</h1>
             <p>Agency dashboard · state-maintained roads only · model predictions, not inspections</p>
@@ -418,10 +505,10 @@ export default function GovApp() {
           </div>
         </header>
 
-        <div className="g-mid">
+        <div className="g-mid" ref={midRef}>
           <section className="g-card g-mapcard">
             <div className="g-map" ref={wrapRef} onMouseDownCapture={onMouseDownCapture}>
-              <MapLibreDeck ref={mapRef} layers={layers} initial={NC_VIEW} onView={setView} getTooltip={getTooltip} onBackgroundClick={() => setSelection([])} pickingRadius={5} />
+              <MapLibreDeck ref={mapRef} layers={layers} initial={NC_VIEW} dark={theme.dark} onView={setView} getTooltip={getTooltip} onBackgroundClick={() => setSelection([])} pickingRadius={5} />
               {box && (
                 <div
                   className="g-box"
@@ -440,17 +527,19 @@ export default function GovApp() {
               <CountySelect stats={stats} value={filters.county} onChange={(c) => setCounty(c)} />
               <FilterButton filters={filters} onChange={setFilters} mode={mode} />
               <LayerSwitch mode={mode} onMode={setMode} />
-            </div>
-            <div className="g-map-chips">
-              <FilterChips filters={filters} onChange={setFilters} stats={stats} />
-            </div>
-
-            <div className="g-map-legend">
-              <Legend mode={mode} />
-              <div className="legend-note">
-                <span className="g-swatch" style={{ background: 'rgb(29,78,216)' }} /> Blue outline: dispatched work order (demo)
+              <div className="g-map-chips">
+                <FilterChips filters={filters} onChange={setFilters} stats={stats} />
               </div>
             </div>
+
+            {prefs.showLegend && (
+              <div className="g-map-legend">
+                <Legend mode={mode} />
+                <div className="legend-note">
+                  <span className="g-swatch" style={{ background: 'rgb(29,78,216)' }} /> Blue outline: dispatched work order (demo)
+                </div>
+              </div>
+            )}
 
             <div className="g-map-status">
               {error && <span className="g-status-err">Road data did not load ({error}). Run scripts/build_web_data.py.</span>}
@@ -463,11 +552,30 @@ export default function GovApp() {
                   {selection.length} selected <X size={12} />
                 </button>
               )}
-              <span className="g-hint">Shift-drag to select several roads</span>
+              {prefs.showHints && <span className="g-hint">Shift-drag to select several roads</span>}
             </div>
+
+            {!prefs.sideOpen && (
+              <button type="button" className="g-reopen-side" title="Show the side panel" aria-label="Show the side panel" onClick={() => setPrefs({ sideOpen: true })}>
+                <PanelRightOpen size={16} />
+              </button>
+            )}
           </section>
 
-          <aside className="g-card g-side">
+          {prefs.sideOpen && (
+            <Splitter
+              axis="x"
+              label="Resize the side panel"
+              size={() => sideRef.current?.offsetWidth ?? 0}
+              limits={sideLimits}
+              onDrag={(px) => mainRef.current?.style.setProperty('--g-side-w', `${px}px`)}
+              onCommit={(px) => setPrefs({ sideW: px })}
+              onReset={() => setPrefs({ sideW: null })}
+            />
+          )}
+
+          {prefs.sideOpen && (
+          <aside className="g-card g-side" ref={sideRef}>
             <div className="g-side-tabs" role="tablist">
               {(
                 [
@@ -481,6 +589,10 @@ export default function GovApp() {
                   {label}
                 </button>
               ))}
+              <span className="g-tabs-gap" />
+              <button type="button" className="g-tab-tool" title="Hide the side panel" aria-label="Hide the side panel" onClick={() => setPrefs({ sideOpen: false })}>
+                <PanelRightClose size={15} />
+              </button>
             </div>
             <div className="g-side-scroll">
               {side === 'road' && (
@@ -526,9 +638,24 @@ export default function GovApp() {
               {side === 'model' && <TransparencyPanel stats={stats} />}
             </div>
           </aside>
+          )}
         </div>
 
-        <section className="g-card g-bottom">
+        {prefs.bottomOpen ? (
+          <Splitter
+            axis="y"
+            label="Resize the bottom panel"
+            size={() => bottomRef.current?.offsetHeight ?? 0}
+            limits={bottomLimits}
+            onDrag={(px) => mainRef.current?.style.setProperty('--g-bottom-h', `${px}px`)}
+            onCommit={(px) => setPrefs({ bottomH: px })}
+            onReset={() => setPrefs({ bottomH: null })}
+          />
+        ) : (
+          <div className="g-split-gap" />
+        )}
+
+        <section className={`g-card g-bottom ${prefs.bottomOpen ? '' : 'g-bottom-closed'}`} ref={bottomRef}>
           <div className="g-bottom-tabs" role="tablist">
             {(
               [
@@ -541,7 +668,30 @@ export default function GovApp() {
                 {label}
               </button>
             ))}
+            <span className="g-tabs-gap" />
+            {prefs.bottomOpen && (
+              <button
+                type="button"
+                className="g-tab-tool"
+                title={bottomMaxed ? 'Restore the bottom panel' : 'Make the bottom panel as tall as it goes'}
+                aria-label={bottomMaxed ? 'Restore the bottom panel' : 'Make the bottom panel as tall as it goes'}
+                onClick={() => setPrefs({ bottomH: bottomMaxed ? null : Math.max(MIN_BOTTOM_H, bottomMax) })}
+              >
+                {bottomMaxed ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              </button>
+            )}
+            <button
+              type="button"
+              className="g-tab-tool"
+              title={prefs.bottomOpen ? 'Hide the bottom panel' : 'Show the bottom panel'}
+              aria-label={prefs.bottomOpen ? 'Hide the bottom panel' : 'Show the bottom panel'}
+              aria-expanded={prefs.bottomOpen}
+              onClick={() => setPrefs({ bottomOpen: !prefs.bottomOpen })}
+            >
+              {prefs.bottomOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+            </button>
           </div>
+          {prefs.bottomOpen && (
           <div className="g-bottom-body">
             {bottom === 'queue' && (
               <WorkQueue
@@ -551,6 +701,7 @@ export default function GovApp() {
                 filters={filters}
                 mode={mode}
                 selectedId={selection.length === 1 ? selection[0].id : null}
+                hiddenCols={prefs.hiddenCols}
                 onPick={(r) => void pickRow(r)}
                 onAdd={(rows) => void addRows(rows)}
                 busy={busy}
@@ -561,6 +712,7 @@ export default function GovApp() {
               <AlertsPanel stats={stats} queueRows={queue.rows} stormRows={storm?.rows ?? null} stormMin={storm?.min ?? 0.5} county={filters.county} onPick={(r) => void pickRow(r)} />
             )}
           </div>
+          )}
         </section>
       </main>
 

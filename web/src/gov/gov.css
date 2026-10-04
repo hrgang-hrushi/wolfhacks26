@@ -6,11 +6,44 @@
   --card: #ffffff;
   --card-sub: #f1f5f9;
   --fg: #111827;
+  --fg-2: #475569;
   --muted: #64748b;
+  --faint: #94a3b8;
   --line: rgba(0, 0, 0, 0.07);
+  --line-soft: rgba(0, 0, 0, 0.04);
+  --rail: #ffffff;
+  --rail-line: #eef1f4;
+  /* The solid fill behind an active control, and the text on it. */
+  --ink: #111111;
+  --ink-fg: #ffffff;
+  --ctl: #ffffff;
+  --ctl-line: rgba(0, 0, 0, 0.1);
+  --ctl-hover: #f8fafc;
+  --ctl-line-hover: rgba(0, 0, 0, 0.18);
+  --seg-on: #ffffff;
+  --pop: #ffffff;
+  --glass: rgba(255, 255, 255, 0.94);
+  --hover: #f8fafc;
   --amber: #f59e0b;
+  --amber-soft: #fffbeb;
+  --amber-ink: #b45309;
+  --red: #dc2626;
+  --orange: #ea6c0c;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+  --danger-ink: #991b1b;
+  --storm: #991b1b;
+  --box: #1d4ed8;
+  --axis: #cbd5e1;
+  --st-dispatched-bg: #dbeafe;
+  --st-dispatched-fg: #1e40af;
+  --st-progress-bg: #fef3c7;
+  --st-progress-fg: #92400e;
+  --st-done-bg: #dcfce7;
+  --st-done-fg: #166534;
   --radius: 20px;
   --shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+  --pop-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.06);
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
   width: 100vw;
@@ -20,6 +53,52 @@
   font-size: 13px;
   color-scheme: light;
 }
+:root[data-theme='dark'] .g-root {
+  --bg: #0b1220;
+  --card: #111a2c;
+  --card-sub: #1c2740;
+  --fg: #e6eaf2;
+  --fg-2: #b6c0d1;
+  --muted: #8e9bb1;
+  --faint: #64748b;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-soft: rgba(255, 255, 255, 0.05);
+  --rail: #0e1627;
+  --rail-line: rgba(255, 255, 255, 0.07);
+  --ink: #e6eaf2;
+  --ink-fg: #0b1220;
+  --ctl: #18233a;
+  --ctl-line: rgba(255, 255, 255, 0.14);
+  --ctl-hover: #1f2c47;
+  --ctl-line-hover: rgba(255, 255, 255, 0.28);
+  --seg-on: #2b3a59;
+  --pop: #162036;
+  --glass: rgba(17, 26, 44, 0.92);
+  --hover: rgba(255, 255, 255, 0.045);
+  --amber-soft: rgba(245, 158, 11, 0.15);
+  --amber-ink: #fbbf24;
+  --red: #f87171;
+  --orange: #fb923c;
+  --danger: #f87171;
+  --danger-soft: rgba(239, 68, 68, 0.2);
+  --danger-ink: #fecaca;
+  --storm: #dc2626;
+  --box: #60a5fa;
+  --axis: #3b4a66;
+  --st-dispatched-bg: rgba(59, 130, 246, 0.22);
+  --st-dispatched-fg: #93c5fd;
+  --st-progress-bg: rgba(245, 158, 11, 0.2);
+  --st-progress-fg: #fcd34d;
+  --st-done-bg: rgba(34, 197, 94, 0.2);
+  --st-done-fg: #86efac;
+  --shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  --pop-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+.g-root :focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
 
 /* ---- rail ---- */
 .g-rail {
@@ -28,8 +107,11 @@
   align-items: center;
   gap: 6px;
   padding: 14px 0;
-  background: #fff;
-  border-right: 1px solid #eef1f4;
+  background: var(--rail);
+  border-right: 1px solid var(--rail-line);
+  /* Above the main frame, so the display settings can open over it. */
+  position: relative;
+  z-index: 60;
 }
 .g-logo {
   width: 38px;
@@ -38,14 +120,15 @@
   place-items: center;
   margin-bottom: 10px;
   border-radius: 12px;
-  background: #111;
-  color: #fff;
+  background: var(--ink);
+  color: var(--ink-fg);
   font-weight: 700;
   font-size: 13px;
   letter-spacing: 0.02em;
 }
-.g-rail button,
-.g-rail a {
+.g-rail > button,
+.g-rail > a,
+.g-display > button {
   width: 44px;
   height: 44px;
   display: grid;
@@ -53,16 +136,18 @@
   border: 0;
   border-radius: 12px;
   background: transparent;
-  color: #475569;
+  color: var(--fg-2);
   cursor: pointer;
 }
-.g-rail button:hover,
-.g-rail a:hover {
-  background: #f1f5f9;
+.g-rail > button:hover,
+.g-rail > a:hover,
+.g-display > button:hover {
+  background: var(--card-sub);
 }
-.g-rail button.on {
-  background: #111;
-  color: #fff;
+.g-rail > button.on,
+.g-display > button.on {
+  background: var(--ink);
+  color: var(--ink-fg);
 }
 .g-rail-gap {
   flex: 1;
@@ -70,9 +155,8 @@
 
 /* ---- frame ---- */
 .g-main {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) clamp(210px, 30vh, 320px);
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
   padding: 10px 14px 12px 12px;
   min-width: 0;
   min-height: 0;
@@ -87,10 +171,12 @@
   min-height: 0;
 }
 .g-top {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 16px;
   min-width: 0;
+  margin-bottom: 10px;
 }
 .g-title {
   flex: none;
@@ -110,7 +196,8 @@
 .g-kpis {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 8px;
   min-width: 0;
 }
@@ -133,10 +220,13 @@
   font-variant-numeric: tabular-nums;
 }
 .g-kpi.red .g-kpi-v {
-  color: #dc2626;
+  color: var(--red);
 }
 .g-kpi.orange .g-kpi-v {
-  color: #ea6c0c;
+  color: var(--orange);
+}
+.g-kpi.amber .g-kpi-v {
+  color: var(--amber-ink);
 }
 .g-kpi-l {
   font-size: 12px;
@@ -154,15 +244,112 @@
 }
 
 .g-mid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 27vw, 400px);
-  gap: 10px;
+  flex: 1;
+  display: flex;
+  min-width: 0;
   min-height: 0;
+}
+
+/* ---- dividers between the map and the panels ---- */
+.g-split {
+  flex: none;
+  position: relative;
+  touch-action: none;
+  outline: 0;
+}
+.g-split-x {
+  width: 10px;
+  cursor: col-resize;
+}
+.g-split-y {
+  height: 10px;
+  cursor: row-resize;
+}
+.g-split::after {
+  content: '';
+  position: absolute;
+  border-radius: 3px;
+  background: var(--faint);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.g-split-x::after {
+  top: 50%;
+  left: 3px;
+  width: 4px;
+  height: 48px;
+  transform: translateY(-50%);
+}
+.g-split-y::after {
+  left: 50%;
+  top: 3px;
+  width: 48px;
+  height: 4px;
+  transform: translateX(-50%);
+}
+.g-split:hover::after,
+.g-split:focus-visible::after,
+.g-split.on::after {
+  opacity: 1;
+}
+.g-split:focus-visible::after,
+.g-split.on::after {
+  background: var(--amber);
+}
+.g-split-gap {
+  flex: none;
+  height: 10px;
 }
 
 /* ---- map card ---- */
 .g-mapcard {
   position: relative;
+  flex: 1;
+  container: gmap / inline-size;
+}
+/* A narrow map (the side panel dragged wide): keep the legend and the status notes apart. */
+@container gmap (max-width: 900px) {
+  .g-map-legend {
+    max-width: 250px;
+  }
+  .g-map-status {
+    left: 274px;
+  }
+}
+@container gmap (max-width: 620px) {
+  .g-map-status .g-hint {
+    display: none;
+  }
+}
+.g-reopen-side {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  z-index: 20;
+  width: 32px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 1px solid var(--ctl-line);
+  border-radius: 10px;
+  background: var(--ctl);
+  color: var(--fg-2);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.g-reopen-side:hover {
+  background: var(--ctl-hover);
+}
+:root[data-theme='dark'] .g-root .maplibregl-ctrl-attrib {
+  background: var(--glass);
+  color: var(--muted);
+}
+:root[data-theme='dark'] .g-root .maplibregl-ctrl-attrib a {
+  color: inherit;
+}
+:root[data-theme='dark'] .g-root .maplibregl-ctrl-attrib-button {
+  filter: invert(1);
 }
 .g-map {
   position: absolute;
@@ -170,8 +357,8 @@
 }
 .g-box {
   position: absolute;
-  border: 1.5px dashed #1d4ed8;
-  background: rgba(29, 78, 216, 0.1);
+  border: 1.5px dashed var(--box);
+  background: rgba(29, 78, 216, 0.12);
   pointer-events: none;
   z-index: 5;
 }
@@ -190,11 +377,12 @@
 .g-map-top > * {
   pointer-events: auto;
 }
+/* A row of its own under the toolbar, so the chips never sit under a wrapped control. */
 .g-map-chips {
-  position: absolute;
-  top: 58px;
-  left: 12px;
-  z-index: 19;
+  flex-basis: 100%;
+}
+.g-map-chips:empty {
+  display: none;
 }
 .g-chips {
   display: flex;
@@ -209,8 +397,8 @@
   padding: 0 10px;
   border: 0;
   border-radius: 999px;
-  background: #111;
-  color: #fff;
+  background: var(--ink);
+  color: var(--ink-fg);
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
@@ -226,10 +414,10 @@
   width: 270px;
   height: 40px;
   padding: 0 12px;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.09);
+  background: var(--ctl);
+  border: 1px solid var(--ctl-line);
   border-radius: 12px;
-  color: #64748b;
+  color: var(--muted);
   box-shadow: var(--shadow);
 }
 .g-search input {
@@ -248,10 +436,10 @@
   z-index: 50;
   min-width: 100%;
   padding: 12px;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: var(--pop);
+  border: 1px solid var(--ctl-line);
   border-radius: 12px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--pop-shadow);
 }
 .g-search-pop {
   width: 300px;
@@ -272,6 +460,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
+  color: inherit;
   text-align: left;
   cursor: pointer;
 }
@@ -283,14 +472,14 @@
   display: grid;
   gap: 10px;
 }
-.g-filter-pop fieldset {
+.g-pop fieldset {
   margin: 0;
   padding: 0;
   border: 0;
   display: grid;
   gap: 4px;
 }
-.g-filter-pop legend {
+.g-pop legend {
   padding: 0;
   margin-bottom: 4px;
   font-size: 11px;
@@ -310,8 +499,8 @@
   display: flex;
   margin-left: auto;
   padding: 3px;
-  background: #fff;
-  border: 1px solid rgba(0, 0, 0, 0.09);
+  background: var(--ctl);
+  border: 1px solid var(--ctl-line);
   border-radius: 12px;
   box-shadow: var(--shadow);
 }
@@ -323,13 +512,13 @@
   background: transparent;
   font-size: 12.5px;
   font-weight: 600;
-  color: #475569;
+  color: var(--fg-2);
   cursor: pointer;
   white-space: nowrap;
 }
 .g-layers button.on {
-  background: #111;
-  color: #fff;
+  background: var(--ink);
+  color: var(--ink-fg);
 }
 .g-map-legend {
   position: absolute;
@@ -337,7 +526,7 @@
   bottom: 12px;
   z-index: 10;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--glass);
   border: 1px solid var(--line);
   border-radius: 12px;
   max-width: 330px;
@@ -362,16 +551,17 @@
 }
 .g-map-status > span {
   padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
+  border-radius: 14px;
+  text-align: right;
+  background: var(--glass);
   border: 1px solid var(--line);
 }
 .g-map-status .g-hint {
   color: var(--muted);
 }
 .g-map-status .g-status-err {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--danger-soft);
+  color: var(--danger-ink);
 }
 
 /* ---- controls ---- */
@@ -381,9 +571,10 @@
   gap: 6px;
   height: 34px;
   padding: 0 12px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--ctl-line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--ctl);
+  color: var(--fg);
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
@@ -396,16 +587,17 @@
   box-shadow: var(--shadow);
 }
 .g-btn:hover {
-  background: #f8fafc;
-  border-color: rgba(0, 0, 0, 0.18);
+  background: var(--ctl-hover);
+  border-color: var(--ctl-line-hover);
 }
 .g-btn:disabled {
   opacity: 0.5;
   cursor: default;
 }
-.g-btn-on {
+.g-btn-on,
+.g-btn-on:hover {
   border-color: var(--amber);
-  background: #fffbeb;
+  background: var(--amber-soft);
 }
 .g-btn-primary {
   background: var(--amber);
@@ -417,15 +609,15 @@
   border-color: #fbbf24;
 }
 .g-btn-danger {
-  color: #b91c1c;
+  color: var(--danger);
 }
 .g-select,
 .g-input {
   height: 32px;
   padding: 0 8px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--ctl-line);
   border-radius: 9px;
-  background: #fff;
+  background: var(--ctl);
   font: inherit;
   font-size: 12.5px;
   color: var(--fg);
@@ -453,8 +645,12 @@ textarea.g-input {
 
 /* ---- side panel ---- */
 .g-side {
+  flex: none;
   display: flex;
   flex-direction: column;
+  width: var(--g-side-w, clamp(320px, 27vw, 400px));
+  min-width: 280px;
+  max-width: calc(100% - 350px);
 }
 .g-side-tabs,
 .g-bottom-tabs {
@@ -480,6 +676,35 @@ textarea.g-input {
   color: var(--fg);
   border-bottom-color: var(--amber);
 }
+.g-side-tabs button[role='tab'] {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-tabs-gap {
+  flex: 1;
+}
+.g-side-tabs .g-tab-tool,
+.g-bottom-tabs .g-tab-tool {
+  flex: none;
+  align-self: center;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+}
+.g-side-tabs .g-tab-tool:hover,
+.g-bottom-tabs .g-tab-tool:hover {
+  background: var(--card-sub);
+  color: var(--fg);
+}
 .g-side-scroll {
   flex: 1;
   min-height: 0;
@@ -498,7 +723,7 @@ textarea.g-input {
 }
 .g-panel-body h2 span {
   font-weight: 500;
-  color: #475569;
+  color: var(--fg-2);
 }
 .g-panel-body h3 {
   margin: 4px 0 -4px;
@@ -597,7 +822,7 @@ textarea.g-input {
   margin: 0;
   padding: 10px 12px;
   border-left: 3px solid var(--amber);
-  background: #fffbeb;
+  background: var(--amber-soft);
   border-radius: 0 10px 10px 0;
   font-size: 12px;
 }
@@ -620,28 +845,28 @@ textarea.g-input {
   color: var(--muted);
 }
 .g-proj-axis {
-  stroke: #cbd5e1;
+  stroke: var(--axis);
   stroke-width: 1;
 }
 .g-proj-poor {
-  stroke: #dc2626;
+  stroke: var(--red);
   stroke-width: 1;
   stroke-dasharray: 4 3;
 }
 .g-proj-line {
-  stroke: #111827;
+  stroke: var(--fg);
   stroke-width: 2;
 }
 .g-proj-dot {
-  fill: #111827;
+  fill: var(--fg);
 }
 .g-proj-cross {
-  fill: #dc2626;
+  fill: var(--red);
 }
 .g-proj-label,
 .g-proj-tick {
   font-size: 9px;
-  fill: #64748b;
+  fill: var(--muted);
 }
 .g-tierlist,
 .g-seglist,
@@ -680,6 +905,7 @@ textarea.g-input {
   border: 0;
   border-radius: 8px;
   background: transparent;
+  color: inherit;
   text-align: left;
   font-size: 12.5px;
   cursor: pointer;
@@ -707,8 +933,8 @@ textarea.g-input {
   cursor: pointer;
 }
 .g-x:hover {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 .g-rank {
   flex: none;
@@ -718,7 +944,7 @@ textarea.g-input {
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: #991b1b;
+  background: var(--storm);
   color: #fff;
   font-size: 10.5px;
   font-weight: 700;
@@ -739,7 +965,7 @@ textarea.g-input {
 .g-bar span {
   display: block;
   height: 100%;
-  background: #991b1b;
+  background: var(--storm);
   border-radius: 4px;
 }
 .g-bars strong {
@@ -764,8 +990,19 @@ textarea.g-input {
 
 /* ---- bottom panel ---- */
 .g-bottom {
+  flex: none;
   display: flex;
   flex-direction: column;
+  height: var(--g-bottom-h, clamp(210px, 30vh, 320px));
+  min-height: 120px;
+  max-height: calc(100% - 250px);
+}
+.g-bottom-closed {
+  height: auto;
+  min-height: 0;
+}
+.g-bottom-closed .g-bottom-tabs {
+  border-bottom: 0;
 }
 .g-bottom-body {
   flex: 1;
@@ -816,11 +1053,11 @@ textarea.g-input {
   background: transparent;
   font-size: 12px;
   font-weight: 600;
-  color: #475569;
+  color: var(--fg-2);
   cursor: pointer;
 }
 .g-tabs button.on {
-  background: #fff;
+  background: var(--seg-on);
   color: var(--fg);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
@@ -844,7 +1081,7 @@ textarea.g-input {
   top: 0;
   z-index: 1;
   padding: 6px 10px;
-  background: #fff;
+  background: var(--card);
   border-bottom: 1px solid var(--line);
   text-align: left;
   font-size: 11px;
@@ -854,17 +1091,35 @@ textarea.g-input {
 }
 .g-table td {
   padding: 5px 10px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid var(--line-soft);
   white-space: nowrap;
 }
 .g-table tbody tr {
   cursor: pointer;
 }
 .g-table tbody tr:hover {
-  background: #f8fafc;
+  background: var(--hover);
 }
 .g-table tbody tr.sel {
-  background: #fffbeb;
+  background: var(--amber-soft);
+}
+.g-table tbody tr:focus-visible {
+  outline-offset: -2px;
+}
+.g-th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.g-th-sort:hover,
+.g-th-sort.on {
+  color: var(--fg);
 }
 .g-num {
   text-align: right !important;
@@ -874,7 +1129,7 @@ textarea.g-input {
   width: 28px;
 }
 .g-na {
-  color: #94a3b8;
+  color: var(--faint);
   font-size: 11px;
 }
 .g-trt,
@@ -933,19 +1188,19 @@ textarea.g-input {
   height: 26px;
 }
 .g-status-Queued {
-  background: #f1f5f9;
+  background: var(--card-sub);
 }
 .g-status-Dispatched {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--st-dispatched-bg);
+  color: var(--st-dispatched-fg);
 }
 .g-status-Inprogress {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--st-progress-bg);
+  color: var(--st-progress-fg);
 }
 .g-status-Done {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--st-done-bg);
+  color: var(--st-done-fg);
 }
 
 .g-alert-cards {
@@ -970,7 +1225,7 @@ textarea.g-input {
 }
 .g-alert-card.on {
   border-color: var(--amber);
-  background: #fffbeb;
+  background: var(--amber-soft);
 }
 .g-alert-card .g-k {
   grid-column: 1;
@@ -995,6 +1250,83 @@ textarea.g-input {
 }
 .g-alert-note {
   margin: 0;
+}
+
+/* ---- display settings ---- */
+.g-display {
+  position: relative;
+}
+.g-display-pop {
+  top: auto;
+  bottom: 0;
+  left: calc(100% + 12px);
+  width: 330px;
+  max-height: calc(100vh - 28px);
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.g-display-pop fieldset:disabled {
+  opacity: 0.5;
+}
+.g-display-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 12px;
+}
+.g-seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--card-sub);
+  border-radius: 10px;
+}
+.g-seg button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.g-seg button.on {
+  background: var(--seg-on);
+  color: var(--fg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* ---- compact density ---- */
+.g-compact .g-table {
+  font-size: 12px;
+}
+.g-compact .g-table td {
+  padding: 2px 8px;
+}
+.g-compact .g-table th {
+  padding: 4px 8px;
+}
+.g-compact .g-queue-bar {
+  padding: 5px 12px;
+}
+.g-compact .g-kpi {
+  padding: 5px 12px;
+}
+.g-compact .g-kpi-v {
+  font-size: 18px;
+}
+.g-compact .g-panel-body {
+  padding: 10px 14px 14px;
+  gap: 9px;
 }
 
 /* ---- print: only the sheet ---- */

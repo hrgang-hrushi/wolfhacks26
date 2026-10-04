@@ -29,9 +29,48 @@
   --m-blue: #2563eb;
   --m-blue-bg: #eff6ff;
   --m-blue-line: #bfdbfe;
+  --m-fg-2: #334155;
+  --m-fill: #f1f5f9;
+  --m-line-strong: #cbd5e1;
+  --m-red-ink: #991b1b;
+}
+
+/* Dark theme: the choice is stamped on <html> by lib/prefs.ts. */
+:root[data-theme='dark'] {
+  --m-bg: #0b1220;
+  --m-page-bg: #0b1220;
+  --m-fg: #e6eaf2;
+  --m-fg-2: #b6c0d1;
+  --m-muted: #8e9bb1;
+  --m-subtle: #6b7a92;
+  --m-card: #111a2c;
+  --m-card-inner: #18233a;
+  --m-fill: #1c2740;
+  --m-line: rgba(255, 255, 255, 0.1);
+  --m-line-strong: rgba(255, 255, 255, 0.2);
+  --m-line-subtle: rgba(255, 255, 255, 0.07);
+  --m-accent: #e6eaf2;
+  --m-accent-hover: #ffffff;
+  --m-accent-ink: #0b1220;
+  --m-green: #34d399;
+  --m-green-bg: rgba(16, 185, 129, 0.16);
+  --m-green-line: rgba(16, 185, 129, 0.35);
+  --m-amber: #fbbf24;
+  --m-amber-bg: rgba(245, 158, 11, 0.16);
+  --m-amber-line: rgba(245, 158, 11, 0.35);
+  --m-red: #f87171;
+  --m-red-bg: rgba(239, 68, 68, 0.16);
+  --m-red-line: rgba(239, 68, 68, 0.38);
+  --m-red-ink: #fecaca;
+  --m-blue: #60a5fa;
+  --m-blue-bg: rgba(59, 130, 246, 0.16);
+  --m-blue-line: rgba(59, 130, 246, 0.38);
 }
 
 .m-root {
+  /* The shared honesty labels (lib/ui.tsx) read these two. */
+  --muted: var(--m-muted);
+  --line: var(--m-line);
   position: fixed;
   inset: 0;
   background: var(--m-page-bg);
@@ -49,7 +88,7 @@
 .m-map {
   position: absolute;
   inset: 0;
-  background: #f1f5f9;
+  background: var(--m-fill);
 }
 
 /* ---- Top Header Bar (Unified Executive Style) ---- */
@@ -64,7 +103,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: calc(env(safe-area-inset-top, 0px) + 8px) 14px 10px 16px;
-  background: #ffffff;
+  background: var(--m-card);
   border-bottom: 1px solid var(--m-line);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
@@ -81,7 +120,7 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: #0f172a;
+  background: var(--m-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -122,7 +161,7 @@
   line-height: 1.25;
   font-weight: 700;
   letter-spacing: -0.015em;
-  color: #0f172a;
+  color: var(--m-fg);
 }
 
 .m-scope-badge {
@@ -132,9 +171,9 @@
   letter-spacing: 0.05em;
   padding: 1.5px 6px;
   border-radius: 4px;
-  background: #ecfdf5;
-  color: #059669;
-  border: 1px solid #a7f3d0;
+  background: var(--m-green-bg);
+  color: var(--m-green);
+  border: 1px solid var(--m-green-line);
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -157,8 +196,8 @@
   place-items: center;
   border: 1px solid var(--m-line);
   border-radius: 8px;
-  background: #f8fafc;
-  color: #64748b;
+  background: var(--m-card-inner);
+  color: var(--m-muted);
   text-decoration: none;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -166,9 +205,9 @@
 
 .m-icon-btn:hover,
 .m-icon-btn:active {
-  background: #f1f5f9;
-  color: #0f172a;
-  border-color: #cbd5e1;
+  background: var(--m-fill);
+  color: var(--m-fg);
+  border-color: var(--m-line-strong);
 }
 
 /* Floating Action Button (Locate) */
@@ -183,8 +222,8 @@
   place-items: center;
   border: 1px solid var(--m-line);
   border-radius: 12px;
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--m-card);
+  color: var(--m-fg);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   transition: bottom 0.22s ease, transform 0.15s ease, background 0.15s ease;
@@ -192,7 +231,7 @@
 
 .m-fab:active {
   transform: scale(0.96);
-  background: #f8fafc;
+  background: var(--m-card-inner);
 }
 
 /* Toast banners */
@@ -205,20 +244,20 @@
   max-width: calc(100% - 28px);
   padding: 6px 14px;
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--m-card);
   border: 1px solid var(--m-line);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   font-size: 11.5px;
   font-weight: 500;
-  color: #0f172a;
+  color: var(--m-fg);
   text-align: center;
   pointer-events: none;
 }
 
 .m-toast-error {
-  background: #fef2f2;
-  color: #991b1b;
-  border-color: #fecaca;
+  background: var(--m-red-bg);
+  color: var(--m-red-ink);
+  border-color: var(--m-red-line);
   border-radius: 10px;
 }
 
@@ -240,9 +279,9 @@
 }
 
 .m-banner.error {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
+  background: var(--m-red-bg);
+  color: var(--m-red-ink);
+  border: 1px solid var(--m-red-line);
 }
 
 /* ---- Bottom Sheet (Unified Executive Style) ---- */
@@ -254,9 +293,9 @@
   z-index: 20;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: var(--m-card);
   border-radius: 24px 24px 0 0;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid var(--m-line-subtle);
   box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.08);
   max-width: 560px;
   margin: 0 auto;
@@ -275,7 +314,7 @@
   width: 36px;
   height: 4px;
   border-radius: 999px;
-  background: #cbd5e1;
+  background: var(--m-line-strong);
 }
 
 .m-sheet-head {
@@ -302,8 +341,8 @@
   gap: 4px;
   padding: 4px;
   border-radius: 12px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  background: var(--m-fill);
+  border: 1px solid var(--m-line);
 }
 
 .m-seg button,
@@ -332,11 +371,11 @@
 
 .m-seg button.on,
 .m-subseg button.on {
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--m-card);
+  color: var(--m-fg);
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--m-line-subtle);
 }
 
 .m-hint {
@@ -366,8 +405,8 @@
   padding: 0 12px;
   border: 1px solid var(--m-line);
   border-radius: 8px;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--m-card-inner);
+  color: var(--m-fg);
   font-family: var(--m-font);
   font-size: 12px;
   font-weight: 600;
@@ -380,8 +419,8 @@
 
 .m-chip:hover,
 .m-chip:active {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
+  background: var(--m-fill);
+  border-color: var(--m-line-strong);
 }
 
 /* Primary Button (Unified Solid Slate #0f172a) */
@@ -390,8 +429,8 @@
   padding: 0 18px;
   border: 0;
   border-radius: 10px;
-  background: #0f172a;
-  color: #ffffff;
+  background: var(--m-accent);
+  color: var(--m-accent-ink);
   font-family: var(--m-font);
   font-size: 14px;
   font-weight: 600;
@@ -405,7 +444,7 @@
 
 .m-primary:hover,
 .m-primary:active {
-  background: #1e293b;
+  background: var(--m-accent-hover);
   transform: translateY(-0.5px);
 }
 
@@ -417,7 +456,7 @@
 
 /* ---- Road Segment Card (Matching CleanLocationCard & SegmentDetailModal) ---- */
 .m-card {
-  background: #ffffff;
+  background: var(--m-card);
   border: 1px solid var(--m-line);
   border-radius: 16px;
   padding: 14px 16px;
@@ -444,11 +483,11 @@
   font-family: monospace;
   font-size: 10.5px;
   font-weight: 700;
-  background: #f1f5f9;
-  color: #0f172a;
+  background: var(--m-fill);
+  color: var(--m-fg);
   padding: 2px 6px;
   border-radius: 4px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--m-line);
 }
 
 .m-county-tag {
@@ -461,7 +500,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--m-fg);
   letter-spacing: -0.015em;
   line-height: 1.25;
 }
@@ -474,7 +513,7 @@
 
 /* Pavement Condition Rating Bar */
 .m-pci-hero {
-  background: #f8fafc;
+  background: var(--m-card-inner);
   border: 1px solid var(--m-line);
   border-radius: 12px;
   padding: 10px 12px;
@@ -492,7 +531,7 @@
 .m-pci-score {
   font-size: 24px;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--m-fg);
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -514,21 +553,21 @@
 }
 
 .m-condition-badge.good {
-  background: #ecfdf5;
-  color: #059669;
-  border: 1px solid #a7f3d0;
+  background: var(--m-green-bg);
+  color: var(--m-green);
+  border: 1px solid var(--m-green-line);
 }
 
 .m-condition-badge.fair {
-  background: #fffbeb;
-  color: #d97706;
-  border: 1px solid #fde68a;
+  background: var(--m-amber-bg);
+  color: var(--m-amber);
+  border: 1px solid var(--m-amber-line);
 }
 
 .m-condition-badge.poor {
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background: var(--m-red-bg);
+  color: var(--m-red);
+  border: 1px solid var(--m-red-line);
 }
 
 /* 4-Pod Minimalist Telemetry Grid */
@@ -546,7 +585,7 @@
 }
 
 .m-pod-item {
-  background: #f8fafc;
+  background: var(--m-card-inner);
   border: 1px solid var(--m-line);
   border-radius: 10px;
   padding: 8px 10px;
@@ -569,7 +608,7 @@
 .m-pod-value {
   font-size: 14.5px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--m-fg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -583,16 +622,16 @@
 .m-outcome {
   padding: 8px 10px;
   border-radius: 8px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--m-card-inner);
+  border: 1px solid var(--m-line);
   font-size: 12px;
-  color: #334155;
+  color: var(--m-fg-2);
 }
 
 .m-outcome.bad {
-  background: #fef2f2;
-  color: #991b1b;
-  border-color: #fecaca;
+  background: var(--m-red-bg);
+  color: var(--m-red-ink);
+  border-color: var(--m-red-line);
 }
 
 .m-tier {
@@ -605,7 +644,7 @@
 }
 
 .m-tier strong {
-  color: #0f172a;
+  color: var(--m-fg);
 }
 
 .m-dot {
@@ -629,7 +668,7 @@
   font-size: 11px;
   line-height: 1.45;
   color: var(--m-muted);
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--m-fill);
   padding-top: 8px;
 }
 
@@ -665,11 +704,11 @@
 
 .m-compare tbody th {
   font-weight: 600;
-  color: #0f172a;
+  color: var(--m-fg);
 }
 
 .m-compare tbody td {
-  color: #475569;
+  color: var(--m-fg-2);
 }
 
 /* ---- Compact Road List ---- */
@@ -691,7 +730,7 @@
   padding: 6px 12px;
   border: 1px solid var(--m-line);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--m-card);
   text-align: left;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -699,8 +738,8 @@
 
 .m-list button:hover,
 .m-list button:active {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: var(--m-card-inner);
+  border-color: var(--m-line-strong);
 }
 
 .m-card-compact {
@@ -711,7 +750,7 @@
   flex: 1;
   min-width: 0;
   font-size: 12.5px;
-  color: #0f172a;
+  color: var(--m-fg);
 }
 
 .m-card-compact-main strong {
@@ -727,7 +766,7 @@
   flex: none;
   font-size: 12px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--m-fg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -748,7 +787,7 @@
   margin: 0;
   font-size: 15px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--m-fg);
   line-height: 1.35;
   letter-spacing: -0.01em;
 }
@@ -762,7 +801,7 @@
 .m-counter {
   padding: 14px 16px;
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--m-card);
   border: 1px solid var(--m-line);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
   display: flex;
@@ -773,13 +812,13 @@
 .m-counter-num {
   font-size: 18px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--m-fg);
 }
 
 .m-counter-num span {
   font-size: 34px;
   line-height: 1;
-  color: #dc2626;
+  color: var(--m-red);
   font-variant-numeric: tabular-nums;
   font-weight: 800;
 }
@@ -790,7 +829,7 @@
 }
 
 .m-counter-sub strong {
-  color: #0f172a;
+  color: var(--m-fg);
 }
 
 .m-bar {
@@ -803,7 +842,7 @@
 .m-bar span {
   height: 6px;
   border-radius: 2px;
-  background: #e2e8f0;
+  background: var(--m-line);
 }
 
 .m-bar span.bad {
@@ -821,7 +860,7 @@
   z-index: 30;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: var(--m-card);
 }
 
 .m-about-head {
@@ -837,7 +876,7 @@
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--m-fg);
 }
 
 .m-about-body {
@@ -858,14 +897,14 @@
   margin: 16px 0 6px;
   font-size: 14px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--m-fg);
 }
 
 .m-about-body p {
   margin: 0;
   font-size: 12.5px;
   line-height: 1.5;
-  color: #334155;
+  color: var(--m-fg-2);
 }
 
 .m-headlines {
@@ -880,14 +919,14 @@
   gap: 10px;
   padding: 10px 12px;
   border-radius: 12px;
-  background: #f8fafc;
+  background: var(--m-card-inner);
   border: 1px solid var(--m-line);
 }
 
 .m-headlines strong {
   font-size: 20px;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--m-fg);
 }
 
 .m-headlines span {
@@ -922,4 +961,17 @@
   .m-fab {
     bottom: 24px;
   }
+}
+
+/* ---- small fixes for the three-button header and the dark theme ---- */
+.m-brand-title {
+  white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .m-scope-badge {
+    display: none;
+  }
+}
+:root[data-theme='dark'] .m-brand-logo-img {
+  filter: invert(1) hue-rotate(180deg);
 }

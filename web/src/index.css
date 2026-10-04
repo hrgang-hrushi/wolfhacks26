@@ -142,3 +142,23 @@ button {
   display: grid;
   gap: 6px;
 }
+
+/* ---- dark theme (the choice is stamped on <html> by lib/prefs.ts and by index.html before first paint) ---- */
+:root[data-theme='dark'] body {
+  background: #0b1220;
+}
+:root[data-theme='dark'] .boot {
+  color: #8e9bb1;
+}
+:root[data-theme='dark'] .badge-ho {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+:root[data-theme='dark'] .badge-in {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+}
+:root[data-theme='dark'] .badge-demo {
+  background: rgba(245, 158, 11, 0.22);
+  color: #fcd34d;
+}
