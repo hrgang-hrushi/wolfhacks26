@@ -168,4 +168,4 @@ Compression, read from the database after the load:
 
 These tables are small, so the saving is a few megabytes; the 112,443 roads and their shapes are ordinary tables and are not compressed. The figures for the real Tiger service will be recorded here when it is loaded.
 
-Tests: 334 in `tests/dashboard`. 206 need no database and pass. 123 need the local database: 119 of them passed before the external drive that holds Docker's files disconnected on 2026-10-03; the four added after that (the console fallback, a held lock answering "loading", the one-hour alert window, and a replayed row never overwriting a real one) and the fixes made since have not been run against a database yet. 5 need the real service and run only with `TIGER_LIVE_TESTS=1`.
+Tests: 334 in `tests/dashboard`. 206 need no database and pass. 123 need the local database and pass. 5 need the real service; they run only with `TIGER_LIVE_TESTS=1` and have not been run.

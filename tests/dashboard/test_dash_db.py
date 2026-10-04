@@ -449,8 +449,8 @@ def test_S4_the_loader_has_no_code_that_writes_a_data_file():
     # load.py also holds dump(), which writes the console files into a folder the caller names; everything else in it is checked
     sources.update({f"load.{f.__name__}": inspect.getsource(f) for f in (load.load, load.copy_table, load.refresh,
                                                                          load.compress_chunks, load.compression_stats)})
-    for name, src in sources.items():
-        assert ".to_parquet(" not in src and ".to_csv(" not in src and "open(" not in src and ".write_" not in src, name
+    for name, src in sources.items():                  # (copy.write_row sends a row to the database; it writes no file)
+        assert not any(call in src for call in (".to_parquet(", ".to_csv(", "open(", ".write_text(", ".write_bytes(")), name
 
 
 # ------------------------------------------------------------------------------------------------ the console fallback
