@@ -33,6 +33,7 @@ def test_C3_a_point_takes_its_level_from_the_nearest_spot_on_the_line():
     assert r.wse == pytest.approx(107.0) and (r.v0, r.v1) == (1, 2)
     r = at(lines, 450, -30)  # outside the bend: the corner mark itself, 58 m away in a straight line
     assert r.wse == pytest.approx(104.0) and not r.end_rule and r.lift_m == 0.0
+    assert (r.v0, r.v1) == (1, -1)  # drawn from the corner mark alone
     assert r.along_m == pytest.approx(np.hypot(50, 30)) == pytest.approx(r.side_m)  # not 0: it is not on the mark
 
 
@@ -77,11 +78,11 @@ def test_C7_past_the_last_mark_a_level_is_given_only_within_100_m(monkeypatch):
 def test_C8_no_level_more_than_1_km_along_the_line_from_a_mark():
     lines = [H.mk_line("A", [(0, 0, 100.0), (2500, 0, 102.5)])]  # a gentle river: the level rule is not in play
     r = at(lines, 999, 10)
-    assert r.assessed and r.wse == pytest.approx(100.999) and r.along_m == pytest.approx(999.0)
+    assert r.assessed and r.wse == pytest.approx(100.999) and r.along_m == pytest.approx(np.hypot(999, 10))
     assert not at(lines, 1001, 10).assessed  # not slid back to the 1,000 m point
     assert not at(lines, 1250, 10).assessed
     r = at(lines, 1501, 10)  # within 1 km of the upstream mark
-    assert r.assessed and r.wse == pytest.approx(101.501) and r.along_m == pytest.approx(999.0)
+    assert r.assessed and r.wse == pytest.approx(101.501) and r.along_m == pytest.approx(np.hypot(999, 10))
 
 
 def test_C9_confidence_is_high_within_250_m_of_a_mark():
@@ -97,6 +98,18 @@ def test_C9_confidence_is_high_within_250_m_of_a_mark():
     assert far.assessed and far.along_m == pytest.approx(289.9, abs=0.1) and not far.high  # was "0 m, high"
     end = at(bend, -60, 0)  # past the first mark: 60 m from it, low confidence
     assert end.end_rule and end.along_m == pytest.approx(60.0) and not end.high
+    # the same rule beside a straight stretch: far to the side of a mark is far from the mark
+    straight = [H.mk_line("A", [(0, 0, 100.0), (400, 0, 100.4), (800, 0, 100.8)])]
+    for x in (400, 400.001, 410):  # level with the middle mark, a hair past it, 10 m past it
+        r = at(straight, x, 290)
+        assert r.assessed and not r.high and r.along_m == pytest.approx(290, abs=0.3), x
+    for x in (400, 400.000001):  # straight below a bend: on the mark's own cross-line, or a hair off it
+        r = at(bend, x, -290)
+        assert r.assessed and not r.high and r.along_m == pytest.approx(290, abs=0.01) and r.wse == pytest.approx(100.4), x
+    r = at(straight, 410, 100)
+    assert r.high and r.along_m == pytest.approx(np.hypot(10, 100))
+    r = at(straight, 600, 200)  # 200 m along and 200 m across: 283 m from the mark
+    assert not r.high and r.along_m == pytest.approx(np.hypot(200, 200))
 
 
 def test_C10_a_point_too_far_to_the_side_is_not_assessed_rather_than_dry():
@@ -118,6 +131,12 @@ def test_C11_the_count_of_marks_behind_a_point(tmp_path):
 
     assert behind(450, 5) == {"3", "4"}  # between two marks
     assert behind(650, 0) == {"4"}  # past the last mark
+    assert behind(300, 50) == {"3"}  # level with a mark: its level alone, the neighbours carry no weight
+    assert behind(300.5, 50) == {"3", "4"} and behind(299.5, 50) == {"1", "2", "3"}
+    bent = [H.mk_line("B", [(0, 0, 100.0), (400, 0, 100.4), (400, 400, 100.8)])]
+    for x, y in ((450, -30), (400, -290), (400.000001, -290)):  # outside the bend, and straight below it
+        r = hd.locate(bent, [x], [y]).iloc[0]
+        assert hd.marks_behind(bent, int(r.line), int(r.v0), int(r.v1)) == {"B1"}, (x, y)
     assert behind(150, 5) == {"1", "2", "3"}  # one end is two marks merged
     assert hd.marks_behind(lines, -1, -1, -1) == set()
 

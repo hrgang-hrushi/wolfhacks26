@@ -125,7 +125,7 @@ def test_N12_shared_inputs_were_not_changed_by_the_run(real):
         assert dem.sha256(P.dem30) == meta["inputs_before"]["dem30"]
     # segments.parquet is not compared with today's file: other work adds columns to it, and what matters
     # here, that it holds the same roads in the same order, is what load_depth checks
-    assert meta["git_code_differs_from_commit"] is False
+    assert meta["git_code_differs_from_commit"] is not True  # None where git could not be asked
 
 
 @pytest.mark.network

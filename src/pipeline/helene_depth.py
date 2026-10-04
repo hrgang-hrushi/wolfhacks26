@@ -296,10 +296,10 @@ def _locate(P, lines, px, py, chunk=500) -> pd.DataFrame:
             hi_end = cu > plen
             at_end = ((cu < 0) & P["term_lo"][cand]) | (hi_end & P["term_hi"][cand]) | P["single"][cand]
             along = np.minimum(cuc, plen - cuc)
-            # where the nearest spot is a mark itself (a bend, or the end of the line) the point is `best`
-            # metres from that mark in a straight line; reporting 0 would claim it sits on the mark
-            at_mark = (cu < 0) | hi_end | P["single"][cand]
-            dist = np.where(at_mark, best, along)
+            # how far the road point is from the nearest mark: along the line to the spot beside the point,
+            # then across to it. Where the nearest spot is a mark itself (a bend, or the end of the line) that
+            # is the straight line to the mark. A point far to the side of a mark is not "at" the mark.
+            dist = np.hypot(along, best)  # along is 0 on a mark, so this is then the straight line to it
             # how far the drawn level has moved from the nearer mark's own level: between two marks that differ
             # by many metres (a dam, a fall, a steep reach) a straight line is a guess
             slope = np.divide(np.abs(P["zk1"][cand] - P["zk"][cand]), plen, out=np.zeros_like(plen), where=plen > 0)
@@ -310,12 +310,15 @@ def _locate(P, lines, px, py, chunk=500) -> pd.DataFrame:
             w = np.argmin(masked, axis=1)  # the nearest line that speaks; equal distances go to the first in group order
             r = np.arange(b - a)
             ok = np.isfinite(masked[r, w])
-            j, end, top = cand[r, w], at_end[r, w], hi_end[r, w]
+            j, end = cand[r, w], at_end[r, w]
             frac = np.divide(cuc[r, w], plen[r, w], out=np.zeros(b - a), where=plen[r, w] > 0)
             wse = P["zk"][j] + (P["zk1"][j] - P["zk"][j]) * frac
-            wse = np.where(end, np.where(top, P["zk1"][j], P["zk"][j]), wse)
             k = P["k"][j]
-            v0 = np.where(P["single"][j], 0, np.where(end & top, k + 1, k))
+            # the marks the level was drawn from: both ends of the stretch, or, where the spot is a mark
+            # itself (a bend, an end, or a foot landing exactly on a mark), that one mark alone
+            on_hi = (frac >= 1) & ~P["single"][j]
+            sole = P["single"][j] | (frac <= 0) | on_hi
+            v0 = np.where(P["single"][j], 0, np.where(on_hi, k + 1, k))
             sl = slice(a, b)
             out["assessed"][sl] = ok
             out["wse"][sl] = np.where(ok, wse, np.nan)
@@ -326,7 +329,7 @@ def _locate(P, lines, px, py, chunk=500) -> pd.DataFrame:
             out["high"][sl] = ok & ~end & (dist[r, w] <= S["HIGH_CONF_M"])
             out["line"][sl] = np.where(ok, P["line"][j], -1)
             out["v0"][sl] = np.where(ok, v0, -1)
-            out["v1"][sl] = np.where(ok & ~end, k + 1, -1)
+            out["v1"][sl] = np.where(ok & ~sole, k + 1, -1)
     df = pd.DataFrame(out)
     names = np.array([line.group for line in lines] + [None], dtype=object)
     df["group"] = names[df["line"].values]
