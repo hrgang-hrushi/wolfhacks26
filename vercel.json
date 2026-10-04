@@ -1,18 +1,36 @@
 {
-  "buildCommand": "cd web && npm install && npm run build",
-  "outputDirectory": "web/dist",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "app": {
+      "root": ".",
+      "runtime": "python",
+      "entrypoint": "src/api.py"
+    },
+    "web": {
+      "root": "web",
+      "framework": "vite",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "app",
+          "format": "url",
+          "env": "APP_URL"
+        }
+      ]
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.py"
+      "destination": {
+        "service": "app"
+      }
     },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": {
+        "service": "web"
+      }
     }
-  ],
-  "headers": [
-    { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
-    { "source": "/assets/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }
   ]
 }
