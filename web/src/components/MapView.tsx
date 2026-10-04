@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
+import { useTheme } from '../lib/prefs';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -60,6 +61,14 @@ const NC_BASEMAPS = {
 
 type NCBasemapKey = keyof typeof NC_BASEMAPS;
 
+// In the dark theme the "Clean Light" basemap is swapped for its dark counterpart. Satellite stays as it is.
+const DARK_BASEMAP = { url: 'mapbox://styles/mapbox/dark-v11', fallback: CARTO_DARK_STYLE };
+
+function basemapUrl(key: NCBasemapKey, dark: boolean): string {
+  const style = dark && key === 'light' ? DARK_BASEMAP : NC_BASEMAPS[key];
+  return MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith('pk.') ? style.url : style.fallback;
+}
+
 // North Carolina geographic bounds
 const NC_BOUNDS: [mapboxgl.LngLatLike, mapboxgl.LngLatLike] = [
   [-84.5, 33.7], // Southwest NC / mountains
@@ -84,6 +93,14 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   useEffect(() => {
     styleKeyRef.current = activeStyleKey;
   }, [activeStyleKey]);
+  const { dark } = useTheme();
+  const darkRef = useRef(dark);
+  // The theme changed after the map was made: swap the basemap to match.
+  useEffect(() => {
+    if (darkRef.current === dark) return;
+    darkRef.current = dark;
+    mapRef.current?.setStyle(basemapUrl(styleKeyRef.current, dark));
+  }, [dark]);
 
   // Hover state for interactive tooltip
   const [hoveredInfo, setHoveredInfo] = useState<{
@@ -199,10 +216,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
   const handleSwitchBasemap = (key: NCBasemapKey) => {
     setActiveStyleKey(key);
     if (!mapRef.current) return;
-    const targetUrl = (MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith('pk.'))
-      ? NC_BASEMAPS[key].url
-      : NC_BASEMAPS[key].fallback;
-    mapRef.current.setStyle(targetUrl);
+    mapRef.current.setStyle(basemapUrl(key, darkRef.current));
   };
 
   // Current Location handler
@@ -272,9 +286,7 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
     if (!mapContainerRef.current || mapRef.current) return;
 
     try {
-      const initialStyle = (MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith('pk.'))
-        ? NC_BASEMAPS[activeStyleKey].url
-        : NC_BASEMAPS[activeStyleKey].fallback;
+      const initialStyle = basemapUrl(activeStyleKey, darkRef.current);
 
       const mapInstance = new mapboxgl.Map({
         container: mapContainerRef.current,
@@ -310,7 +322,9 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
         const status = (e.error as any)?.status;
         if (status === 401 || status === 403 || msg.toLowerCase().includes('token') || msg.toLowerCase().includes('unauthorized') || msg.toLowerCase().includes('forbidden')) {
           console.warn('Mapbox basemap unauthorized or rate limited, switching to Carto vector basemap:', msg);
-          const fallbackUrl = NC_BASEMAPS[styleKeyRef.current]?.fallback || CARTO_LIGHT_STYLE;
+          const fallbackUrl = darkRef.current && styleKeyRef.current === 'light'
+            ? DARK_BASEMAP.fallback
+            : NC_BASEMAPS[styleKeyRef.current]?.fallback || CARTO_LIGHT_STYLE;
           mapInstance.setStyle(fallbackUrl);
         }
       });

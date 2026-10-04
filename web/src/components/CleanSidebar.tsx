@@ -1,5 +1,6 @@
 import type { FC } from 'react';
-import { Plus, Calendar, MessageSquare, Ticket, Settings, Navigation, Building2, Smartphone } from 'lucide-react';
+import { Plus, Calendar, MessageSquare, Ticket, Settings, Navigation, Building2, Smartphone, Moon, Sun } from 'lucide-react';
+import { useTheme } from '../lib/prefs';
 
 interface CleanSidebarProps {
   onHomeClick?: () => void;
@@ -20,6 +21,7 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
   onTagClick,
   onSettingsClick
 }) => {
+  const theme = useTheme();
   return (
     <aside className="fullscreen-sidebar" aria-label="Main Navigation">
       {/* Top Brand Logo */}
@@ -108,6 +110,16 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
 
       {/* Bottom Profile & Settings Group */}
       <div className="sidebar-bottom-section">
+        <button
+          type="button"
+          className="sidebar-icon-btn svg-nav-btn"
+          onClick={theme.toggle}
+          title={theme.dark ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={theme.dark ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme.dark ? <Sun size={21} className="nav-svg-icon" /> : <Moon size={21} className="nav-svg-icon" />}
+        </button>
+
         <button
           type="button"
           className="sidebar-icon-btn svg-nav-btn hotspot-ticket"

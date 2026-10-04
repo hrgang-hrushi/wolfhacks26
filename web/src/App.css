@@ -3736,3 +3736,18 @@ html, body, #root {
   margin: 0;
   line-height: 1.4;
 }
+
+
+/* ==========================================================================
+   DARK THEME
+   This page has thousands of fixed light colours. Rather than restate each one,
+   the whole page is inverted (white becomes black, hues are kept), and the map,
+   whose colours carry meaning, is turned back. The map swaps to a dark basemap
+   in MapView. The choice comes from lib/prefs.ts, stamped on <html>.
+   ========================================================================== */
+:root[data-theme='dark'] .fullscreen-dashboard-root {
+  filter: invert(1) hue-rotate(180deg);
+}
+:root[data-theme='dark'] .fullscreen-dashboard-root .mapboxgl-map {
+  filter: invert(1) hue-rotate(180deg);
+}
