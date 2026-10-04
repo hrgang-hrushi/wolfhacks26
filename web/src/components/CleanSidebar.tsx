@@ -81,8 +81,8 @@ export const CleanSidebar: FC<CleanSidebarProps> = ({
           type="button"
           className="sidebar-icon-btn svg-nav-btn hotspot-chat"
           onClick={onChatClick}
-          title="AI Chat Insights"
-          aria-label="Chat"
+          title="Inspector Field Notes"
+          aria-label="Notes"
         >
           <MessageSquare size={22} className="nav-svg-icon" />
         </button>

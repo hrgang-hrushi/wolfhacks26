@@ -719,28 +719,6 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
         </div>
       </div>
 
-      {/* Floating 3 Frosted Glass Telemetry Widgets */}
-      <div className="pixel-black-cards-group gis-mode">
-        <div className="gis-telemetry-chip">
-          <span className="telemetry-value">
-            {selectedSegment ? selectedSegment.pv_rating : '94'}
-          </span>
-          <span className="telemetry-label">Ratings</span>
-        </div>
-        <div className="gis-telemetry-chip chip-wide">
-          <span className="telemetry-value">
-            {selectedSegment ? `-${(selectedSegment.pred_rate || 0.4).toFixed(1)} pts/yr` : '-0.4 pts/yr'}
-          </span>
-          <span className="telemetry-label">Degradation Rate</span>
-        </div>
-        <div className="gis-telemetry-chip">
-          <span className="telemetry-value">
-            {selectedSegment ? `${selectedSegment.years_to_poor} yrs` : '42.5 yrs'}
-          </span>
-          <span className="telemetry-label">Years to Pour</span>
-        </div>
-      </div>
-
       {/* Bottom Right Floating Question Button */}
       <button
         type="button"

@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { X, Navigation, Clock, Calendar, ShieldAlert, Sparkles, Building2, MapPin } from 'lucide-react';
+import { X, Navigation, Clock, Calendar, ShieldAlert, Activity, Building2, MapPin } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
 import { getConditionInfo } from '../utils/colors';
 import { AerialChip } from './AerialChip';
@@ -129,10 +129,10 @@ export const DetailPanel: FC<DetailPanelProps> = ({ segment, onClose, onFlyTo })
         <div className="drivers-card">
           <div className="drivers-header">
             <div className="flex items-center gap-1.5">
-              <Sparkles size={15} className="text-amber-400" />
+              <Activity size={15} className="text-amber-500" />
               <span className="drivers-title">TOP 3 DETERIORATION DRIVERS</span>
             </div>
-            <span className="ai-tag">AI Attribution</span>
+            <span className="ai-tag">Degradation Model</span>
           </div>
           <ul className="drivers-list">
             {segment.drivers.map((driver, idx) => (

@@ -1,5 +1,5 @@
 import type { FC } from 'react';
-import { X, Info, Sparkles, Droplets, MapPin, Eye, ShieldCheck } from 'lucide-react';
+import { X, Info, Activity, Droplets, MapPin, Eye, ShieldCheck } from 'lucide-react';
 
 interface AboutProjectModalProps {
   isOpen: boolean;
@@ -44,7 +44,7 @@ export const AboutProjectModal: FC<AboutProjectModalProps> = ({ isOpen, onClose 
           <div className="about-grid">
             <div className="about-card">
               <div className="about-card-icon text-cyan-400">
-                <Sparkles size={18} />
+                <Activity size={18} />
               </div>
               <h4>AI Pavement Prediction</h4>
               <p>

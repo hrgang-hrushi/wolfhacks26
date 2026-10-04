@@ -1,5 +1,5 @@
 import { useState, useEffect, type FC } from 'react';
-import { X, Navigation, Calendar, Clock, ShieldAlert, Sparkles, Building2, MapPin, CloudRain } from 'lucide-react';
+import { X, Navigation, Calendar, Clock, ShieldAlert, Activity, Building2, MapPin, CloudRain } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
 import { getConditionInfo } from '../utils/colors';
 import { fetchWeatherByCoords, type WeatherData } from '../services/weatherService';
@@ -236,10 +236,10 @@ export const SegmentDetailModal: FC<SegmentDetailModalProps> = ({
         <div className="detail-metric-card drivers-breakdown-card">
           <div className="card-sub-header">
             <div className="flex items-center gap-1.5">
-              <Sparkles size={14} className="text-amber-500" />
+              <Activity size={14} className="text-amber-500" />
               <span className="sub-header-title">TOP 3 DETERIORATION DRIVERS</span>
             </div>
-            <span className="ai-model-tag">AI Attribution</span>
+            <span className="ai-model-tag">Degradation Model</span>
           </div>
 
           <div className="drivers-reasons-list">

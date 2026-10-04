@@ -8,7 +8,7 @@ import {
   Mountain,
   Landmark,
   Eye,
-  Sparkles
+  Layers
 } from 'lucide-react';
 import type { ViewFilter } from '../types/roadSegment';
 
@@ -57,7 +57,7 @@ export const SubHeaderRow: FC<SubHeaderRowProps> = ({
             onClick={() => onToggleFilter('all')}
             title="AI predictions across all streets"
           >
-            <Sparkles size={13} />
+            <Layers size={13} />
             <span>What We Predict</span>
           </button>
         </div>
