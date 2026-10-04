@@ -1,0 +1,7 @@
+# The dashboard's own small environment (web/.venv). pyproject.toml is not touched.
+psycopg[binary]>=3.2
+psycopg-pool>=3.2
+fastapi>=0.115
+uvicorn>=0.30
+# tests only
+httpx>=0.27
