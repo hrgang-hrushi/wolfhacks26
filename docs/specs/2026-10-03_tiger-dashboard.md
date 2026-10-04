@@ -151,7 +151,7 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 | | Result |
 |---|---|
 | AC1 | Met. `py -m pytest tests/dashboard -q -m "not db and not network"`: 195 passed, 0 skipped. |
-| AC2 | Not met. 119 tests marked `db` passed at about 20:15, on the code as it was then. At 20:35 the external drive that holds Docker's files disconnected (`could not fdatasync file`: an input/output error from the drive, not an assertion) and the local database has been down since. Four `db` tests added after that have never passed, and the code changed in the critique fixes has not been run against a database. The full `db` run has to be repeated once Docker is back. |
+| AC2 | Met at 22:30 on the final code: `py -m pytest tests/dashboard -q -m db` gave 123 passed, 0 skipped. Before that it was open for two hours: 119 passed at about 20:15, then at 20:35 the external drive that holds Docker's files disconnected (`could not fdatasync file`: an input/output error from the drive, not an assertion) and the local database was down until the user reconnected the drive. The four `db` tests added in that gap passed on their first run against a database; one test of this change's own (S4's text search) was too strict and was corrected. |
 | AC3 | Not met. The real service was not loaded. Against the local database with the real files, `py -m web.tiger.verify` passed 15 of 15 checks with 112,443 roads, 3,093 camera readings, 17,790 pothole reports and 12,557 sensor readings. |
 | AC4 | Met locally, in the database and from the service: buckets 4,432 / 794 / 4,699 / 100,875 / 1,643; held-out 77,422 / 68,349 / 32,558; Helene 32,558 / 1,266 / 18. |
 | AC5 | Recorded for the local database (below). Not yet for the real service. |
@@ -168,7 +168,7 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 - Alerts: as of 2026-09-27 15:30 UTC, 7 camera flags and 6 sensor alerts. With no time given, 7 flags, all from NCDOT stills labelled known dry.
 - Replay of the peak hour: the alert read as live from the first batch; clearing it restored the original rows and the check command passed again.
 
-**Tests**: 334 in `tests/dashboard` after the critique fixes (206 without a database, all passing; 123 with the local database; 5 that need the real service and run only with `TIGER_LIVE_TESTS=1`). P2 estimated about 67; the larger number comes from the plan review's additions and from one test per case where P2 listed one per failure.
+**Tests**: 335 in `tests/dashboard` after the critique and audit fixes (206 without a database and 124 with the local database, all passing; 5 that need the real service, which run only with `TIGER_LIVE_TESTS=1` and have not been run). P2 estimated about 67; the larger number comes from the plan review's additions and from one test per case where P2 listed one per failure.
 
 ## Deviations from the plan
 
@@ -188,6 +188,8 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 13. **A held table lock answers "loading".** While a load's copy step holds the tables, a data route used to wait for its lock time limit and answer "database unavailable".
 14. **The replay reports rows it left out.** A replayed row that would land exactly on an existing row's key is not inserted (the real row is never written over); the command prints how many.
 
+15. **`README.md`.** This change's commits do not touch it (D19). The branch does contain a README edit, commit `684145b`: the coordination chat changed the status row on `main`, using wording this chat suggested when asked, and `main` was then merged in.
+
 ## Paragraph for the README (for the user to paste; this change does not edit the README)
 
 > **Repair dashboard for officials:** the data behind it is built. All 112,443 state road stretches, the camera flood readings, the water-level sensor readings and the pothole reports load into one Tiger Data database in about 10 seconds. A read-only service returns the ranked work list (4,432 roads to fix now, 794 within a year, 4,699 within five), each road's details, flood alerts, and what the database is doing. No page reads it yet.
@@ -197,8 +199,7 @@ Everything below was run on this machine against a local TimescaleDB 2.30.2 (Pos
 ## Not done
 
 - The real Tiger Data service is not loaded, so AC3, the real half of AC5 and L1 to L5 are open. It needs the connection setting in `data/raw/tiger.env` and a network that allows the service's port (a phone hotspot), or the console fallback.
-- The `db` tests have to be run again in full (AC2). They need Docker. Docker here is Colima, whose folder `~/.colima` is a link to the external drive "Crucial P3"; with the drive disconnected Colima refuses to start at all (an attempt to start a second, temporary machine on the internal disk failed the same way and left nothing behind). It needs the drive reconnected, or the user's say to install a database another way.
-- The Codex audit has not been run. It is held until the `db` tests can run, because it would fail on AC2 for a reason no code change can fix.
+- Docker here is Colima, whose folder `~/.colima` is a link to the external drive "Crucial P3". With the drive disconnected Colima refuses to start at all, so the `db` tests can only run while that drive is connected. After the drive came back, a port forwarder left over from before the disconnect was still holding the test database's port and had to be stopped.
 - Hosting, the domain and frontend wiring were gated on the user's yes and were not started.
 - Whether crash rate should enter the rank or the risk file is still the user's call; it is shown and not used.
 
@@ -236,7 +237,26 @@ Non-blocking findings from round 2, fixed in the commit after it:
 
 Left as they are, and why: X2's "shows without a refresh" cannot be told apart from the replay's own refresh (D12 is the test for rows appearing with no refresh at all); S4's real-file half is the fingerprint comparison done by hand under AC7; S11 can only fail if a sweep of old test schemas is added back, which is the thing it guards; A17's mid-stream cases call the page generator directly. The plan file still mentions the removed `TIGER_TEST_ALLOW_REMOTE` switch; Deviations 11 records its removal.
 
-### Codex audit: not run yet
+### After the drive came back (22:30)
 
-Held until the `db` tests can run again. It would fail on AC2 for a reason no code change can fix, and each Codex run is rationed.
+On the code as it was then: 123 `db` tests passed; 206 tests that need no database passed; the base suite gave 204 passed and 1 skipped; a fresh load of the real files into the local database took 5.8 s and the check command passed 15 of 15. Two acceptance criteria are still open: AC3 and the real-service half of AC5. The real service was not loaded, because the connection setting was never on the machine and the venue network blocks the port again.
+
+### Codex audit, round 1 (`18e3988`): Overall Fail
+
+Scorecard: Plan adherence **Fail**; Scope discipline Acceptable; Test coverage **Fail**; Review compliance Acceptable; Freeze integrity Acceptable; Regression check Acceptable; Documentation Acceptable. The audit file is `docs/specs/2026-10-03_tiger-dashboard-audit.md`.
+
+1. The console files wrote a load record without the TimescaleDB version and never saved the compression figures (D10, D11), and neither the test nor the check command looked. Fixed: `setup.sql` records the version from the database, `after_load.sql` records the same figures a direct load reads, the console test compares them with a direct measurement, and the check command gained a sixteenth check that fails when the record lacks the version or the sizes (with a test that blanks each).
+2. AC3 and the real-service half of AC5 are unmet. Not fixable here: it needs the connection setting and a network that allows the port. This is the reason the overall grade stays Fail.
+3. `README.md` changed in commit `684145b` while D19 says this change does not edit it. Recorded as Deviations 15: that commit is the coordination chat's, on `main`.
+4. The auditor could not re-run the file-writing and database tests in its read-only sandbox; no action.
+
+After the fixes: 124 `db` tests passed, 206 without a database passed, and the check command passed 16 of 16 on a fresh local load.
+
+### Codex audit, round 2 (the commit after `18e3988`): Overall Fail, on the real service only
+
+Scorecard: Plan adherence Acceptable; Scope discipline Acceptable; Test coverage **Fail**; Review compliance Acceptable; Freeze integrity Acceptable; Regression check Acceptable; Documentation Acceptable.
+
+One finding causes the Fail: the real Tiger service remains unloaded, so AC3 and the real-service half of AC5 are unmet. The round-1 code finding is confirmed fixed. The auditor's sandbox could not open sockets or temporary folders, so it could not reproduce the recorded test counts; it calls that an environment limit, not a regression.
+
+What closes the last finding: put `TIGER_DATABASE_URL` in `data/raw/tiger.env`, get on a network that allows the service's port, then `py -m web.tiger.config --check`, `py -m web.tiger.load`, `py -m web.tiger.verify`, `TIGER_LIVE_TESTS=1 py -m pytest tests/dashboard -q -m network`, and record the storage and compression figures here and in the feature doc.
 

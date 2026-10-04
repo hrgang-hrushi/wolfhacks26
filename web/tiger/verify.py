@@ -108,11 +108,18 @@ def checks(conn, schema, root):
     """(name, ok, detail) rows. `conn` must have its search path on `schema`."""
     out = []
     root = Path(root)
-    row = conn.execute("SELECT id, status, sources FROM load_manifest ORDER BY id DESC LIMIT 1").fetchone()
+    row = conn.execute("SELECT id, status, sources, timescaledb_version, compression FROM load_manifest "
+                       "ORDER BY id DESC LIMIT 1").fetchone()
     if row is None:
         return [Check("load record", False, "the database has no load record")]
-    _, status, sources = row
+    _, status, sources, version, recorded = row
     out.append(Check("load record", status == "complete", f"status is {status}"))
+    recorded = recorded or {}
+    whole = bool(version) and set(recorded) == set(tables.HYPERTABLES) and all(
+        isinstance(c, dict) and c.get("bytes_before") and c.get("bytes_after") for c in recorded.values())
+    out.append(Check("load record holds the version and the measured sizes", whole,
+                     f"TimescaleDB {version}; sizes recorded for {sorted(recorded)}" if whole
+                     else f"version {version!r}; sizes recorded for {sorted(recorded)}"))
 
     now = build.fingerprints(root)
     changed = sorted(f for f in set(now) | set(sources) if now.get(f, {}).get("sha256") != sources.get(f, {}).get("sha256"))

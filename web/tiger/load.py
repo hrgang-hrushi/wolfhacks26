@@ -141,6 +141,19 @@ def load(url, root=Path("."), schema=None, *, schedule_jobs=True, compress=True,
         admin.close()
 
 
+def _compression_sql():
+    """SQL for the same figures compression_stats() reads, as one JSON value, for the script run in the console."""
+    parts = []
+    for table in tables.HYPERTABLES:
+        parts.append(
+            f"'{table}', (SELECT jsonb_build_object('chunks', coalesce(total_chunks, 0), "
+            "'compressed_chunks', coalesce(number_compressed_chunks, 0), 'bytes_before', before_compression_total_bytes, "
+            "'bytes_after', after_compression_total_bytes, 'ratio', CASE WHEN after_compression_total_bytes > 0 THEN "
+            "round(before_compression_total_bytes::numeric / after_compression_total_bytes, 2) END) "
+            f"FROM hypertable_columnstore_stats('{table}'))")
+    return "jsonb_build_object(" + ", ".join(parts) + ")"
+
+
 def dump(root, out_dir, schema=None):
     """Per-table CSV files and two SQL scripts, for loading through Tiger's browser console when its port is blocked.
 
@@ -163,8 +176,9 @@ def dump(root, out_dir, schema=None):
     setup += [text + ";" for _, text in tables.statements()]
     # the console runs each statement on its own: the record goes in first, so the tables are never empty under a
     # load that still reads as complete
-    setup.append("INSERT INTO load_manifest (status, sources, row_counts, code_version) VALUES ('loaded', "
-                 f"'{json.dumps(built.fingerprints)}'::jsonb, '{json.dumps(built.counts)}'::jsonb, '{code_version()}');")
+    setup.append("INSERT INTO load_manifest (status, sources, row_counts, code_version, timescaledb_version) VALUES ('loaded', "
+                 f"'{json.dumps(built.fingerprints)}'::jsonb, '{json.dumps(built.counts)}'::jsonb, '{code_version()}', "
+                 "(SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'));")
     setup.append("TRUNCATE " + ", ".join(DATA_TABLES) + ";")
     (out_dir / "setup.sql").write_text("\n".join(setup) + "\n")
     after = [f"SET search_path = {name}, public;"]
@@ -173,7 +187,7 @@ def dump(root, out_dir, schema=None):
         after.append(f"DO $$ DECLARE c regclass; BEGIN FOR c IN SELECT show_chunks('{table}', older_than => "
                      f"(SELECT max(time) FROM {table}) - INTERVAL '{h['chunk']}') LOOP "
                      f"CALL convert_to_columnstore(c, if_not_columnstore => true); END LOOP; END $$;")
-    after.append("UPDATE load_manifest SET status = 'complete', finished_at = now() "
+    after.append(f"UPDATE load_manifest SET status = 'complete', finished_at = now(), compression = {_compression_sql()} "
                  "WHERE id = (SELECT max(id) FROM load_manifest) AND status = 'loaded';")
     (out_dir / "after_load.sql").write_text("\n".join(after) + "\n")
     return built.counts
