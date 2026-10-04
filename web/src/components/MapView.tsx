@@ -636,67 +636,67 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
       const c = routePreview.corridor;
       const opt = routePreview.selectedOption;
 
-      // A. Fastest Path (Google Maps Baseline - Amber / Danger Red)
+      // A. Fastest Baseline Path (Amber/Red with clean dark casing)
       if ((opt === 'fastest' || opt === 'both') && c.fastest.geometry.length > 0) {
         layers.push(
           new PathLayer({
-            id: 'safe-route-fastest-glow',
+            id: 'safe-route-fastest-casing',
             data: [{ path: c.fastest.geometry }],
             pickable: false,
             widthScale: 1,
-            widthMinPixels: 8,
+            widthMinPixels: 5,
             capRounded: true,
             jointRounded: true,
             getPath: (d: any) => d.path,
-            getColor: [239, 68, 68, 140],
-            getWidth: 9
+            getColor: [15, 23, 42, 120],
+            getWidth: 5
           }),
           new PathLayer({
             id: 'safe-route-fastest-core',
             data: [{ path: c.fastest.geometry }],
             pickable: true,
             widthScale: 1,
-            widthMinPixels: 4,
+            widthMinPixels: 3.5,
             capRounded: true,
             jointRounded: true,
             getPath: (d: any) => d.path,
-            getColor: [249, 115, 22, 255],
-            getWidth: 4.5
+            getColor: [234, 88, 12, 240], // Crisp Amber/Red
+            getWidth: 3.5
           })
         );
       }
 
-      // B. Safest Path (RoadSense AI - Emerald High-Ground Aura)
+      // B. Safest Path (Clean Emerald Highway Green)
       if ((opt === 'safest' || opt === 'both') && c.safest.geometry.length > 0) {
         layers.push(
           new PathLayer({
-            id: 'safe-route-safest-aura',
+            id: 'safe-route-safest-casing',
             data: [{ path: c.safest.geometry }],
             pickable: false,
             widthScale: 1,
-            widthMinPixels: 10,
+            widthMinPixels: 6,
             capRounded: true,
             jointRounded: true,
             getPath: (d: any) => d.path,
-            getColor: [16, 185, 129, 180],
-            getWidth: 12
+            getColor: [15, 23, 42, 140],
+            getWidth: 6
           }),
           new PathLayer({
             id: 'safe-route-safest-core',
             data: [{ path: c.safest.geometry }],
             pickable: true,
             widthScale: 1,
-            widthMinPixels: 5,
+            widthMinPixels: 4.2,
             capRounded: true,
             jointRounded: true,
             getPath: (d: any) => d.path,
-            getColor: [52, 211, 153, 255],
-            getWidth: 6
+            getColor: [5, 150, 105, 255], // Deep clean Emerald
+            getWidth: 4.2
           })
         );
       }
 
-      // C. Origin & Destination Waypoint Pins
+      // C. Minimalist Origin & Destination Pins
       const startCoord = c.safest.geometry[0] || c.fastest.geometry[0];
       const endCoord = c.safest.geometry[c.safest.geometry.length - 1] || c.fastest.geometry[c.fastest.geometry.length - 1];
 
@@ -705,17 +705,17 @@ export const MapView = forwardRef<MapViewHandle, MapViewProps>(({
           new ScatterplotLayer({
             id: 'safe-route-waypoints',
             data: [
-              { pos: startCoord, label: 'Origin', color: [16, 185, 129, 255], radius: 8 },
-              { pos: endCoord, label: 'Destination', color: [56, 189, 248, 255], radius: 8 }
+              { pos: startCoord, color: [5, 150, 105, 255] },
+              { pos: endCoord, color: [37, 99, 235, 255] }
             ],
             getPosition: (d: any) => d.pos,
-            getRadius: (d: any) => d.radius,
+            getRadius: 5,
             radiusUnits: 'pixels',
             getFillColor: (d: any) => d.color,
             stroked: true,
             getLineColor: [255, 255, 255, 255],
             lineWidthUnits: 'pixels',
-            lineWidthMinPixels: 2.5,
+            lineWidthMinPixels: 2,
             pickable: false
           })
         );

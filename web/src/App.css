@@ -2935,669 +2935,411 @@ html, body, #root {
 }
 
 /* ==========================================================================
-   ROAD SENSE AI: SAFE ROUTE NAVIGATOR & CORRIDOR COMPARISONS (PILLAR 1)
+   ROAD SENSE AI: SAFE ROUTE NAVIGATOR (PILLAR 1) - CLEAN DESIGN SYSTEM
    ========================================================================== */
 
-.safe-route-modal-card {
-  max-width: 940px !important;
+.clean-safe-route-card {
+  max-width: 880px !important;
   width: 95vw !important;
   max-height: 90vh !important;
-  background: #0f172a !important;
-  color: #f8fafc !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 20px !important;
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px rgba(16, 185, 129, 0.12) !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
 }
 
-.safe-route-header-icon-wrap {
-  width: 42px;
-  height: 42px;
+.clean-modal-icon-chip {
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+  flex-shrink: 0;
 }
 
-.safe-route-badge-ai {
-  font-size: 11px;
+.clean-modal-icon-chip.green {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
+.clean-modal-heading {
+  font-size: 1.15rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #0f172a;
+  margin: 0;
+  letter-spacing: -0.01em;
 }
 
-.safe-route-modal-body {
+.clean-safe-route-body {
   padding: 20px 24px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  max-height: calc(90vh - 150px);
+  gap: 16px;
+  overflow-y: auto;
+  max-height: calc(90vh - 140px);
 }
 
-/* Corridor Selection Tabs */
-.safe-route-corridor-tabs {
+/* Corridor Selection Segmented Control */
+.clean-corridor-segmented-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 14px;
 }
 
-.corridor-tab-btn {
-  background: rgba(30, 41, 59, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 10px 14px;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.corridor-tab-btn:hover {
-  background: rgba(51, 65, 85, 0.8);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-1px);
-}
-
-.corridor-tab-btn.active {
-  background: rgba(15, 23, 42, 0.95);
-  border-color: #10b981;
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
-}
-
-.corridor-tab-header {
+.clean-corridor-tab-item {
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
 }
 
-.corridor-tab-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: #f1f5f9;
+.clean-corridor-tab-item:hover {
+  background: rgba(255, 255, 255, 0.6);
 }
 
-.corridor-tab-badge {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
+.clean-corridor-tab-item.active {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-.corridor-tab-badge.badge-red {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-}
-
-.corridor-tab-badge.badge-green {
-  background: rgba(34, 197, 94, 0.2);
-  color: #4ade80;
-  border: 1px solid rgba(34, 197, 94, 0.4);
-}
-
-.corridor-tab-badge.badge-blue {
-  background: rgba(56, 189, 248, 0.2);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-}
-
-.corridor-tab-sub {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-/* Endpoint Bar */
-.safe-route-endpoint-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 10px 16px;
-  gap: 16px;
-}
-
-.endpoint-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex: 1;
-}
-
-.endpoint-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.endpoint-label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: #64748b;
-}
-
-.endpoint-val {
-  font-size: 12.5px;
+.clean-corridor-tab-item .tab-title {
+  font-size: 12px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: #64748b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.endpoint-divider {
+.clean-corridor-tab-item.active .tab-title {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+/* Origin & Destination Bar */
+.clean-endpoint-strip {
   display: flex;
   align-items: center;
-  justify-content: center;
-  opacity: 0.6;
+  justify-content: space-between;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 16px;
 }
 
-/* Comparison Grid */
-.safe-route-comparison-grid {
+.endpoint-point {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.endpoint-text-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.endpoint-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.endpoint-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Side-by-Side Comparison Cards */
+.clean-comparison-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 18px;
+  gap: 16px;
 }
 
-.route-option-card {
-  background: rgba(30, 41, 59, 0.5);
-  border: 1.5px solid rgba(255, 255, 255, 0.08);
+.clean-route-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
   border-radius: 16px;
-  padding: 16px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: all 0.18s ease;
   position: relative;
 }
 
-.route-option-card:hover {
-  background: rgba(30, 41, 59, 0.8);
-  border-color: rgba(255, 255, 255, 0.2);
+.clean-route-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
-.route-option-card.fastest-card.selected {
+.clean-route-card.fastest.selected {
   border-color: #f59e0b;
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
-  background: rgba(30, 41, 59, 0.9);
+  background: #fffdfa;
+  box-shadow: 0 0 0 1px #f59e0b, 0 4px 16px rgba(245, 158, 11, 0.08);
 }
 
-.route-option-card.safest-card.selected {
+.clean-route-card.safest.selected {
   border-color: #10b981;
-  box-shadow: 0 0 24px rgba(16, 185, 129, 0.3);
-  background: rgba(16, 35, 30, 0.7);
+  background: #f0fdf4;
+  box-shadow: 0 0 0 1px #10b981, 0 4px 16px rgba(16, 185, 129, 0.1);
 }
 
-.route-card-top {
+.route-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.route-pill-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
+.route-timing {
+  font-size: 12.5px;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
+  color: #475569;
 }
 
-.route-pill-tag.tag-warning {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.4);
-}
-
-.route-pill-tag.tag-success {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.4);
-}
-
-.route-timing-stat {
-  font-size: 13px;
-  font-weight: 700;
-  color: #cbd5e1;
-}
-
-.route-card-title {
+.route-name {
   font-size: 15px;
   font-weight: 700;
-  color: #f8fafc;
+  color: #0f172a;
   margin: 0;
 }
 
-.route-card-desc {
+.route-summary {
   font-size: 12px;
-  color: #94a3b8;
+  color: #64748b;
   line-height: 1.45;
   margin: 0;
-  min-height: 48px;
+  min-height: 34px;
 }
 
-/* Route Metrics */
-.route-metrics-row {
+/* Telemetry Pods (matching CleanLocationCard) */
+.clean-pods-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
+  margin: 2px 0;
 }
 
-.route-metric-pill {
+.clean-pod-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 8px 6px;
-  border-radius: 10px;
-  text-align: center;
+  gap: 2px;
 }
 
-.route-metric-pill.metric-danger {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+.clean-route-card.fastest.selected .clean-pod-box {
+  border-color: #fde68a;
 }
 
-.route-metric-pill.metric-success {
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+.clean-route-card.safest.selected .clean-pod-box {
+  border-color: #bbf7d0;
 }
 
-.metric-num {
-  font-size: 16px;
-  font-weight: 800;
-  color: #ffffff;
-}
-
-.route-metric-pill.metric-danger .metric-num {
-  color: #f87171;
-}
-
-.route-metric-pill.metric-success .metric-num {
-  color: #34d399;
-}
-
-.metric-lbl {
-  font-size: 9.5px;
+.pod-box-label {
+  font-size: 10px;
   font-weight: 600;
-  color: #94a3b8;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
 }
 
-/* Hazards list inside card */
-.route-hazards-block {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+.pod-box-value {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.pod-box-value.danger {
+  color: #dc2626;
+}
+
+.pod-box-value.success {
+  color: #059669;
+}
+
+/* Hazards & Avoidance Sections */
+.clean-hazards-section,
+.clean-avoidance-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
-  padding: 10px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.hazards-title {
-  font-size: 10.5px;
-  font-weight: 700;
-  color: #f87171;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.clean-avoidance-section {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
 }
 
-.hazards-list {
+.hazards-header-text {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+}
+
+.clean-bullets-list {
   list-style: none;
-  padding: 0;
   margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
 
-.hazard-item-bullet {
-  font-size: 11px;
-  color: #cbd5e1;
+.bullet-row {
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  line-height: 1.35;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #334155;
 }
 
-.bullet-dot.red {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #ef4444;
-  margin-top: 4px;
-  shrink: 0;
+.bullet-row.danger {
+  color: #991b1b;
 }
 
-/* Route Avoidance Stats */
-.route-avoidance-box {
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.2);
-  border-radius: 10px;
-  padding: 10px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  text-align: center;
+.bullet-row.success {
+  color: #065f46;
 }
 
-.avoidance-stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.avoidance-count {
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.avoidance-text {
-  font-size: 9.5px;
-  color: #94a3b8;
-  font-weight: 600;
-}
-
-/* Radio select button inside cards */
-.route-select-radio-btn {
+/* Radio Selection Button */
+.clean-radio-action-btn {
+  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #cbd5e1;
-  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  margin-top: auto;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  font-family: inherit;
 }
 
-.route-select-radio-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+.clean-radio-action-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.clean-radio-action-btn.checked {
+  background: #fffbeb;
+  border-color: #f59e0b;
+  color: #b45309;
+}
+
+.clean-radio-action-btn.success.checked {
+  background: #059669;
+  border-color: #059669;
   color: #ffffff;
 }
 
-.route-select-radio-btn.checked {
-  background: rgba(245, 158, 11, 0.2);
-  border-color: #f59e0b;
-  color: #fbbf24;
-}
-
-.route-select-radio-btn.active-success.checked {
-  background: rgba(16, 185, 129, 0.25);
-  border-color: #10b981;
-  color: #34d399;
-}
-
-.radio-circle {
+.clean-radio-ring {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.4);
+  border: 1.5px solid #94a3b8;
 }
 
-/* AI Rationale Box */
-.safe-route-rationale-box {
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  border-radius: 12px;
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.rationale-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.rationale-body {
+/* Explainable AI Callout */
+.clean-ai-callout {
   font-size: 12.5px;
-  color: #e2e8f0;
   line-height: 1.5;
-  margin: 0;
 }
 
-/* Hazards Section */
-.safe-route-waypoints-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.clean-ai-callout p {
+  margin: 2px 0 0 0;
+  color: #166534;
 }
 
-.waypoints-section-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: #cbd5e1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.waypoints-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 10px;
-}
-
-.waypoint-card {
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.waypoint-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.waypoint-name {
-  font-size: 12px;
-  font-weight: 700;
-  color: #f1f5f9;
-}
-
-.waypoint-severity {
-  font-size: 9.5px;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.waypoint-severity.critical {
-  background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-}
-
-.waypoint-severity.high {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.4);
-}
-
-.waypoint-desc {
-  font-size: 11px;
-  color: #94a3b8;
-  line-height: 1.35;
-  margin: 0;
-}
-
-.waypoint-coords {
-  font-size: 10px;
+.clean-text-btn {
+  background: transparent;
+  border: none;
   color: #64748b;
-  font-family: ui-monospace, monospace;
-}
-
-/* Modal Footer */
-.safe-route-modal-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(15, 23, 42, 0.95);
-  gap: 12px;
-}
-
-.footer-left-actions,
-.footer-right-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.safe-route-btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
   padding: 8px 14px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #cbd5e1;
-  font-size: 12px;
-  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  font-family: inherit;
 }
 
-.safe-route-btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+.clean-text-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
-.safe-route-btn-secondary.active-both {
-  background: rgba(56, 189, 248, 0.2);
-  border-color: #38bdf8;
-  color: #38bdf8;
-}
-
-.safe-route-btn-cancel {
-  padding: 8px 16px;
-  border-radius: 10px;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.safe-route-btn-cancel:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
-}
-
-.safe-route-btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 18px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  border: none;
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
-  transition: all 0.2s ease;
-}
-
-.safe-route-btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
-}
-
-/* Top Toolbar Safe Route Action Button in CleanMapCard */
-.safe-route-nav-btn {
+/* Top Toolbar Safe Route Button (CleanMapCard) */
+.pixel-filter-btn.safe-route-filter-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(5, 150, 105, 0.28) 100%);
-  border: 1.5px solid rgba(16, 185, 129, 0.5);
+  background: #f0fdf4;
+  border-color: #bbf7d0;
   color: #065f46;
-  font-weight: 700;
-  font-size: 12px;
-  padding: 5px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
-  white-space: nowrap;
+  font-weight: 600;
 }
 
-.safe-route-nav-btn:hover {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.28) 0%, rgba(5, 150, 105, 0.38) 100%);
-  border-color: #10b981;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+.pixel-filter-btn.safe-route-filter-btn:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #047857;
 }
 
-.safe-route-nav-btn.is-active-route {
-  background: #10b981;
-  color: #ffffff;
+.pixel-filter-btn.safe-route-filter-btn.active {
+  background: #059669;
   border-color: #059669;
-  box-shadow: 0 0 14px rgba(16, 185, 129, 0.5);
+  color: #ffffff;
 }
 
-/* Active Route Banner on Map */
+/* Clean Active Route Floating Banner on Map */
 .map-route-active-banner {
   position: absolute;
   top: 60px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 25;
-  background: rgba(15, 23, 42, 0.94);
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(16, 185, 129, 0.2);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
   border-radius: 999px;
-  padding: 6px 16px 6px 14px;
+  padding: 6px 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   backdrop-filter: blur(12px);
-  color: #ffffff;
+  color: #0f172a;
   font-size: 12px;
 }
 
@@ -3606,19 +3348,13 @@ html, body, #root {
   height: 8px;
   border-radius: 50%;
   background: #10b981;
-  box-shadow: 0 0 8px #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
   animation: pulseGreen 1.8s infinite;
-}
-
-@keyframes pulseGreen {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-  70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
 
 .banner-corridor-name {
   font-weight: 700;
-  color: #f8fafc;
+  color: #0f172a;
 }
 
 .banner-option-pill {
@@ -3630,27 +3366,27 @@ html, body, #root {
 }
 
 .banner-option-pill.safest {
-  background: rgba(16, 185, 129, 0.25);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
 }
 
 .banner-option-pill.fastest {
-  background: rgba(245, 158, 11, 0.25);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: #fef3c7;
+  color: #d97706;
+  border: 1px solid #fde68a;
 }
 
 .banner-option-pill.both {
-  background: rgba(56, 189, 248, 0.25);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: #e0f2fe;
+  color: #0284c7;
+  border: 1px solid #bae6fd;
 }
 
 .banner-exit-btn {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #e2e8f0;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #475569;
   border-radius: 999px;
   padding: 3px 10px;
   font-size: 11px;
@@ -3660,12 +3396,13 @@ html, body, #root {
   align-items: center;
   gap: 4px;
   transition: all 0.15s ease;
+  font-family: inherit;
 }
 
 .banner-exit-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
-  color: #f87171;
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #dc2626;
 }
 
 /* ==========================================================================

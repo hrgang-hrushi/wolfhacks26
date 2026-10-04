@@ -1,7 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import type { RoadSegment } from '../types/roadSegment';
 import { Gauge } from './Gauge';
-import { ShieldAlert, Sparkles } from 'lucide-react';
 
 interface CleanTenantsCardProps {
   selectedSegment: RoadSegment | null;
@@ -13,90 +12,73 @@ export const CleanTenantsCard: React.FC<CleanTenantsCardProps> = ({
   onOpenNetworkStats
 }) => {
   const seg = selectedSegment;
-  const [metricMode, setMetricMode] = useState<'arr' | 'capex'>('arr');
 
-  // Real-Time Dynamic Run Rate & Telemetry based on District, Mileage & Disaster Urgency
-  const telemetry = useMemo(() => {
+  // Real-Time Dynamic Telemetry: Run rate and crew allocation scale cleanly with active division
+  const { divisionName, arrValue, gaugePercent, readyCrews, readinessPct, trendPct } = useMemo(() => {
     if (!seg) {
       return {
+        divisionName: 'NCDOT Division 5 (Central)',
         arrValue: 428_000,
-        capexValue: 2_450_000,
         gaugePercent: 66,
-        divisionName: 'NCDOT Statewide Enterprise',
         readyCrews: 14,
         readinessPct: 94,
-        trendPct: 5.2,
-        isDisasterZone: false
+        trendPct: 5.2
       };
     }
 
     if (seg.city === 'Asheville' || seg.in_helene_zone) {
       return {
-        arrValue: 680_000,
-        capexValue: 5_800_000,
-        gaugePercent: 88,
         divisionName: 'NCDOT Division 13 & 14 (Western/Helene)',
+        arrValue: 680_000,
+        gaugePercent: 84,
         readyCrews: 28,
         readinessPct: 98,
-        trendPct: 18.4,
-        isDisasterZone: true
+        trendPct: 18.4
       };
     }
 
     if (seg.city === 'Charlotte') {
       return {
-        arrValue: 540_000,
-        capexValue: 3_900_000,
-        gaugePercent: 74,
         divisionName: 'NCDOT Division 10 & 12 (Metrolina)',
+        arrValue: 540_000,
+        gaugePercent: 72,
         readyCrews: 19,
         readinessPct: 91,
-        trendPct: 7.8,
-        isDisasterZone: false
+        trendPct: 7.8
       };
     }
 
     if (seg.city === 'Wilmington' || seg.city === 'Outer Banks') {
       return {
-        arrValue: 390_000,
-        capexValue: 2_100_000,
-        gaugePercent: 58,
         divisionName: 'NCDOT Division 1 & 3 (Coastal/Cape Fear)',
+        arrValue: 390_000,
+        gaugePercent: 58,
         readyCrews: 11,
         readinessPct: 96,
-        trendPct: 4.1,
-        isDisasterZone: false
+        trendPct: 4.1
       };
     }
 
     if (seg.city === 'Greensboro' || seg.city === 'Winston-Salem') {
       return {
-        arrValue: 460_000,
-        capexValue: 2_800_000,
-        gaugePercent: 70,
         divisionName: 'NCDOT Division 7 & 9 (Piedmont Triad)',
+        arrValue: 460_000,
+        gaugePercent: 69,
         readyCrews: 16,
         readinessPct: 93,
-        trendPct: 6.2,
-        isDisasterZone: false
+        trendPct: 6.2
       };
     }
 
-    // Default to Raleigh Capital Division
     return {
+      divisionName: 'NCDOT Division 5 (Central)',
       arrValue: 428_000,
-      capexValue: 2_450_000,
       gaugePercent: 66,
-      divisionName: 'NCDOT Division 5 (Capital Triangle)',
       readyCrews: 14,
       readinessPct: 94,
-      trendPct: 5.2,
-      isDisasterZone: false
+      trendPct: 5.2
     };
   }, [seg]);
-
-  const displayedCenterValue = metricMode === 'arr' ? telemetry.arrValue : telemetry.capexValue;
-  const displayedLabel = metricMode === 'arr' ? 'Enterprise Contract ARR' : 'Annual CapEx Run Rate';
 
   return (
     <div
@@ -108,50 +90,12 @@ export const CleanTenantsCard: React.FC<CleanTenantsCardProps> = ({
         {/* Clean Auto-Layout Header */}
         <div className="tenants-header-row">
           <div className="tenants-title-cluster" style={{ width: '100%' }}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="agency-division-label">
-                {telemetry.divisionName} • Active Dispatch
-              </span>
-              {telemetry.isDisasterZone ? (
-                <span className="condition-badge red flex items-center gap-1" style={{ fontSize: '9px', padding: '1px 5px' }}>
-                  <ShieldAlert size={10} /> Priority Zone
-                </span>
-              ) : (
-                <span className="condition-badge blue flex items-center gap-1" style={{ fontSize: '9px', padding: '1px 5px' }}>
-                  <Sparkles size={10} /> Real-Time
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between gap-2 mt-0.5">
-              <h2 className="tenants-title">Agency Operations</h2>
-              {/* Metric Mode Toggle */}
-              <div
-                className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg border border-slate-200"
-                onClick={(e) => e.stopPropagation()}
-                title="Toggle between Enterprise SaaS Contract ARR and District Maintenance CapEx Budget"
-              >
-                <button
-                  type="button"
-                  className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded ${metricMode === 'arr' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                  onClick={() => setMetricMode('arr')}
-                >
-                  ARR
-                </button>
-                <button
-                  type="button"
-                  className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded ${metricMode === 'capex' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-                  onClick={() => setMetricMode('capex')}
-                >
-                  CapEx
-                </button>
-              </div>
-            </div>
-
+            <span className="agency-division-label">
+              {divisionName} • Active Dispatch
+            </span>
+            <h2 className="tenants-title">Agency Operations</h2>
             <p className="tenants-subtitle">
-              {metricMode === 'arr'
-                ? 'SaaS license run rate scaled by district lane-mileage'
-                : 'Projected annual pavement repair & crew budget'}
+              Active highway patrol &amp; rapid repair dispatch
             </p>
           </div>
         </div>
@@ -159,16 +103,16 @@ export const CleanTenantsCard: React.FC<CleanTenantsCardProps> = ({
         {/* 110% Pixel-to-Pixel Cloned Gauge - Royal Fleet Blue (#2563eb) */}
         <div className="tenants-gauge-area">
           <Gauge
-            centerValue={displayedCenterValue}
-            defaultLabel={displayedLabel}
+            centerValue={arrValue}
+            defaultLabel="ARR run rate"
             formatOptions={{ style: 'currency', currency: 'USD', maximumFractionDigits: 0 }}
             inactiveFillOpacity={0.7}
             notchCornerRadius={1.2}
             notchLengthPercent={100}
             spacing={25}
-            value={telemetry.gaugePercent}
+            value={gaugePercent}
             size={230}
-            activeColor={telemetry.isDisasterZone ? '#2563eb' : '#2563eb'}
+            activeColor="#2563eb"
             inactiveColor="#e2e8f0"
             valueColor="#0f172a"
             labelColor="#64748b"
@@ -178,10 +122,10 @@ export const CleanTenantsCard: React.FC<CleanTenantsCardProps> = ({
         {/* Clean Auto-Layout Footer Telemetry Matching Royal Fleet Blue Theme */}
         <div className="agency-footer-telemetry">
           <span className="agency-footer-note">
-            Trending up by <strong style={{ color: '#2563eb' }}>{telemetry.trendPct}%</strong> this month
+            Trending up by <strong style={{ color: '#2563eb' }}>{trendPct}%</strong> this month
           </span>
           <span className="agency-footer-readiness">
-            {telemetry.readyCrews} Crews • <strong style={{ color: '#2563eb' }}>{telemetry.readinessPct}% Ready</strong>
+            {readyCrews} Crews • <strong style={{ color: '#2563eb' }}>{readinessPct}% Ready</strong>
           </span>
         </div>
       </div>

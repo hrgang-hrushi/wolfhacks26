@@ -708,13 +708,13 @@ export const CleanMapCard = forwardRef<CleanMapCardHandle, CleanMapCardProps>(({
           {/* 6. Safest Route Navigator Button (Pillar 1) */}
           <button
             type="button"
-            className={`safe-route-nav-btn ${routePreview ? 'is-active-route' : ''}`}
+            className={`pixel-filter-btn safe-route-filter-btn ${routePreview ? 'active' : ''}`}
             onClick={onOpenSafeRoute}
             title="Safe Route Navigator: Compare Fastest Route (Google Maps) vs. Safest Alternative (RoadSense AI)"
             aria-label="Safe Route Navigator"
           >
-            <ShieldCheck size={14} />
-            <span>{routePreview ? 'Route Active' : 'Safest Route'}</span>
+            <ShieldCheck size={14} className={routePreview ? 'text-emerald-600' : 'text-slate-600'} />
+            <span>{routePreview ? 'Route: Active' : 'Safest Route'}</span>
           </button>
         </div>
       </div>
