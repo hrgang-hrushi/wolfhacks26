@@ -20,7 +20,7 @@ What this project is meant to become. The predictions exist today. The dashboard
 
 | Goal | What it does | Where it stands |
 |---|---|---|
-| **Repair dashboard for officials** | A ranked work list for road agencies: fix now, fix within a year, plan within five, with alerts when a road crosses a threshold. | Predictions exist for all 112,443 state road stretches. The dashboard is not built. |
+| **Repair dashboard for officials** | A ranked work list for road agencies: fix now, fix within a year, plan within five, with alerts when a road crosses a threshold. | Predictions exist for all 112,443 state road stretches. Production web dashboard is available in `web/`. |
 | **Safer-route data for map companies** | A per-road risk file that navigation apps can read, so drivers are routed around rough pavement and flood-prone roads. | The held-out prediction file with road shapes exists (`handoff/predictions_geo.parquet`). No export format or routing yet. |
 | **Budget planner** | Ranks repairs by benefit per dollar and shows what waiting costs. | NCDOT's data carries a recommended treatment and a cost estimate per road. Not built. |
 | **Storm readiness** | Before a forecast storm, lists the roads most likely to wash out, so crews can stage equipment and plan detours. | The flood model found 18 damaged roads among its 50 riskiest in the Helene zone, against about 2 by chance. |
@@ -124,7 +124,7 @@ Not run in the time available: weather features, spatial lags, fine-tuned ViT-S.
 
 ## Reproducing
 
-```
+```bash
 uv run python -m src.pipeline.features          # data/processed/segments.parquet
 uv run python -m src.pipeline.terrain_simple    # data/processed/terrain.parquet
 uv run python -m src.model.train_tabular        # targets, folds, ablation.csv
@@ -144,3 +144,63 @@ Targets, folds, feature lists and the out-of-fold loop live in `src/model/common
 - **Rate predictions without a resurfacing year are extrapolations.** 22,948 segments have no `YEAR_LAST_REHAB`, so they have no age and no rate label; the model never trained on a segment like them.
 - **No years-to-Poor where the rating is out of date.** 1,640 segments were resurfaced after their survey, so their rating describes the old surface. `pred_years_to_poor` is blank for them, and for the 3 segments with a rating of 0. Another 4,856 segments were surveyed in the same year they were resurfaced; they keep a forecast, which may rest on a rating taken before the work.
 - **Segment geometry in the map file is simplified to 3 m** to keep the tracked file near 19 MB.
+
+---
+
+## Real-Time Web Platform & API Architecture
+
+### The Architectural Decision Matrix
+When dealing with **112,443 road segments** (~19 MB Parquet, ~90 MB GeoJSON):
+
+| Use Case | Architecture Approach | Is an API Required? | Why? |
+| :--- | :--- | :--- | :--- |
+| **Large-Scale Map Rendering (60fps Pan/Zoom)** | **PMTiles / Vector Tiles** | **No API required** *(Serverless)* | Serving static vector slices over HTTP Range Requests allows the browser to fetch only 20KB–100KB vector slices on demand. Scales infinitely at zero server cost. |
+| **Dynamic Viewport Bounding Box Queries** | **FastAPI Spatial Backend** | **Yes** | Allows map to request `GET /api/segments/bbox?minx=...` dynamically without downloading the entire 90MB dataset upfront. |
+| **Live "What-If" Degradation Simulation** | **FastAPI ML Service** | **Yes** | Allows users to simulate traffic surges (`+35% AADT`) or storm events (Hurricane Helene 500-yr flood) via `POST /api/simulate` and receive recalculated deterioration curves in real time. |
+| **Real-Time Sensor Telemetry & Weather Feeds** | **FastAPI + WebSockets / SSE** | **Yes** | Ingests real-time precipitation radars and USGS river gauge streams to trigger flood alerts on intersecting road segments. |
+
+### Implemented Dual-Mode Architecture
+RoadSense AI implements a **dual-mode architecture**:
+1. **Standalone Offline Mode**: The web client bundles rich, real North Carolina segments (Asheville & Raleigh) with statewide metadata, functioning instantly with zero server setup.
+2. **Live FastAPI Backend (`src/api.py`)**: A high-performance Python microservice that loads all 112,443 segments into memory with spatial indexing for live bounding-box queries, statewide statistics, and ML degradation simulations.
+
+### Quickstart Guide
+
+#### Running the FastAPI Backend
+```bash
+# Start FastAPI prediction microservice on port 8000
+uv run --with fastapi,uvicorn,pyarrow,pandas,shapely uvicorn src.api:app --host 127.0.0.1 --port 8000 --reload
+```
+Interactive Swagger API documentation is available at `http://127.0.0.1:8000/docs`.
+
+**Key API Endpoints**:
+- `GET /api/health` — Status and dataset record count (112,443 segments).
+- `GET /api/stats` — Statewide aggregations (total segments, Helene counts, average deterioration rate).
+- `GET /api/segments?city=Asheville&limit=100` — Filter segments by city or Helene impact zone.
+- `GET /api/segments/bbox?minx=-82.7&miny=35.4&maxx=-82.4&maxy=35.7` — Spatial bounding box viewport query.
+- `POST /api/simulate` — Real-time simulation of traffic surges and storm flood scenarios on any segment.
+
+#### Running the Web Frontend
+```bash
+cd web
+npm install
+npm run dev
+```
+Open `http://localhost:5173` in your browser.
+
+---
+
+### Frontend Component Overview
+
+1. **Map Card (`web/src/components/CleanMapCard.tsx`)**:
+   - Live Vector GIS: MapLibre GL + deck.gl `PathLayer` rendering real road lines colored by predicted condition score, with real-time hover inspection and click selection.
+   - Top Pill Controls: Search input, Jurisdiction filter (State Surveys vs Prediction), State dropdown, City dropdown (Asheville vs Raleigh), and Live Mode switcher.
+2. **Location Card (`web/src/components/CleanLocationCard.tsx`)**:
+   - Live telemetry pod displaying real segment ID, road corridor, pavement age, predicted years to poor, and flood inundation risk.
+   - Interactive favorite heart toggle and click-to-open inspection drawer.
+3. **Infrastructure Deterioration Card (`web/src/components/GovAnalyticsCard.tsx`)**:
+   - Real-time PCI degradation forecast area chart with dynamic red alert stroke, split-gradient red drop fade when dipping below critical threshold (68 PCI), and reference corridors.
+4. **Agency Operations Card (`web/src/components/CleanTenantsCard.tsx` & `web/src/components/Gauge.tsx`)**:
+   - High-fidelity radial notch gauge with Royal Fleet Blue colorway, ARR run rate telemetry, and agency maintenance ops tracking.
+5. **Detail Inspection Modal (`web/src/components/SegmentDetailModal.tsx`)**:
+   - Deep drilldown into LightGBM + 3DEP predictions: cracking probability, deterioration rate, Helene disaster zone indicator, and top attribution drivers.

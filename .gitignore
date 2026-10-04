@@ -15,3 +15,8 @@ __pycache__/
 .DS_Store
 data/processed/
 logs/
+
+# environment & secrets
+*.env
+*.env.*
+!.env.example
