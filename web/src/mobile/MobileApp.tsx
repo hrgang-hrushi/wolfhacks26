@@ -22,7 +22,6 @@ import {
 } from '../lib/data';
 import { pinLayer, roadLayers, selectionLayers, widthScaleForZoom, type Pin } from '../lib/layers';
 import { boundsFor, googleConfigured, NC_BOUNDS, PLACES, type MapHandle, type MapView } from '../lib/mapTypes';
-import { TAGLINE } from '../lib/readme';
 import { useDetail, useMediaQuery } from '../lib/hooks';
 import { Legend } from '../lib/ui';
 import { useRoadData, useStats } from '../lib/useRoadData';
@@ -62,7 +61,7 @@ function inNC(lng: number, lat: number): boolean {
 
 export default function MobileApp() {
   const { stats, error } = useStats();
-  const dark = useMediaQuery('(prefers-color-scheme: dark)');
+  const dark = false; // Unified with Executive Dashboard light theme specification
   const narrow = useMediaQuery('(max-width: 600px)');
   const mapRef = useRef<MapHandle>(null);
 
@@ -299,12 +298,20 @@ export default function MobileApp() {
       </div>
 
       <header className="m-top">
-        <div className="m-top-text">
-          <h1>{TAGLINE}</h1>
-          <span className="m-scope">State roads · held-out predictions</span>
+        <div className="m-top-brand">
+          <div className="m-brand-mark" aria-hidden="true">
+            <span className="m-brand-dot" />
+          </div>
+          <div className="m-top-text">
+            <div className="m-title-row">
+              <h1 className="m-brand-title">RoadSense AI</h1>
+              <span className="m-scope-badge">NCDOT Statewide</span>
+            </div>
+            <p className="m-brand-subtitle">State Highway Pavement &amp; Flood Intelligence</p>
+          </div>
         </div>
         <button type="button" className="m-icon-btn" aria-label="About this model" onClick={() => setAboutOpen(true)}>
-          <Info size={20} />
+          <Info size={18} />
         </button>
       </header>
 
