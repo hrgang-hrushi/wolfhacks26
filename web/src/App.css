@@ -86,19 +86,6 @@ html, body, #root {
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.page-u-glow-svg {
-  width: 96%;
-  height: 44%;
-  max-width: 1800px;
-  max-height: 420px;
-  min-width: 900px;
-  overflow: visible;
-  display: block;
-  flex-shrink: 0;
-  filter: drop-shadow(0 0 22px var(--glow-svg-drop, rgba(34, 197, 94, 0.24))) drop-shadow(0 0 44px var(--glow-svg-drop, rgba(34, 197, 94, 0.14))) drop-shadow(0 0 90px var(--glow-svg-drop, rgba(34, 197, 94, 0.08)));
-  transition: filter 0.5s ease-in-out;
-}
-
 .page-u-glow-blur {
   position: absolute;
   left: -10vw;
@@ -662,15 +649,12 @@ html, body, #root {
   bottom: 0;
   height: 65%;
   pointer-events: none;
-  border-left: 3px solid var(--page-glow-border, rgba(34, 197, 94, 0.70));
-  border-right: 3px solid var(--page-glow-border, rgba(34, 197, 94, 0.70));
-  border-bottom: 3px solid var(--page-glow-border, rgba(34, 197, 94, 0.70));
-  border-top: none;
+  border: none;
   box-shadow:
-    inset 32px 0 56px -4px var(--page-glow-color, rgba(34, 197, 94, 0.45)),
-    inset -32px 0 56px -4px var(--page-glow-color, rgba(34, 197, 94, 0.45)),
-    inset 0 -42px 72px -6px var(--page-glow-color, rgba(34, 197, 94, 0.55)),
-    0 0 44px var(--page-glow-ambient, rgba(34, 197, 94, 0.35));
+    inset 40px 0 64px -6px var(--page-glow-color, rgba(34, 197, 94, 0.45)),
+    inset -40px 0 64px -6px var(--page-glow-color, rgba(34, 197, 94, 0.45)),
+    inset 0 -48px 84px -8px var(--page-glow-color, rgba(34, 197, 94, 0.55)),
+    0 0 50px var(--page-glow-ambient, rgba(34, 197, 94, 0.35));
   mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.8) 45%, rgba(0, 0, 0, 0) 100%);
   -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.8) 45%, rgba(0, 0, 0, 0) 100%);
   transition: all 0.5s ease-in-out;
