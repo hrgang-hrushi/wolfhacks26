@@ -1,195 +1,11 @@
-import React from 'react';
-import {
-  AreaChart,
-  Area as RechartsArea,
-  XAxis as RechartsXAxis,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-  ReferenceArea as RechartsReferenceArea
-} from 'recharts';
-import { Activity } from 'lucide-react';
+import React, { useMemo } from 'react';
 import type { RoadSegment } from '../types/roadSegment';
+import { Activity, ChevronRight } from 'lucide-react';
 
 interface GovAnalyticsCardProps {
   selectedSegment: RoadSegment | null;
   onOpenDetails?: () => void;
 }
-
-// 1,000,000+ hour tuned ReferenceBand with refined inward bracket markers
-const ReferenceBandWithMarkers = (props: any) => {
-  const { x, y, width, height } = props;
-  if (!width || !height || width <= 0 || height <= 0) return null;
-
-  const midX = x + width / 2;
-  const topY = y;
-  const botY = y + height;
-  const markerW = 6;
-  const markerH = 4;
-
-  return (
-    <g className="bklit-reference-band-group" style={{ pointerEvents: 'none' }}>
-      {/* Subtle shaded horizontal target corridor */}
-      <rect
-        x={x}
-        y={topY}
-        width={width}
-        height={height}
-        fill="rgba(16, 185, 129, 0.04)"
-      />
-
-      {/* Top dashed threshold line (y = 220) */}
-      <line
-        x1={x}
-        y1={topY}
-        x2={x + width}
-        y2={topY}
-        stroke="#94a3b8"
-        strokeWidth={1.2}
-        strokeDasharray="4 4"
-      />
-
-      {/* Bottom dashed threshold line (y = 160) */}
-      <line
-        x1={x}
-        y1={botY}
-        x2={x + width}
-        y2={botY}
-        stroke="#94a3b8"
-        strokeWidth={1.2}
-        strokeDasharray="4 4"
-      />
-
-      {/* Top inward bracket marker (downward triangle ▼) */}
-      <polygon
-        points={`${midX - markerW},${topY} ${midX + markerW},${topY} ${midX},${topY + markerH}`}
-        fill="#059669"
-        opacity={0.9}
-      />
-
-      {/* Bottom inward bracket marker (upward triangle ▲) */}
-      <polygon
-        points={`${midX - markerW},${botY} ${midX + markerW},${botY} ${midX},${botY - markerH}`}
-        fill="#059669"
-        opacity={0.9}
-      />
-    </g>
-  );
-};
-
-// ReferenceArea wrapper accepting exact Bklit props
-const ReferenceArea: React.FC<any> = ({
-  y1 = 68,
-  y2 = 84,
-  strokeStyle = 'dashed',
-  showMarkers = true,
-  ...rest
-}) => (
-  <RechartsReferenceArea
-    y1={y1}
-    y2={y2}
-    shape={<ReferenceBandWithMarkers />}
-    {...rest}
-  />
-);
-(ReferenceArea as any).displayName = 'ReferenceArea';
-
-// Segmented drop-fade: green vs red per X — each vertical column drops from the line with its own color
-// Threshold 68 PCI — green ≥68, red <68
-const DropFadeDefs: React.FC = () => (
-  <defs>
-    <linearGradient id="greenDropFade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#10b981" stopOpacity={0.32} />
-      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
-    </linearGradient>
-    <linearGradient id="redDropFade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#ef4444" stopOpacity={0.34} />
-      <stop offset="100%" stopColor="#ef4444" stopOpacity={0.02} />
-    </linearGradient>
-  </defs>
-);
-
-// Two segmented Areas — green where value >= THRESHOLD, red where < THRESHOLD.
-// Their fill is a vertical drop from the line (top) downwards, color chosen per X segment.
-const SegmentedAreas: React.FC = () => (
-  <>
-    <DropFadeDefs />
-    <RechartsArea
-      type="monotone"
-      dataKey="green"
-      stroke="#10b981"
-      fill="url(#greenDropFade)"
-      strokeWidth={2.5}
-      dot={false}
-      activeDot={{ r: 3, fill: '#10b981', stroke: '#fff', strokeWidth: 1.5 }}
-      isAnimationActive={false}
-      connectNulls={false}
-    />
-    <RechartsArea
-      type="monotone"
-      dataKey="red"
-      stroke="#ef4444"
-      fill="url(#redDropFade)"
-      strokeWidth={2.5}
-      dot={false}
-      activeDot={{ r: 3, fill: '#ef4444', stroke: '#fff', strokeWidth: 1.5 }}
-      isAnimationActive={false}
-      connectNulls={false}
-    />
-  </>
-);
-
-// XAxis for numeric x (0..5) with fractional threshold points — ticks only at integer months
-const XAxis: React.FC<any> = (props) => (
-  <RechartsXAxis
-    dataKey="x"
-    type="number"
-    domain={[0, 5]}
-    ticks={[0, 1, 2, 3, 4, 5]}
-    tickFormatter={(v: number) => {
-      const labels: Record<number, string> = {
-        0: 'Jan 1',
-        1: 'Feb 1',
-        2: 'Mar 1',
-        3: 'Apr 1',
-        4: 'May 1',
-        5: 'Jun 1'
-      };
-      return labels[v] ?? '';
-    }}
-    axisLine={false}
-    tickLine={false}
-    tick={{ fontSize: 11, fill: '#64748b', fontWeight: 500 }}
-    padding={{ left: 18, right: 18 }}
-    dy={6}
-    allowDecimals={false}
-    {...props}
-  />
-);
-(XAxis as any).displayName = 'XAxis';
-
-// Clean floating tooltip — shows single PCI value per X, de-duplicated for segmented green/red
-const ChartTooltip: React.FC<any> = (props) => (
-  <RechartsTooltip
-    contentStyle={{
-      background: '#0f172a',
-      border: 'none',
-      borderRadius: '8px',
-      color: '#ffffff',
-      fontSize: '11px',
-      padding: '6px 10px',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.15)'
-    }}
-    labelStyle={{ color: '#94a3b8', marginBottom: '2px', fontWeight: 600 }}
-    formatter={(_val: any, _name: any, item: any) => {
-      // item.payload holds the unified `value` for that X
-      const v = item?.payload?.value ?? _val;
-      if (v == null) return [null as any, null as any];
-      return [`${v} PCI`, 'Pavement Health Index'];
-    }}
-    {...props}
-  />
-);
-(ChartTooltip as any).displayName = 'Tooltip';
 
 export const GovAnalyticsCard: React.FC<GovAnalyticsCardProps> = ({
   selectedSegment,
@@ -197,28 +13,59 @@ export const GovAnalyticsCard: React.FC<GovAnalyticsCardProps> = ({
 }) => {
   const seg = selectedSegment;
   const rating = seg ? seg.pv_rating : 81;
+  const yearsToPoor = seg ? Math.max(0.8, seg.years_to_poor) : 4.6;
 
-  // Segmented X-axis: threshold TH=68, raw 62,90,78,56,75,82
-  // Interpolated crossing X fractions: Jan→Feb 0.214, Mar→Apr 2.455, Apr→May 3.632
-  // Each drop column's fill color is chosen per X — green where line ≥68, red where <68,
-  // and the fade drops vertically from the line (top) downwards.
-  const chartData = [
-    { x: 0, month: 'Jan 1', green: null, red: 62, value: 62 },
-    { x: 0.2142857, month: '', green: 68, red: 68, value: 68 },
-    { x: 1, month: 'Feb 1', green: 90, red: null, value: 90 },
-    { x: 2, month: 'Mar 1', green: 78, red: null, value: 78 },
-    { x: 2.454545, month: '', green: 68, red: 68, value: 68 },
-    { x: 3, month: 'Apr 1', green: null, red: 56, value: 56 },
-    { x: 3.6315789, month: '', green: 68, red: 68, value: 68 },
-    { x: 4, month: 'May 1', green: 75, red: null, value: 75 },
-    { x: 5, month: 'Jun 1', green: 82, red: null, value: 82 }
-  ];
+  // Real ML wear rate (PCI degradation points per year)
+  const wearRate = useMemo(() => {
+    if (seg?.pred_rate && seg.pred_rate > 0) {
+      return seg.pred_rate;
+    }
+    const drop = Math.max(5, rating - 60);
+    return Math.max(0.8, Math.min(6.5, drop / yearsToPoor));
+  }, [seg, rating, yearsToPoor]);
+
+  // SVG Chart Geometry
+  const W = 460;
+  const H = 135;
+  const padL = 36;
+  const padR = 24;
+  const padT = 16;
+  const padB = 26;
+
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  const maxYears = 15;
+  const minPCI = 30;
+  const maxPCI = 100;
+  const poorThreshold = 60;
+
+  const xPos = (yr: number) => padL + (yr / maxYears) * chartW;
+  const yPos = (pci: number) => padT + ((maxPCI - Math.max(minPCI, Math.min(maxPCI, pci))) / (maxPCI - minPCI)) * chartH;
+
+  const startX = xPos(0);
+  const startY = yPos(rating);
+
+  const endPCI = Math.max(minPCI, rating - wearRate * maxYears);
+  const endX = xPos(maxYears);
+  const endY = yPos(endPCI);
+
+  // Exact intercept year with 60 PCI poor threshold
+  const crossYear = rating > poorThreshold ? (rating - poorThreshold) / wearRate : 0;
+  const crossX = xPos(Math.min(maxYears, crossYear));
+  const crossY = yPos(poorThreshold);
+
+  const thresholdY = yPos(poorThreshold);
+
+  // Polygon points for area fill under the trajectory
+  const areaPoints = `${startX},${startY} ${endX},${endY} ${endX},${yPos(minPCI)} ${startX},${yPos(minPCI)}`;
 
   return (
     <div
-      className="pixel-gov-analytics-card live-html-card"
+      className="pixel-gov-analytics-card live-html-card degradation-card"
       onClick={onOpenDetails}
       style={{ cursor: 'pointer' }}
+      title="Click to view full NCDOT wear model and deterioration telemetry"
     >
       <div className="gov-card-inner">
         {/* Header Row */}
@@ -226,41 +73,127 @@ export const GovAnalyticsCard: React.FC<GovAnalyticsCardProps> = ({
           <div className="gov-title-cluster">
             <div className="gov-title-tag-row">
               <span className="gov-tag-pill">
-                <Activity size={11} className="text-emerald-600" />
-                NCDOT Deterioration Forecast
+                <Activity size={10} className="text-emerald-600" />
+                NCDOT DEGRADATION MODEL
               </span>
               <span className="gov-jurisdiction-label">
                 {seg ? seg.name : 'Capital Blvd (US-401)'}
               </span>
             </div>
-            <h2 className="gov-main-title">
-              Infrastructure Deterioration
-            </h2>
+            <h2 className="gov-main-title">Infrastructure Life-Cycle Forecast</h2>
             <p className="gov-subtitle">
-              Reference condition corridor (68–84 PCI) • Red alert below threshold
+              Linear wear projection at <strong>-{wearRate.toFixed(1)} PCI/yr</strong> • Action horizon {yearsToPoor.toFixed(1)} yrs
             </p>
+          </div>
+          <div className="gov-arrow-indicator" aria-hidden="true">
+            <ChevronRight size={14} />
           </div>
         </div>
 
-        {/* Segmented drop-fade AreaChart — vertical fade drops from the line, color per X segment (green ≥68, red <68) */}
-        <div className="gov-recharts-container">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart margin={{ top: 8, right: 12, bottom: 18, left: 12 }} data={chartData}>
-              <ReferenceArea y1={68} y2={84} strokeStyle="dashed" showMarkers />
-              <SegmentedAreas />
-              <XAxis />
-              <ChartTooltip />
-            </AreaChart>
-          </ResponsiveContainer>
+        {/* Minimalist Authentic Linear Wear Projection Chart */}
+        <div className="gov-projection-container">
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            className="gov-projection-svg"
+            role="img"
+            aria-label={`Linear projection from current rating of ${rating} PCI at -${wearRate.toFixed(1)} wear rate`}
+          >
+            <defs>
+              <linearGradient id="wearSlopeFade" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#059669" stopOpacity="0.14" />
+                <stop offset="100%" stopColor="#059669" stopOpacity="0.01" />
+              </linearGradient>
+            </defs>
+
+            {/* Horizontal Gridlines & PCI Y Ticks */}
+            {[100, 80, 60, 40].map((pci) => (
+              <g key={pci}>
+                <line
+                  x1={padL}
+                  y1={yPos(pci)}
+                  x2={W - padR}
+                  y2={yPos(pci)}
+                  stroke={pci === poorThreshold ? '#fca5a5' : '#f1f5f9'}
+                  strokeWidth={pci === poorThreshold ? 1.2 : 1}
+                  strokeDasharray={pci === poorThreshold ? '4 3' : undefined}
+                />
+                <text
+                  x={padL - 6}
+                  y={yPos(pci) + 3.5}
+                  textAnchor="end"
+                  className={`chart-tick-label ${pci === poorThreshold ? 'warn' : ''}`}
+                >
+                  {pci}
+                </text>
+              </g>
+            ))}
+
+            {/* Poor Threshold Label */}
+            <text
+              x={W - padR}
+              y={thresholdY - 4}
+              textAnchor="end"
+              className="chart-threshold-badge"
+            >
+              Action Threshold (60 PCI)
+            </text>
+
+            {/* X-Axis Year Ticks */}
+            {[0, 3, 6, 9, 12, 15].map((yr) => (
+              <text
+                key={yr}
+                x={xPos(yr)}
+                y={H - 8}
+                textAnchor="middle"
+                className="chart-tick-label"
+              >
+                {2026 + yr}
+              </text>
+            ))}
+
+            {/* Subtle Gradient Area under slope */}
+            <polygon points={areaPoints} fill="url(#wearSlopeFade)" />
+
+            {/* Projection Line */}
+            <line
+              x1={startX}
+              y1={startY}
+              x2={endX}
+              y2={endY}
+              stroke="#0f172a"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+
+            {/* Origin Node (Present Survey Rating) */}
+            <circle cx={startX} cy={startY} r="3.5" fill="#0f172a" />
+            <text x={startX + 6} y={startY - 6} className="chart-point-annotation">
+              {rating} PCI (Now)
+            </text>
+
+            {/* Critical Intercept Marker at 60 PCI */}
+            {crossYear > 0 && crossYear <= maxYears && (
+              <g>
+                <circle cx={crossX} cy={crossY} r="4" fill="#ef4444" stroke="#ffffff" strokeWidth="1.5" />
+                <text
+                  x={Math.min(W - padR - 55, crossX + 6)}
+                  y={crossY + 12}
+                  className="chart-intercept-annotation"
+                >
+                  Year {crossYear.toFixed(1)} (Critical)
+                </text>
+              </g>
+            )}
+          </svg>
         </div>
 
         {/* Clean Footer Telemetry */}
         <div className="gov-footer-telemetry">
           <span className="gov-footer-note">
-            Optimal Pre-Fix Window: <strong>Years 1–3</strong>
+            Target Intervention: <strong>Within {yearsToPoor.toFixed(1)} Years</strong>
           </span>
           <span className="gov-footer-rating">
-            Rating: {rating} / 100
+            Current Score: <strong>{rating} / 100</strong>
           </span>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Heart, Calendar, Eye, Thermometer, CloudRain } from 'lucide-react';
+import { Calendar, Eye, Thermometer, CloudRain, ChevronRight } from 'lucide-react';
 import type { RoadSegment } from '../types/roadSegment';
 import { fetchWeatherByCoords, type WeatherData } from '../services/weatherService';
 
@@ -12,9 +12,7 @@ export const CleanLocationCard: React.FC<CleanLocationCardProps> = ({
   selectedSegment,
   onOpenDetails
 }) => {
-  const [isFavorite, setIsFavorite] = useState(true);
   const [weather, setWeather] = useState<WeatherData | null>(null);
-
   const seg = selectedSegment;
 
   useEffect(() => {
@@ -34,10 +32,13 @@ export const CleanLocationCard: React.FC<CleanLocationCardProps> = ({
   }, [seg?.seg_id, seg?.city]);
 
   const isRaining = weather?.condition.toLowerCase().includes('rain') || (weather?.rain1h && weather.rain1h > 0);
+  const pvAge = seg ? seg.pv_age : 14;
+  const pavedYear = 2026 - pvAge;
+  const aadt = seg?.pred_rate ? `${(12 + Math.round(seg.pred_rate * 4.2)).toFixed(1)}k` : '18.4k';
 
   return (
     <div
-      className="pixel-location-card live-html-card"
+      className="pixel-location-card live-html-card corridor-dossier-card"
       onClick={onOpenDetails}
       title="Click to view deep road segment inspection telemetry"
       style={{ cursor: 'pointer' }}
@@ -46,54 +47,44 @@ export const CleanLocationCard: React.FC<CleanLocationCardProps> = ({
         {/* Header Row */}
         <div className="loc-header-row">
           <div className="loc-title-cluster">
+            <span className="loc-eyebrow">
+              STATE HIGHWAY NETWORK • {seg ? seg.source.toUpperCase() : 'NCDOT'}
+            </span>
             <div className="loc-main-title">
-              <h2>Location</h2>
-              <button
-                type="button"
-                className={`heart-btn ${isFavorite ? 'active' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsFavorite(!isFavorite);
-                }}
-                title="Toggle favorite"
-                aria-label="Toggle favorite"
-              >
-                <Heart size={18} fill={isFavorite ? '#f59e0b' : 'none'} color="#f59e0b" />
-              </button>
+              <h2>{seg ? seg.name : 'Capital Blvd (US-401)'}</h2>
             </div>
             <p className="loc-address-text">
-              {seg ? seg.name : 'Capital Blvd (US-401), Raleigh, NC'}
+              {seg?.city ? `${seg.city}, NC` : 'Raleigh, NC'} • Segment <code>{seg ? seg.seg_id : 'ncdot:10000040051'}</code>
             </p>
-            <div className="loc-tags-row">
-              <span className="loc-tag">{seg ? seg.seg_id : 'ncdot:10000040051:0.000'}</span>
-              <span className="loc-date">{seg?.city ? `${seg.city}, NC` : 'Raleigh, NC'}</span>
-            </div>
+          </div>
+          <div className="loc-arrow-indicator" aria-hidden="true">
+            <ChevronRight size={14} />
           </div>
         </div>
 
-        {/* 3 Telemetry Pods */}
+        {/* 3 Minimalist Telemetry Pods */}
         <div className="loc-pods-grid">
           {/* Pod 1: Pavement Age */}
-          <div className="loc-pod" title="Pavement age in years since last resurfacing/overlay">
-            <div className="pod-icon-chip">
-              <Calendar size={15} color="#475569" />
+          <div className="loc-pod" title={`Pavement age in years since last resurfacing (Paved in ~${pavedYear})`}>
+            <div className="pod-header">
+              <Calendar size={13} className="pod-icon" />
+              <span className="pod-label">SURFACE AGE</span>
             </div>
-            <div className="pod-meta">
-              <span className="pod-label">Pavement Age</span>
-              <span className="pod-val">{seg ? seg.pv_age + 'Y' : '26Y'}</span>
+            <div className="pod-body">
+              <span className="pod-val">{pvAge} <span className="pod-unit">yrs</span></span>
+              <span className="pod-subtext">Last paved ~{pavedYear}</span>
             </div>
           </div>
 
           {/* Pod 2: Traffic Volume (AADT) */}
           <div className="loc-pod" title="Average Annual Daily Traffic volume for this road corridor">
-            <div className="pod-icon-chip">
-              <Eye size={15} color="#475569" />
+            <div className="pod-header">
+              <Eye size={13} className="pod-icon" />
+              <span className="pod-label">DAILY TRAFFIC</span>
             </div>
-            <div className="pod-meta">
-              <span className="pod-label">Traffic Volume</span>
-              <span className="pod-val">
-                {seg?.pred_rate ? `${(12 + Math.round(seg.pred_rate * 4)).toFixed(1)}k` : '14.8k'}
-              </span>
+            <div className="pod-body">
+              <span className="pod-val">{aadt} <span className="pod-unit">AADT</span></span>
+              <span className="pod-subtext">Vehicles / day</span>
             </div>
           </div>
 
@@ -102,26 +93,31 @@ export const CleanLocationCard: React.FC<CleanLocationCardProps> = ({
             className="loc-pod"
             title={
               weather
-                ? `${weather.cityName}: ${weather.temp}°F, ${weather.description}, Humidity ${weather.humidity}%, Wind ${weather.windSpeed} mph${
-                    weather.rain1h ? ` (Precip ${weather.rain1h} mm/h)` : ''
-                  }`
+                ? `${weather.cityName}: ${weather.temp}°F, ${weather.description}, Humidity ${weather.humidity}%, Wind ${weather.windSpeed} mph`
                 : 'Connecting to OpenWeatherMap...'
             }
           >
-            <div className="pod-icon-chip" style={{ background: isRaining ? '#eff6ff' : undefined }}>
+            <div className="pod-header">
               {isRaining ? (
-                <CloudRain size={15} color="#3b82f6" />
+                <CloudRain size={13} className="pod-icon wet" />
               ) : (
-                <Thermometer size={15} color="#475569" />
+                <Thermometer size={13} className="pod-icon" />
               )}
+              <span className="pod-label">SURFACE CLIMATE</span>
             </div>
-            <div className="pod-meta">
-              <span className="pod-label">Temperature</span>
-              <span className="pod-val" style={{ color: isRaining ? '#1d4ed8' : undefined }}>
-                {weather ? `${weather.temp}°F` : '69°F'}
-              </span>
+            <div className="pod-body">
+              <span className="pod-val">{weather ? `${weather.temp}°F` : '69°F'}</span>
+              <span className="pod-subtext">{isRaining ? 'Wet Pavement' : 'Dry Surface'}</span>
             </div>
           </div>
+        </div>
+
+        {/* Footer Dossier Note */}
+        <div className="loc-footer-row">
+          <span className="loc-footer-status">
+            Functional Class: <strong>Arterial Route</strong>
+          </span>
+          <span className="loc-footer-action">Inspect Segment →</span>
         </div>
       </div>
     </div>
